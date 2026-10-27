@@ -226,7 +226,7 @@ jobs:
           $notes = Get-Content -LiteralPath (Join-Path $env:artifactDirectory 'releaseNotes.json') -Raw | ConvertFrom-Json
           if ($notes.version -ne $env:releaseVersion -or $notes.commit -ne $env:GITHUB_SHA -or ($notes.previousTag -and $notes.previousTag -notmatch '^portable-v\d+\.\d+\.\d+$') -or !($notes.markdown -is [string]) -or !$notes.markdown.Trim()) { throw '更新说明与发布版本或源码提交不一致' }
           $manifest = Get-Content -LiteralPath (Join-Path $env:artifactDirectory $names[2]) -Raw | ConvertFrom-Json
-          if ($manifest.schemaVersion -ne 1 -or $manifest.version -ne $env:releaseVersion -or $manifest.distribution -ne 'portable' -or $manifest.identifier -ne 'local.toonflow.desktop' -or $manifest.channel -ne 'stable' -or $manifest.platform -ne 'win' -or $manifest.arch -ne 'x64' -or $manifest.hash -notmatch '^[a-f0-9]{64}$' -or $manifest.artifact.file -ne $names[1]) { throw '便携更新清单不符合当前版本' }
+          if ($manifest.schemaVersion -ne 1 -or $manifest.version -ne $env:releaseVersion -or $manifest.distribution -ne 'portable' -or $manifest.identifier -ne 'lol.yixian.toonflow' -or $manifest.channel -ne 'stable' -or $manifest.platform -ne 'win' -or $manifest.arch -ne 'x64' -or $manifest.hash -notmatch '^[a-f0-9]{64}$' -or $manifest.artifact.file -ne $names[1]) { throw '便携更新清单不符合当前版本' }
           $archive = Get-Item -LiteralPath (Join-Path $env:artifactDirectory $names[1])
           if ($archive.Length -ne $manifest.artifact.size -or (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.artifact.sha256) { throw '更新包长度或 SHA-256 不匹配' }
           $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $env:artifactDirectory $names[0]))
