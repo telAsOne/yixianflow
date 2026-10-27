@@ -3077,7 +3077,8 @@
     "apps/web/src/lib/workspaceFiles.ts",
     "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue",
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/index.vue",
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "读取字节数必须为正整数": [
     "apps/web/src/lib/workspaceFiles.ts"
@@ -4358,25 +4359,25 @@
     "apps/web/src/pages/workspace/panels/canvas/index.vue"
   ],
   "已复制图片": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "节点已变化，请重新复制": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "节点复制失败": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "剪贴板内容导入失败": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "请先安装并启用对应的节点插件": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "剪贴板中没有可粘贴的节点、文本、图片、视频或音频": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "剪贴板内容粘贴失败": [
-    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+    "apps/web/src/pages/workspace/panels/canvas/useCanvasClipboard.ts"
   ],
   "节点删除失败": [
     "apps/web/src/pages/workspace/panels/canvas/index.vue"
