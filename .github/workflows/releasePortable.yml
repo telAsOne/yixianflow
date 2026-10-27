@@ -36,6 +36,9 @@ jobs:
       needed: ${{ steps.parameters.outputs.needed }}
       previousTag: ${{ steps.parameters.outputs.previousTag }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: 校验版本与发布来源
         id: parameters
         env:
