@@ -9,21 +9,7 @@
   "exports": {
     ".": "./index.ts",
     "./types": "./types.d.ts",
-    "./language/tfRouter": "./src/language/tfRouter.ts",
-    "./language/deepSeek": "./src/language/deepSeek.ts",
-    "./media/tfRouter": "./src/media/tfRouter.ts",
-    "./media/apiMart": "./src/media/apiMart.ts",
-    "./media/metaso": "./src/media/metaso.ts",
-    "./media/compshare": "./src/media/compshare.ts",
-    "./media/laoliImage": "./src/media/laoliImage.ts",
-    "./media/laoliVideo": "./src/media/laoliVideo.ts",
-    "./media/sub2apiImage": "./src/media/sub2apiImage.ts",
-    "./media/dola": "./src/media/dola.ts",
-    "./media/vidGate": "./src/media/vidGate.ts",
-    "./media/fankeVideo": "./src/media/fankeVideo.ts",
-    "./media/ailxpImage": "./src/media/ailxpImage.ts",
-    "./media/autoDl": "./src/media/autoDl.ts",
-    "./media/zealmanH3": "./src/media/zealmanH3.ts",
+    "./language/yixian": "./src/language/yixian.ts",
     "./media/yixianVideo": "./src/media/yixianVideo.ts"
   }
 }

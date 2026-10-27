@@ -5,20 +5,19 @@ import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/pro
 import type { Context, Model } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import conf from "@/utils/conf";
+import { requireAccount } from "@/utils/account";
 import { readReference } from "@/utils/media/generation";
 import modelContextLimits from "@/utils/ai/modelContextLimits";
 import { withRequestBudget } from "@/utils/ai/requestBudget";
 
-export { fetchProviderModels } from "@/utils/ai/models";
-export { refreshProviderModels } from "@/utils/ai/initialize";
 
 export const providerSchema = z.object({
   apiUrl: z.url({ protocol: /^https?$/ }),
-  apiKey: z.string(),
-  requestBodyLimitMiB: z.number().int().min(1).max(128).optional(),
+  apiKey: z.string().default(""),
+  requestBodyLimitMiB: z.number().int().positive().optional(),
   protocol: z.enum(["openai-completions", "openai-responses", "anthropic-messages"]),
   models: z.array(z.object({
-    id: z.string(), label: z.string(),
+    id: z.string(), label: z.string(), think: z.boolean().optional(),
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
   })),
@@ -27,9 +26,10 @@ export const providerSchema = z.object({
 const builtinModels = getBuiltinProviders().flatMap(provider => getBuiltinModels(provider));
 
 export function getModelLimits(providerId: string, model: z.infer<typeof providerSchema>["models"][number]) {
+  if (providerId === "yixian" && model.contextWindow != null && model.maxOutputTokens != null) return { contextWindow: model.contextWindow, maxTokens: model.maxOutputTokens };
   const limits = modelContextLimits.find(item => item.id === model.id)
     ?? modelContextLimits.find(item => item.id instanceof RegExp && model.id.search(item.id) !== -1);
-  if (limits) return { contextWindow: limits.contextWindow, maxTokens: limits.maxTokens };
+  if (limits) return { contextWindow: model.contextWindow ?? limits.contextWindow, maxTokens: model.maxOutputTokens ?? limits.maxTokens };
   if (model.contextWindow != null && model.maxOutputTokens != null) {
     return { contextWindow: model.contextWindow, maxTokens: model.maxOutputTokens };
   }
@@ -46,10 +46,12 @@ export function getModelLimits(providerId: string, model: z.infer<typeof provide
 }
 
 export function getConfiguredModel(providerId: string, modelId: string) {
+  const account = requireAccount();
+  if (providerId !== "yixian") throw Object.assign(new Error("模型不可用，请选择其他模型"), { status: 400 });
   const providers = conf.get("settings", {}).customProviders;
   const parsed = providerSchema.safeParse(Array.isArray(providers) ? providers.find(item => item?.id === providerId) : undefined);
   if (!parsed.success) throw Object.assign(new Error("请先在设置中配置模型供应商"), { status: 400 });
-  const provider = parsed.data;
+  const provider: z.infer<typeof providerSchema> = { ...parsed.data, apiKey: account.key, apiUrl: account.baseUrl + "/v1", protocol: "openai-completions" };
   const model = provider.models.find(item => item.id === modelId);
   if (!model) throw Object.assign(new Error("所选模型不存在，请重新选择"), { status: 400 });
   const baseUrl = new URL(provider.apiUrl);
@@ -59,16 +61,18 @@ export function getConfiguredModel(providerId: string, modelId: string) {
 }
 
 export function listAiModels() {
+  const defaultModel = (conf.get("settings.defaultModels.text") as { modelId: string } | null | undefined)?.modelId;
   const providers = conf.get("settings", {}).customProviders;
   if (!Array.isArray(providers)) return [];
   return providers.flatMap(item => {
     const parsed = providerSchema.extend({ id: z.string().min(1), label: z.string() }).safeParse(item);
     if (!parsed.success) return [];
     const provider = parsed.data;
+    if (provider.id !== "yixian") return [];
     return provider.models.filter(model => model.id.trim()).map(model => {
       const limits = getModelLimits(provider.id, model);
       return {
-        providerId: provider.id, providerLabel: provider.label, protocol: provider.protocol, modelId: model.id, label: model.label,
+        providerId: provider.id, providerLabel: provider.label, protocol: provider.protocol, modelId: model.id, label: model.label, isDefault: model.id === defaultModel,
         contextWindow: limits.contextWindow, maxOutputTokens: limits.maxTokens,
       };
     });
@@ -131,7 +135,7 @@ export function streamAi(
   const { provider, model: configuredModel, baseUrl } = configured;
   const model: Model<typeof provider.protocol> = {
     id: configuredModel.id, name: configuredModel.label, provider: "toonflow", api: provider.protocol, baseUrl,
-    reasoning: false, input: ["text", "image"],
+    reasoning: configuredModel.think === true, input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: configuredModel.contextWindow,
     maxTokens: configuredModel.maxOutputTokens,

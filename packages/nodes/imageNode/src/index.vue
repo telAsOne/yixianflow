@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
 import { computed, nextTick, ref, watchEffect } from "vue";
 import { IconPhoto, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown } from "@tabler/icons-vue";
 import { ElButton, ElImageViewer, ElMessage } from "element-plus";
@@ -202,9 +203,9 @@ async function uploadImage(event: Event) {
   input.value = "";
   if (!file || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) return;
   if (!file.type.startsWith("image/")) return void ElMessage.error("请选择图片文件");
-  if (!file.size || file.size > 100 * 1024 * 1024) return void ElMessage.error("图片不能为空且不能超过 100 MB");
   uploading.value = true;
   try {
+    await validateMediaFiles([file]);
     const url = await files.uploadFile(file);
     // ACT: 复制节点可能仍引用旧图片，替换输出不删除共享文件。
     outputs.value.image = { dataType: "IMAGE", value: { url, mimeType: file.type } };

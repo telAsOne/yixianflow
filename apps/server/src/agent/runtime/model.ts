@@ -10,7 +10,7 @@ export async function createAgentModel(providerId: string, modelId: string, thin
     api: provider.protocol,
     baseUrl,
     models: [{
-      id: model.id, name: model.label, reasoning: thinkingLevel !== "off",
+      id: model.id, name: model.label, reasoning: model.think === true && thinkingLevel !== "off",
       // ACT: 保留图片输入，由实际供应方判断该模型是否支持。
       input: ["text", "image"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

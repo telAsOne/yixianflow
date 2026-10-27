@@ -8,7 +8,6 @@ import type { PluginInstallType } from "@/types/desktop";
 import conf from "@/utils/conf";
 import { parseTool, toolsDirectory } from "@/utils/plugins/tools";
 import { extDirectory, parseExt } from "@/utils/plugins/ext";
-import { addMediaProvider } from "@/utils/media/provider";
 import { isSafeSegment } from "@/utils/skills/files";
 import { isWithin, lockWorkspaceFiles, writeWorkspaceFile } from "@/utils/workspace/files";
 
@@ -423,6 +422,7 @@ export async function installSkill(fileName: string, bytes: Uint8Array, force = 
 }
 
 export async function installRemotePlugin(type: PluginInstallType, url: string, fileName?: string, force = false) {
+  if (type === "provider") invalid("逸仙版不支持安装自定义供应商");
   const address = remoteAddress(url);
   if (fileName === undefined) {
     try { fileName = decodeURIComponent(address.pathname.split("/").at(-1) ?? ""); }
@@ -434,12 +434,12 @@ export async function installRemotePlugin(type: PluginInstallType, url: string, 
   if (!fileName) invalid(t`下载地址缺少文件名，请使用指向文件的地址，例如 ${examples[type]}`);
   if (fileName.length > 128 || /[\\/]/.test(fileName)) invalid("插件文件名无效，不能包含目录路径或超过 128 字符");
   if (!patterns[type].test(fileName)) invalid(t`下载文件名“${fileName.slice(0, 128)}”不符合 ${type} 类型规范，文件名示例：${examples[type]}；改名后请重新生成下载链接`);
-  const bytes = await download(url, type === "provider" ? 2 * 1024 * 1024 : maxBytes, { node: "节点", ext: "文件扩展", tool: "工具", skill: "技能", provider: "供应商", agent: "团队" }[type]);
+  const bytes = await download(url, maxBytes, { node: "节点", ext: "文件扩展", tool: "工具", skill: "技能", provider: "供应商", agent: "团队" }[type]);
   if (type === "agent") return (await import("@/utils/teams/install")).installTeam(fileName, bytes, force);
   if (type === "skill") return installSkill(fileName, bytes, force);
   const source = decodeText(bytes);
   if (type === "node") return installNode(fileName, source, force);
   if (type === "ext") return installExt(fileName, source, force);
   if (type === "tool") return installTool(fileName, source, force);
-  return { name: (await addMediaProvider(source)).id };
+  return invalid("不支持此插件类型");
 }

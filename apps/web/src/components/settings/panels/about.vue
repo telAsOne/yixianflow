@@ -24,12 +24,12 @@
             前往 GitHub 更新
           </el-button>
           <template v-else>
-            <el-select :modelValue="snapshot?.portable && updateSource !== 'custom' ? 'github' : updateSource" aria-label="更新源" size="small" :disabled="working || sourceSaving" @change="saveUpdateSource">
+            <el-select :modelValue="updateSource" aria-label="更新源" size="small" :disabled="working || sourceSaving" @change="saveUpdateSource">
               <template #prefix>
-                <icon-brand-github v-if="updateSource === 'github' || (snapshot?.portable && updateSource !== 'custom')" :size="14" aria-hidden="true" />
+                <icon-brand-github v-if="updateSource === 'github'" :size="14" aria-hidden="true" />
                 <icon-world v-else :size="14" aria-hidden="true" />
               </template>
-              <el-option v-if="!snapshot?.portable" label="官方源" value="official" />
+              <el-option label="逸仙" value="official" />
               <el-option label="GitHub（Toonflow-l）" value="github" />
               <el-option v-if="customUpdateUrl" label="自定义源" value="custom" />
             </el-select>
@@ -65,10 +65,10 @@
     </el-card>
 
     <el-card class="infoCard repositoryCard" shadow="never">
-      <a class="repositoryLink" href="https://api.toonflow.net/" target="_blank" rel="noopener noreferrer">
+      <a class="repositoryLink" href="https://yixian.lol/" target="_blank" rel="noopener noreferrer">
         <icon-world class="repositoryIcon" :size="22" aria-hidden="true" />
         <div class="repositoryInfo">
-          <span class="repositoryTitle">官方中转平台 TF-Router</span>
+          <span class="repositoryTitle">逸仙平台</span>
         </div>
         <icon-external-link class="externalIcon" :size="16" aria-hidden="true" />
       </a>

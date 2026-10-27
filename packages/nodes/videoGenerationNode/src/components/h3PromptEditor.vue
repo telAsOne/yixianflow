@@ -1,6 +1,6 @@
 <template>
   <teleport :to="expandedTarget || 'body'" :disabled="!expanded || !expandedTarget">
-    <section class="h3PromptEditor nodrag nopan nowheel" :class="{ expandedEditor: expanded }" aria-label="H3 提示词创作" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.capture="handleHistoryKey" @keydown="!expanded && $event.stopPropagation()" @wheel.stop>
+    <section class="h3PromptEditor nodrag nopan nowheel" :class="{ expandedEditor: expanded }" aria-label="H3 提示词创作" @pointerdown.stop @mousedown.stop @dblclick.stop @beforeinput.capture="captureHistorySelection" @paste.capture="captureHistorySelection" @cut.capture="captureHistorySelection" @keydown.capture="handleHistoryKey" @keydown="!expanded && $event.stopPropagation()" @wheel.stop>
       <div class="editorHeading">
         <div><strong>视频提示词</strong><span>素材与标签一一对应，换位置后自动更新引用</span></div>
         <el-button :icon="expanded ? IconMinimize : IconMaximize" size="small" @click="expanded = !expanded">{{ expanded ? '完成编辑' : '全屏编辑' }}</el-button>
@@ -66,7 +66,7 @@
         <el-segmented v-model="state.editorMode" :options="[{ label: '标签', value: 'tags' }, { label: '代码', value: 'code' }]" :disabled="editingDisabled" size="small" aria-label="提示词编辑模式" />
       </div>
       <promptInput v-if="state.editorMode !== 'code'" ref="editor" v-model="promptModel" v-model:text="prompt" :references="mentions" :referenceGroups="referenceGroups" :disabled="editingDisabled" :maxHeight="expanded ? '52vh' : '260px'" recognizeTokens preserveMissingReferences placeholder="描述画面，输入 @ 插入素材、主体、对白或镜头" @activateReference="activateMention" @insertReference="insertMention" />
-      <h3CodeEditor v-else v-model="prompt" class="codeEditor" :maxHeight="expanded ? '52vh' : '260px'" :disabled="editingDisabled" @update:modelValue="syncCodeModel" />
+      <h3CodeEditor v-else ref="codeEditor" v-model="prompt" class="codeEditor" :maxHeight="expanded ? '52vh' : '260px'" :disabled="editingDisabled" @update:modelValue="syncCodeModel" />
       <div class="editorActions">
         <el-button text size="small" :disabled="editingDisabled || historyIndex === 0" @click="restoreHistory(-1)">撤销</el-button>
         <el-button text size="small" :disabled="editingDisabled || historyIndex >= history.length - 1" @click="restoreHistory(1)">重做</el-button>
@@ -118,6 +118,7 @@ import { h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3Pr
 import type { ZealmanVoice } from "../zealmanOptions";
 
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
+type PromptSelection = { anchor: number; focus: number };
 const props = defineProps<{ references: H3Reference[]; ai: ReturnType<typeof useNode>["ai"]; files: ReturnType<typeof useNode>["files"]; maxDuration: number; voices?: ZealmanVoice[]; remoteLibrary?: boolean; disabled?: boolean }>();
 const emit = defineEmits<{
   upload: []; clearReferences: []; replaceReference: [item: H3Reference]; removeReference: [item: H3Reference]; busy: [value: boolean]; openLibrary: [];
@@ -128,6 +129,7 @@ const prompt = defineModel<string>("prompt", { required: true });
 const promptModel = defineModel<PromptModel>("promptModel", { required: true });
 const duration = defineModel<number | undefined>("duration", { required: true });
 const editor = ref<InstanceType<typeof promptInput>>();
+const codeEditor = ref<InstanceType<typeof h3CodeEditor>>();
 const expanded = ref(false);
 const expandedTarget = ref<HTMLElement>();
 const activeReferenceId = ref("");
@@ -152,7 +154,7 @@ const editingDisabled = computed(() => props.disabled || optimizing.value);
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === state.value.model));
 const preferences = inject<Pick<Storage, "getItem" | "setItem">>("nodePreferences");
 let optimizationController: AbortController | undefined;
-const history = ref<string[]>([prompt.value]);
+const history = ref<{ text: string; selection?: PromptSelection }[]>([{ text: prompt.value }]);
 const historyIndex = ref(0);
 let historyTimer: ReturnType<typeof setTimeout> | undefined;
 let replaying = false;
@@ -208,10 +210,19 @@ const mentions = computed<H3Reference[]>((previous) => {
   return previous?.length === values.length && values.every((item, index) => ["id", "name", "value", "avatar", "previewUrl", "category", "action"].every(key => item[key as keyof H3Reference] === previous[index][key as keyof H3Reference])) ? previous : values;
 });
 
+function getSelection() { return (state.value.editorMode === "code" ? codeEditor.value : editor.value)?.getSelection(); }
+function captureHistorySelection(event: Event) {
+  if (replaying || !(event.target instanceof Element) || !event.target.closest(".promptInput, .codeEditor")) return;
+  const current = history.value[historyIndex.value];
+  if (current.text === prompt.value) current.selection = getSelection() ?? current.selection;
+}
 function remember() {
   clearTimeout(historyTimer);
-  if (replaying || history.value[historyIndex.value] === prompt.value) return;
-  history.value = [...history.value.slice(0, historyIndex.value + 1), prompt.value].slice(-50);
+  if (replaying) return;
+  const current = history.value[historyIndex.value];
+  const selection = getSelection();
+  if (current.text === prompt.value) { current.selection = selection ?? current.selection; return; }
+  history.value = [...history.value.slice(0, historyIndex.value + 1), { text: prompt.value, selection }].slice(-50);
   historyIndex.value = history.value.length - 1;
 }
 watch(prompt, () => { clearTimeout(historyTimer); if (!replaying) historyTimer = setTimeout(remember, 350); }, { flush: "sync" });
@@ -227,17 +238,22 @@ watch(prompt, value => {
 function syncCodeModel(value = prompt.value) { promptModel.value = value.split("\n").map(text => [{ type: "Write", text }]); }
 function replacePrompt(value: string) { remember(); prompt.value = value; syncCodeModel(value); void nextTick(remember); }
 function restoreHistory(delta: number) {
+  if (replaying) return;
   remember();
   const next = historyIndex.value + delta;
   if (next < 0 || next >= history.value.length) return;
   replaying = true;
   historyIndex.value = next;
-  const value = history.value[next];
-  prompt.value = value;
-  syncCodeModel(value);
-  void nextTick(() => { replaying = false; });
+  const entry = history.value[next];
+  prompt.value = entry.text;
+  syncCodeModel(entry.text);
+  void nextTick(() => {
+    if (entry.selection) (state.value.editorMode === "code" ? codeEditor.value : editor.value)?.restoreSelection(entry.selection);
+    replaying = false;
+  });
 }
 function handleHistoryKey(event: KeyboardEvent) {
+  captureHistorySelection(event);
   if (editingDisabled.value || event.isComposing || !(event.ctrlKey || event.metaKey) || !["z", "y"].includes(event.key.toLowerCase()) || !(event.target instanceof Element) || !event.target.closest(".promptInput, .codeEditor")) return;
   event.preventDefault();
   event.stopPropagation();
@@ -460,7 +476,10 @@ watch(() => props.references.map(item => ({ id: item.id, value: item.value })), 
   const replacements = new Map(previous.filter(item => /^<(Picture|Video|Audio) /.test(item.value)).map(item => [item.value, nextById.get(item.id) ?? item.value.replace("<", "<Missing ")]));
   const remap = (text: string) => text.replace(/<(Picture|Video|Audio)\s+\d+>/g, value => replacements.get(value) ?? value);
   // ACT: 撤销只撤销文字编辑，历史中的引用也跟随素材身份更新，避免换位后撤销指向另一张图。
-  history.value = history.value.map(remap);
+  history.value = history.value.map(entry => ({
+    text: remap(entry.text),
+    selection: entry.selection && { anchor: remap(entry.text.slice(0, entry.selection.anchor)).length, focus: remap(entry.text.slice(0, entry.selection.focus)).length },
+  }));
 }, { flush: "pre" });
 watch(() => state.value.editorMode, () => { remember(); syncCodeModel(); });
 onMounted(async () => { await loadModels(); await nextTick(); const normalized = h3GenerationPrompt(prompt.value, props.references, state.value); if (normalized !== prompt.value) replacePrompt(normalized); });

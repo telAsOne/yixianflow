@@ -72,6 +72,8 @@ export interface CanvasContext extends CanvasInfo {
 }
 
 export interface MediaModel {
+  isDefault?: boolean;
+  uploadLimits?: { imageMaxBytes: number; audioMaxBytes: number; videoMaxBytes: number; requestTotalMaxBytes: number; maxReferencesPerRequest: number };
   providerId: string;
   providerLabel: string;
   modelId: string;

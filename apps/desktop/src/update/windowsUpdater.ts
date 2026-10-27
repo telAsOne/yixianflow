@@ -1,3 +1,4 @@
+import { identifier } from "../identity";
 import { t, translateMessage } from "@toonflow/server/i18n";
 import type { updateSnapshot } from "@toonflow/server/desktop";
 import { execFile } from "node:child_process";
@@ -100,7 +101,7 @@ export default function createWindowsUpdater(resourcesDirectory: string, lifecyc
   async function getLocalInfo() {
     if (!localInfo) {
       const info = await file(join(resourcesDirectory, "version.json")).json();
-      if (!info || info.identifier !== "local.toonflow.desktop" || !["stable", "canary", "dev"].includes(info.channel)
+      if (!info || info.identifier !== identifier || !["stable", "canary", "dev"].includes(info.channel)
         || typeof info.version !== "string" || !versionPattern.test(info.version) || typeof info.hash !== "string" || !hashPattern.test(info.hash)
         || typeof info.baseUrl !== "string" || typeof info.name !== "string" || !/^[a-zA-Z0-9_-]+$/.test(info.name)
         || (portable && info.distribution !== "portable")) {

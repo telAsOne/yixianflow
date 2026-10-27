@@ -1,34 +1,18 @@
 <template>
-  <main class="hello" :class="{ configuring: view !== 'welcome' }">
+  <main class="hello">
     <div class="pageLanguage"><languageSelect popover /></div>
     <section class="welcomePanel" aria-labelledby="welcomeTitle">
-      <div v-if="view !== 'welcome'" class="providerContent">
-        <header class="providerHeader">
-          <el-button text :icon="IconArrowLeft" :disabled="saving" @click="view = 'welcome'">返回</el-button>
-          <h1 id="welcomeTitle">配置文本模型</h1>
-        </header>
-        <div class="providerBody">
-          <languageModel />
-        </div>
-        <el-button
-          type="primary"
-          :loading="saving"
-          :disabled="!customProviders.some((provider) => provider.models.length)"
-          @click="completeSetup">
-          开始使用
-        </el-button>
-      </div>
-      <div v-else class="welcomeContent">
+      <div class="welcomeContent">
         <h1 id="welcomeTitle">快速开始</h1>
-        <p class="description">配置文本和媒体模型后即可开始创作，也可以稍后在设置中配置。</p>
+        <p class="description">登录或注册以开始。</p>
 
-        <el-button class="configureButton" type="primary" @click="view = 'custom'">
+        <el-button class="configureButton" type="primary" @click="signInVisible = true">
           <icon-key class="buttonIcon" />
-          配置文本模型
+          登录 / 注册
         </el-button>
         <el-button class="mobileConnectButton" :type="deviceHubEnabled ? 'success' : undefined" :plain="deviceHubEnabled" :icon="deviceHubEnabled || mobileConnection.mode === 'remote' ? IconDeviceDesktop : IconQrcode" @click="mobileConnectVisible = true">{{ mobileConnectionLabel }}</el-button>
         <div class="secondaryActions">
-          <el-button class="secondaryButton" round :loading="saving" @click="completeSetup">稍后配置</el-button>
+          <el-button class="secondaryButton" round :loading="saving" @click="completeSetup">稍后登录</el-button>
         </div>
       </div>
 
@@ -48,22 +32,19 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref } from "vue";
+import { signInVisible } from "@/stores/account";
+import { defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { IconArrowLeft, IconQrcode, IconDeviceDesktop } from "@tabler/icons-vue";
-import { customProviders } from "@/stores/settings";
+import { IconQrcode, IconDeviceDesktop } from "@tabler/icons-vue";
 import { useHelloStore } from "@/stores/hello";
-import anonymousData from "@/lib/anonymousData";
 import logoSvg from "@toonflow/assets/logo.svg?raw";
 import bg from "./bg.vue";
 import languageSelect from "@/components/languageSelect.vue";
 import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib/mobile";
 
-const languageModel = defineAsyncComponent(() => import("@/components/settings/panels/languageModel/index.vue"));
 const mobileConnect = defineAsyncComponent(() => import("@/components/mobileConnect.vue"));
 const mobileConnectVisible = ref(false);
-const view = ref<"welcome" | "custom">("welcome");
 const saving = ref(false);
 const router = useRouter();
 const hello = useHelloStore();
@@ -73,7 +54,6 @@ async function completeSetup() {
   saving.value = true;
   try {
     await hello.complete();
-    anonymousData.track(view.value === "custom" ? "onboarding.complete" : "onboarding.skip");
     await router.replace("/home");
   } catch {
     ElMessage.error("保存引导状态失败，请重试");
@@ -81,6 +61,9 @@ async function completeSetup() {
     saving.value = false;
   }
 }
+
+window.addEventListener("toonflow:signed-in", completeSetup);
+onBeforeUnmount(() => window.removeEventListener("toonflow:signed-in", completeSetup));
 
 </script>
 

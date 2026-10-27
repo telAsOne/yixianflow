@@ -77,7 +77,6 @@ import settings from "@/components/settings/index.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { flushSettings } from "@/stores/settings";
 import { registerWorkspaceControl, waitForControlValue } from "@/lib/mcpControl";
-import anonymousData from "@/lib/anonymousData";
 import canvasPanel from "./panels/canvas/canvasHost.vue";
 import type { DocumentNodeOptions } from "./panels/canvas/canvasFiles";
 import workspaceMenu from "./components/workspaceMenu.vue";
@@ -89,7 +88,6 @@ const documentPanel = defineAsyncComponent(() => import("./panels/document/index
 
 const workspaceStore = useWorkspaceStore();
 const { activePanel, agentVisible, inspectorVisible, inspectorWidth, agent: agentLayout } = toRefs(useWorkspaceView(() => workspaceStore.project?.directory));
-onMounted(() => anonymousData.track(activePanel.value === "canvas" ? "workspace.canvas" : "workspace.document"));
 watch(() => workspaceStore.pendingAgentMessage, message => {
   if (message && message.directory === workspaceStore.project?.directory) agentVisible.value = true;
 }, { immediate: true });
@@ -251,10 +249,8 @@ async function switchPanel(value: string | number | boolean) {
   if (value !== "canvas" && value !== "document") return false;
   try {
     if (activePanel.value === "document") await documentPanelRef.value?.flushSave();
-    const changed = activePanel.value !== value;
     activePanel.value = value;
     await nextTick();
-    if (changed) anonymousData.track(value === "canvas" ? "workspace.canvas" : "workspace.document");
     return true;
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "文本保存失败");

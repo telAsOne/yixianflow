@@ -19,7 +19,8 @@
     "./useMediaModels": "./src/useMediaModels.ts",
     "./useOutputReplace": "./src/useOutputReplace.ts",
     "./generationTools": "./src/generationTools.ts",
-    "./subtitleSrt": "./src/subtitleSrt.ts"
+    "./subtitleSrt": "./src/subtitleSrt.ts",
+    "./mediaLimits": "./src/mediaLimits.ts"
   },
   "scripts": {
     "typecheck": "vue-tsc --noEmit"

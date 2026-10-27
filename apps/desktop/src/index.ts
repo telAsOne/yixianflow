@@ -213,6 +213,7 @@ async function start() {
         mainWindow.close();
       },
       openUrl,
+      openExternal: Utils.openExternal,
       showItemInFolder: Utils.showItemInFolder,
       readClipboardText: Utils.clipboardReadText,
       readClipboardImage: Utils.clipboardReadImage,

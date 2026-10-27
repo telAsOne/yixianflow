@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "@toonflow/file";
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeAtomic } from "@toonflow/file";
 import { file, write } from "@toonflow/file/bun";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -47,8 +47,8 @@ try {
     digest.update(Buffer.from(await file(join(portableDirectory, path)).arrayBuffer()));
   }
   const hash = digest.digest("hex");
-  await write(versionPath, JSON.stringify({ ...version, hash, distribution: "portable",
-    baseUrl: `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${process.env.GITHUB_REPOSITORY || "lboverfys/Toonflow-l"}/releases/latest/download` }));
+  await writeAtomic(versionPath, JSON.stringify({ ...version, hash, distribution: "portable",
+    baseUrl: desktopConfig.release.baseUrl }));
   copyFileSync(join(portableDirectory, "toonflow.exe"), join(resources, "app/portableLauncher.exe"));
   const updateRoot = join(stagingDirectory, "portableUpdate");
   mkdirSync(updateRoot);

@@ -204,11 +204,11 @@ tarReady:
   WriteRegStr HKCU "${uninstallKey}" "UninstallString" '$\"$INSTDIR\UninstallNSIS.exe$\"'
   WriteRegStr HKCU "${uninstallKey}" "QuietUninstallString" '$\"$INSTDIR\UninstallNSIS.exe$\" /S'
   IfErrors installFailed
-  StrCpy $installStep "注册 toonflow:// 协议"
-  WriteRegStr HKCU "Software\Classes\toonflow" "" "URL:Toonflow Protocol"
-  WriteRegStr HKCU "Software\Classes\toonflow" "URL Protocol" ""
-  WriteRegStr HKCU "Software\Classes\toonflow\DefaultIcon" "" '$\"$INSTDIR\app\Resources\app.ico$\",0'
-  WriteRegStr HKCU "Software\Classes\toonflow\shell\open\command" "" '$\"$INSTDIR\app\Resources\app\protocolLauncher.exe$\" $\"%1$\"'
+  StrCpy $installStep "注册 toonflow-yixian:// 协议"
+  WriteRegStr HKCU "Software\Classes\toonflow-yixian" "" "URL:Toonflow Protocol"
+  WriteRegStr HKCU "Software\Classes\toonflow-yixian" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\toonflow-yixian\DefaultIcon" "" '$\"$INSTDIR\app\Resources\app.ico$\",0'
+  WriteRegStr HKCU "Software\Classes\toonflow-yixian\shell\open\command" "" '$\"$INSTDIR\app\Resources\app\protocolLauncher.exe$\" $\"%1$\"'
   IfErrors installFailed
   CreateShortCut "$DESKTOP\${appName}.lnk" "$INSTDIR\app\bin\launcher.exe" "" "$INSTDIR\app\Resources\app.ico"
   IfErrors 0 installDone
@@ -272,9 +272,9 @@ Section "Uninstall"
     IfErrors uninstallMetadataFailed
   ${EndIf}
   ClearErrors
-  ReadRegStr $0 HKCU "Software\Classes\toonflow\shell\open\command" ""
+  ReadRegStr $0 HKCU "Software\Classes\toonflow-yixian\shell\open\command" ""
   ${If} $0 == '$\"$INSTDIR\app\Resources\app\protocolLauncher.exe$\" $\"%1$\"'
-    DeleteRegKey HKCU "Software\Classes\toonflow"
+    DeleteRegKey HKCU "Software\Classes\toonflow-yixian"
     IfErrors uninstallMetadataFailed
   ${EndIf}
   ClearErrors

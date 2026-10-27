@@ -25,6 +25,64 @@
   "更新说明的展示记录保存失败，下次启动时可能再次显示。": [
     "apps/web/src/App.vue"
   ],
+  "登录逸仙": [
+    "apps/web/src/components/account/signInDialog.vue",
+    "apps/server/src/routes/account/callback.ts"
+  ],
+  "登录或注册以开始。": [
+    "apps/web/src/components/account/signInDialog.vue",
+    "apps/web/src/pages/hello/index.vue"
+  ],
+  "等待浏览器完成授权…": [
+    "apps/web/src/components/account/signInDialog.vue"
+  ],
+  "登录": [
+    "apps/web/src/components/account/signInDialog.vue"
+  ],
+  "注册": [
+    "apps/web/src/components/account/signInDialog.vue"
+  ],
+  "取消": [
+    "apps/web/src/components/account/signInDialog.vue",
+    "apps/web/src/components/agent/clientFilesControl.vue",
+    "apps/web/src/components/agent/conversation.vue",
+    "apps/web/src/components/agent/menu.vue",
+    "apps/web/src/components/settings/panels/developer/index.vue",
+    "apps/web/src/components/settings/panels/developer/systemPromptDialog.vue",
+    "apps/web/src/components/settings/panels/deviceLink.vue",
+    "apps/web/src/components/settings/panels/personalization.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/agentConnectDialog.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/ffmpeg.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/index.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/skillEditorDialog.vue",
+    "apps/web/src/lib/desktopProtocol.ts",
+    "apps/web/src/lib/i18n.ts",
+    "apps/web/src/pages/home/index.vue",
+    "apps/web/src/pages/home/workspacePicker.vue",
+    "apps/web/src/pages/workspace/components/workspaceMenu.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/arrangeDialog.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue",
+    "apps/web/src/pages/workspace/panels/document/components/extView.vue",
+    "apps/web/src/pages/workspace/panels/document/components/fileTree.vue",
+    "apps/web/src/pages/workspace/panels/document/components/openWithDialog.vue",
+    "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue"
+  ],
+  "登录已超时，请重新登录": [
+    "apps/web/src/components/account/signInDialog.vue",
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "读取登录状态失败": [
+    "apps/web/src/components/account/signInDialog.vue"
+  ],
+  "无法发起登录": [
+    "apps/web/src/components/account/signInDialog.vue"
+  ],
+  "取消登录失败": [
+    "apps/web/src/components/account/signInDialog.vue"
+  ],
   "预览 {0}": [
     "apps/web/src/components/agent/attachmentPreview.vue",
     "apps/web/src/components/agent/conversation.vue",
@@ -35,8 +93,7 @@
     "apps/web/src/components/agent/attachmentPreview.vue"
   ],
   "移除 {0}": [
-    "apps/web/src/components/agent/attachmentPreview.vue",
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
+    "apps/web/src/components/agent/attachmentPreview.vue"
   ],
   "移除附件": [
     "apps/web/src/components/agent/attachmentPreview.vue"
@@ -48,6 +105,44 @@
   ],
   "无法读取文本附件，请重试": [
     "apps/web/src/components/agent/attachmentPreview.vue"
+  ],
+  "本机只读：{0}": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "撤销授权": [
+    "apps/web/src/components/agent/clientFilesControl.vue",
+    "apps/web/src/components/settings/panels/deviceLink.vue"
+  ],
+  "授权本机文件夹": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "本机文件操作失败": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "已停止读取，目录授权将在 90 秒内失效。撤销请求失败：": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "选择后，本聊天的 AI 可以只读访问该文件夹及子目录。读取的文本会传到共享主机和模型，并可能保存在共享聊天记录中。": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "选择文件夹": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "本机目录授权已失效": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "授权本机目录失败": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "本机文件请求不属于当前聊天或授权已撤销": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "本机目录授权已撤销": [
+    "apps/web/src/components/agent/clientFilesControl.vue"
+  ],
+  "结束本机文件读取失败": [
+    "apps/web/src/components/agent/clientFilesControl.vue",
+    "apps/web/src/components/agent/conversation.vue"
   ],
   "对话消息": [
     "apps/web/src/components/agent/conversation.vue",
@@ -84,44 +179,16 @@
   "{0} 秒": [
     "apps/web/src/components/agent/conversation.vue"
   ],
-  "取消": [
-    "apps/web/src/components/agent/conversation.vue",
-    "apps/web/src/components/agent/menu.vue",
-    "apps/web/src/components/settings/panels/developer/index.vue",
-    "apps/web/src/components/settings/panels/developer/systemPromptDialog.vue",
-    "apps/web/src/components/settings/panels/deviceLink.vue",
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/web/src/components/settings/panels/personalization.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/agentConnectDialog.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/ffmpeg.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/skillEditorDialog.vue",
-    "apps/web/src/components/settings/tfRechargeDialog.vue",
-    "apps/web/src/lib/desktopProtocol.ts",
-    "apps/web/src/lib/i18n.ts",
-    "apps/web/src/pages/home/index.vue",
-    "apps/web/src/pages/home/workspacePicker.vue",
-    "apps/web/src/pages/workspace/components/workspaceMenu.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/arrangeDialog.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue",
-    "apps/web/src/pages/workspace/panels/document/components/extView.vue",
-    "apps/web/src/pages/workspace/panels/document/components/fileTree.vue",
-    "apps/web/src/pages/workspace/panels/document/components/openWithDialog.vue",
-    "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue"
+  "补充要求已排队，将在下一步处理": [
+    "apps/web/src/components/agent/conversation.vue"
   ],
   "正在下方编辑": [
     "apps/web/src/components/agent/conversation.vue"
   ],
   "复制消息": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "恢复输入": [
     "apps/web/src/components/agent/conversation.vue"
   ],
   "编辑消息": [
@@ -175,6 +242,9 @@
   "停止生成": [
     "apps/web/src/components/agent/conversation.vue",
     "apps/web/src/components/singleAgentDialog.vue"
+  ],
+  "发送补充要求": [
+    "apps/web/src/components/agent/conversation.vue"
   ],
   "重发消息": [
     "apps/web/src/components/agent/conversation.vue"
@@ -230,6 +300,21 @@
   "删除消息失败": [
     "apps/web/src/components/agent/conversation.vue"
   ],
+  "未能确认停止，请重试": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "停止生成失败": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "对话正在准备，请稍后发送补充要求": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "生成中可补充文字；附件或提及请在本轮结束后发送": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "补充要求发送失败，输入已保留": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
   "当前页面没有激活的画布": [
     "apps/web/src/components/agent/conversation.vue"
   ],
@@ -243,6 +328,12 @@
   "画布操作结果回传失败": [
     "apps/web/src/components/agent/conversation.vue"
   ],
+  "当前客户端不支持读取本机文件": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "本机文件结果回传失败": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
   "存在无法读取的提及，请删除后重新选择": [
     "apps/web/src/components/agent/conversation.vue"
   ],
@@ -253,6 +344,9 @@
     "apps/web/src/pages/workspace/panels/canvas/nodeClipboard.ts"
   ],
   "请先选择模型": [
+    "apps/web/src/components/agent/conversation.vue"
+  ],
+  "收到重复的本机文件调用": [
     "apps/web/src/components/agent/conversation.vue"
   ],
   "收到重复的画布调用": [
@@ -358,11 +452,7 @@
   "重试": [
     "apps/web/src/components/agent/mentionMenu.vue",
     "apps/web/src/components/settings/panels/developer/systemPromptDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
     "apps/web/src/components/settings/panels/personalization.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue",
-    "apps/web/src/components/settings/tfAccount.vue",
-    "apps/web/src/components/settings/tfRechargeDialog.vue",
     "apps/web/src/main.ts",
     "apps/web/src/pages/workspace/panels/document/components/extView.vue",
     "apps/server/src/remoteConnection.ts"
@@ -402,9 +492,7 @@
     "apps/web/src/components/agent/mentionMenu.vue"
   ],
   "文本": [
-    "apps/web/src/components/agent/mentionMenu.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts"
+    "apps/web/src/components/agent/mentionMenu.vue"
   ],
   "整数": [
     "apps/web/src/components/agent/mentionMenu.vue"
@@ -417,9 +505,6 @@
   ],
   "图片": [
     "apps/web/src/components/agent/mentionMenu.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts",
     "apps/server/src/utils/media/generation.ts"
   ],
   "遮罩": [
@@ -430,9 +515,6 @@
   ],
   "音频": [
     "apps/web/src/components/agent/mentionMenu.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts",
     "apps/server/src/utils/media/generation.ts"
   ],
   "文件": [
@@ -568,7 +650,6 @@
     "apps/web/src/components/settings/panels/pluginMarket/agentEditorDialog.vue",
     "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/components/settings/panels/pluginMarket/skillEditorDialog.vue",
-    "apps/web/src/components/settings/tfRechargeDialog.vue",
     "apps/web/src/pages/workspace/panels/document/components/editorTab.vue",
     "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue"
   ],
@@ -585,8 +666,7 @@
     "apps/web/src/components/settings/panels/developer/index.vue"
   ],
   "失败": [
-    "apps/web/src/components/agent/menu.vue",
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
+    "apps/web/src/components/agent/menu.vue"
   ],
   "达到限制": [
     "apps/web/src/components/agent/menu.vue"
@@ -613,12 +693,10 @@
     "apps/web/src/components/settings/panels/developer/index.vue",
     "apps/web/src/components/settings/panels/developer/systemPromptDialog.vue",
     "apps/web/src/components/settings/panels/mcp/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
     "apps/web/src/components/settings/panels/personalization.vue",
     "apps/web/src/components/settings/panels/pluginMarket/a2aSettingsDialog.vue",
     "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue",
     "apps/web/src/components/settings/panels/pluginMarket/skillEditorDialog.vue",
-    "apps/web/src/components/settings/tfAccount.vue",
     "apps/web/src/pages/home/index.vue",
     "apps/web/src/pages/home/workspacePicker.vue",
     "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
@@ -706,8 +784,7 @@
     "apps/web/src/components/agent/toolMessage.vue"
   ],
   "已中断": [
-    "apps/web/src/components/agent/toolMessage.vue",
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
+    "apps/web/src/components/agent/toolMessage.vue"
   ],
   "语言": [
     "apps/web/src/components/languageSelect.vue",
@@ -899,16 +976,21 @@
   "模型与推理设置": [
     "apps/web/src/components/modelPopover.vue"
   ],
-  "选择模型": [
+  "模型不可用，请选择其他模型": [
     "apps/web/src/components/modelPopover.vue",
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
+    "apps/server/src/utils/ai/index.ts",
+    "apps/server/src/utils/media/provider.ts"
+  ],
+  "选择模型": [
+    "apps/web/src/components/modelPopover.vue"
   ],
   "模型": [
     "apps/web/src/components/modelPopover.vue",
     "apps/web/src/components/settings/index.vue",
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
+    "apps/web/src/components/settings/panels/languageModel/index.vue",
+    "apps/web/src/components/settings/panels/mediaModel/index.vue"
   ],
-  "请先在设置中添加模型": [
+  "请登录逸仙账户并刷新模型": [
     "apps/web/src/components/modelPopover.vue"
   ],
   "推理等级": [
@@ -970,7 +1052,7 @@
   "媒体模型": [
     "apps/web/src/components/settings/index.vue"
   ],
-  "素材存储": [
+  "逸仙账户": [
     "apps/web/src/components/settings/index.vue"
   ],
   "插件市场": [
@@ -988,9 +1070,6 @@
   "其他": [
     "apps/web/src/components/settings/index.vue"
   ],
-  "隐私": [
-    "apps/web/src/components/settings/index.vue"
-  ],
   "开发者选项": [
     "apps/web/src/components/settings/index.vue"
   ],
@@ -1002,7 +1081,6 @@
   ],
   "安装插件失败": [
     "apps/web/src/components/settings/installPluginFile.ts",
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/lib/desktopProtocol.ts"
   ],
   "安装接口未返回有效的插件名称": [
@@ -1017,7 +1095,7 @@
   "更新源": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
-  "官方源": [
+  "逸仙": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
   "自定义源": [
@@ -1044,14 +1122,15 @@
   "请从定制版 GitHub 发布页下载完整便携包，保留 data、profile 和项目目录后替换程序文件。": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
-  "GitHub 仓库：HBAI-Ltd/Toonflow-app": [
+  "GitHub 仓库：lboverfys/Toonflow-l": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
   "GitHub 仓库": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
-  "官方中转平台 TF-Router": [
-    "apps/web/src/components/settings/panels/about.vue"
+  "逸仙平台": [
+    "apps/web/src/components/settings/panels/about.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "微信交流群": [
     "apps/web/src/components/settings/panels/about.vue"
@@ -1145,6 +1224,42 @@
   "开发版本不提供更新检查，请使用正式桌面客户端。": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
+  "余额：{0}": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
+  "存储：{0} / {1}": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
+  "存储使用量": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
+  "充值": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
+  "刷新模型": [
+    "apps/web/src/components/settings/panels/account.vue",
+    "apps/web/src/components/settings/panels/languageModel/index.vue",
+    "apps/web/src/components/settings/panels/mediaModel/index.vue"
+  ],
+  "退出登录": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
+  "登录 / 注册": [
+    "apps/web/src/components/settings/panels/account.vue",
+    "apps/web/src/pages/hello/index.vue"
+  ],
+  "读取账户失败": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
+  "刷新模型失败": [
+    "apps/web/src/components/settings/panels/account.vue",
+    "apps/web/src/components/settings/panels/languageModel/index.vue",
+    "apps/web/src/components/settings/panels/mediaModel/index.vue",
+    "apps/server/src/utils/account/config.ts"
+  ],
+  "退出登录失败": [
+    "apps/web/src/components/settings/panels/account.vue"
+  ],
   "开发者工具": [
     "apps/web/src/components/settings/panels/developer/index.vue"
   ],
@@ -1179,13 +1294,9 @@
     "apps/web/src/components/settings/panels/developer/index.vue"
   ],
   "供应商开发工具": [
-    "apps/web/src/components/settings/panels/developer/index.vue",
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "授权读取本地供应商文件，调试生成接口与媒体结果。": [
     "apps/web/src/components/settings/panels/developer/index.vue"
   ],
-  "开发供应商": [
+  "授权读取本地供应商文件，调试生成接口与媒体结果。": [
     "apps/web/src/components/settings/panels/developer/index.vue"
   ],
   "Agent 系统提示词": [
@@ -1263,9 +1374,6 @@
   ],
   "删除": [
     "apps/web/src/components/settings/panels/developer/index.vue",
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue",
     "apps/web/src/components/settings/panels/personalization.vue",
     "apps/web/src/lib/canvasShortcuts.ts",
     "apps/web/src/pages/home/workspacePicker.vue",
@@ -1376,181 +1484,6 @@
   ],
   "打开开发者工具失败，请重试。": [
     "apps/web/src/components/settings/panels/developer/index.vue"
-  ],
-  "选择本地供应商文件": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "每次运行自动读取文件最新内容{0}": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "执行并加载配置": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "选择文件": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "调试参数": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "调试模型": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "提示词": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/server/src/utils/workspace/canvasMerge.ts"
-  ],
-  "调试提示词": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "参考素材": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "参考图用途": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "参考图": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "首帧": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "尾帧": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "添加参考素材": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "比例": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "画面比例": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "尺寸": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "图片尺寸": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "分辨率": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "视频分辨率": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "时长（秒）": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "视频时长": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "生成音频": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "音色": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "更多请求参数": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "更多请求参数 JSON": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "JSON 对象，可填写 mode、quality、other 等字段": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "调试结果": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "结果预览": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "响应数据": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "请求日志{0}": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  " · {0} 秒": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "安装供应商": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "停止": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "运行": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "已选择文件": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "已读取": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "成功": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/server/src/lib/responseFormat.ts"
-  ],
-  "运行中…": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "已停止": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/web/src/components/singleAgentDialog.vue"
-  ],
-  "请先选择供应商文件": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "请允许读取供应商文件": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "请选择不超过 2 MB 的 .ts 文件": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "当前环境不支持文件授权，请使用 HTTPS／localhost 下的 Chrome、Edge 或桌面端": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "请选择图片、视频或音频，参考素材总量不能超过 32 MB": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "更多请求参数必须是 JSON 对象": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "参考素材类型与当前模型不匹配，请移除后重试": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "读取 {0} 失败": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "首帧和尾帧各只能选择一张图片": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "供应商没有可调试的媒体模型": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "请输入提示词": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "请检查供应商配置": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "调试请求失败": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "未收到运行结果": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "运行连接已中断，请重试": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
-  ],
-  "供应商已安装，可在媒体模型设置中配置使用": [
-    "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
   ],
   "正在读取系统提示词…": [
     "apps/web/src/components/settings/panels/developer/systemPromptDialog.vue"
@@ -1709,8 +1642,7 @@
     "apps/web/src/components/settings/panels/deviceLink.vue"
   ],
   "保存修改": [
-    "apps/web/src/components/settings/panels/deviceLink.vue",
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
+    "apps/web/src/components/settings/panels/deviceLink.vue"
   ],
   "设备已连接": [
     "apps/web/src/components/settings/panels/deviceLink.vue"
@@ -1758,9 +1690,6 @@
     "apps/web/src/components/settings/panels/deviceLink.vue"
   ],
   "撤销设备授权": [
-    "apps/web/src/components/settings/panels/deviceLink.vue"
-  ],
-  "撤销授权": [
     "apps/web/src/components/settings/panels/deviceLink.vue"
   ],
   "撤销授权失败": [
@@ -1880,221 +1809,14 @@
   "取消绑定": [
     "apps/web/src/components/settings/panels/general/keyInput.vue"
   ],
-  "编辑供应商": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "添加自定义供应商": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
+  "模型 ID": [
     "apps/web/src/components/settings/panels/languageModel/index.vue",
     "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "例如 myProvider": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "显示名称": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "供应商的显示名称": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "API 地址": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "API 协议": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "API 密钥": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "本地无鉴权服务可留空": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "单次请求上限（MiB）": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "自动": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "留空时：DeepSeek 官方 48 MiB，其他渠道按 24 MiB 保护；可按渠道限制调整。接近上限时整理历史，原图和完整会话保留。": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "模型列表": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "获取模型列表": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "模型 ID": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "模型显示名称": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "展开 token 设置": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "删除模型": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
   ],
   "上下文窗口": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "未设置": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "最大输出 token": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "手动添加模型": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "确定添加供应商": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "选择要添加的模型": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "搜索模型 ID 或显示名称": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "搜索模型": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "{0} 个结果，已勾选 {1} 个": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "添加勾选的模型（{0}）": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "请求上限须为 1～128 的整数或留空": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "请输入 Provider ID": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "仅支持字母、数字、点、下划线和短横线": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "请输入显示名称": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "请输入有效的 HTTP API 基础地址，不包含查询参数": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "获取模型列表失败": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
     "apps/web/src/components/settings/panels/languageModel/index.vue"
   ],
-  "未获取到可用模型，请检查 API Key 后重试": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/index.vue"
-  ],
-  "获取模型列表失败，请检查连接配置": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "模型 ID 不能为空或重复": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "token 限制必须为正整数或留空": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "已保存的供应商配置格式不正确": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "Provider ID 已存在": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue"
-  ],
-  "供应商已不存在": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "保存失败，请重试；当前填写的内容已保留": [
-    "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue"
-  ],
-  "添加供应商": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "连接配置": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "正在获取…": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "保存 API Key 后自动获取模型列表": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "未获取到模型": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "填写 API Key 后自动获取模型列表": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "获取模型列表失败，请检查 API Key 后重试": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "请填写 API Key": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "此供应商已添加，请在供应商列表中编辑": [
-    "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue"
-  ],
-  "官方": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "{0} 个模型": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "获取模型": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "编辑": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/personalization.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue",
-    "apps/desktop/src/index.ts"
-  ],
-  "确定删除此供应商及其模型？": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "配置格式错误": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue"
-  ],
-  "删除失败，请重试": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "供应商配置已变更，请重试": [
-    "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "获取模型列表失败，请重试": [
+  "最大输出": [
     "apps/web/src/components/settings/panels/languageModel/index.vue"
   ],
   "开启 MCP": [
@@ -2181,486 +1903,18 @@
   "{0}已复制": [
     "apps/web/src/components/settings/panels/mcp/index.vue"
   ],
-  "添加媒体供应商": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
+  "类型": [
+    "apps/web/src/components/settings/panels/mediaModel/index.vue"
   ],
-  "添加自定义媒体供应商": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "添加方式": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "供应商文件": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "尚未选择文件": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "已选择的供应商文件": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "支持 .ts 文件，最大 1 MB。": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "供应商代码": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "使用 AI 生成供应商": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "还没有供应商文件？": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "让 AI 读取接口文档并生成代码，遇到登录可手动操作。": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "AI 生成供应商": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "复制提示词给其他 AI": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "请先在文本模型设置中配置模型。": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "查看完整提示词": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "供应商开发提示词": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "文件导入": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "粘贴代码": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "请先在「工具市场」安装并启用网页浏览器工具": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "浏览器工具加载失败：{0}": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "打开生成助手失败": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "请选择不超过 1 MB 的 .ts 文件": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "读取文件失败": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "API Key 过长": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "媒体供应商配置格式无效": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "当前供应商配置格式无效": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "供应商已添加，连接配置未保存：{0}。填写内容已保留，请重试。": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "提示词已复制，发给其他 AI 后跟着回答问题即可": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "复制失败，请展开「查看完整提示词」后手动复制": [
-    "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue"
-  ],
-  "编辑媒体供应商": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "供应商名称": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "使用说明": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "模型配置": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "手动添加": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "编辑模型 {0}": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "删除模型 {0}": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "暂无模型": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
+  "图像": [
+    "apps/web/src/components/settings/panels/mediaModel/index.vue"
   ],
   "视频": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts",
+    "apps/web/src/components/settings/panels/mediaModel/index.vue",
     "apps/server/src/utils/media/generation.ts"
   ],
-  "单图参考": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "多图参考": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "首尾帧必填": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "尾帧可选": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "首帧可选": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "图片参考": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "视频参考": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "音频参考": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "文生图": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "文生视频": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "供应商名称须为 1～200 个字符": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "请填写第 {0} 个模型的 ID 和显示名称": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "模型 ID 重复：{0}": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "保存模型失败": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "读取最新模型失败": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "供应商与连接配置已保存，读取最新模型失败：{0}。请重新打开编辑。": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "供应商名称与模型已保存，连接配置未保存：{0}。填写内容已保留，请重试。": [
-    "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue"
-  ],
-  "读取媒体供应商失败": [
+  "读取媒体模型失败": [
     "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "获取模型失败": [
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "模型列表已更新": [
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "获取模型失败，请重试": [
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "供应商已删除，连接配置未清理：{0}": [
-    "apps/web/src/components/settings/panels/mediaModel/index.vue"
-  ],
-  "编辑模型": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "添加模型": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "模型类型": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "文本（旧配置）": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "图片生成模式": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "视频生成模式": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "{0}数量": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "音频输出": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "可选音频": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "始终输出音频": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "无音频": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "时长与分辨率": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "输入后按回车": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "第 {0} 组时长": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "第 {0} 组分辨率": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "删除第 {0} 组时长与分辨率": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "添加时长与分辨率": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "更多配置（JSON）": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "模型的更多配置": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "确定": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "混合参考": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "请填写显示名称和模型 ID": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "模型 ID 已存在：{0}": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "更多配置不是有效的 JSON": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "更多配置必须是 JSON 对象": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "已有表单项请直接在上方编辑": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "更多配置中的 mode 必须是数组": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "请选择混合参考的媒体类型": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "参考数量必须是正整数": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "请至少选择一种生成模式": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "请至少添加一组时长与分辨率": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "第 {0} 组时长必须是正数": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "请填写第 {0} 组分辨率": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "模型配置无效": [
-    "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue"
-  ],
-  "AI 生成媒体供应商": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "发送接口文档链接、请求示例，或告诉助手需要接入的平台": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "正在检查供应商文件…": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "供应商文件格式检查通过，可在右侧预览": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "文件提交已中断": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "浏览器": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "正在浏览…": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "操作完成": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "操作失败": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue",
-    "apps/web/src/components/settings/panels/pluginMarket/ffmpeg.vue",
-    "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue"
-  ],
-  "发送平台网址或文档链接，助手会在这里浏览接口资料。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "需要登录时，可暂停后手动操作。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "文件已生成": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "格式检查通过": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "{0} · {1} 个模型": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "生成的模型列表": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "名称": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue",
-    "apps/web/src/pages/home/workspacePicker.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue",
-    "apps/web/src/pages/workspace/panels/document/components/fileTree.vue"
-  ],
-  "生成的供应商代码": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "仅检查文件格式，尚未调用媒体生成接口。API Key 在添加后填写。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "等待生成供应商文件": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "生成后可在这里查看模型和源码，再使用或下载文件。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "下载 .ts 文件": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "使用此代码": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "请提交不超过 1 MB 的完整供应商源码": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "供应商文件检查失败": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "请把你想接入的 API 平台名称或网址发给我，有接口文档链接也可以直接发送。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "已暂停，可点击画面或放大后登录。操作完成后点击继续。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "正在等待当前操作结束，暂停后即可人工操作。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "可直接点击画面或放大操作，完成后在左侧继续对话。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "助手正在浏览。需要登录或人工操作时，先点击暂停。": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "下载文件失败": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue"
-  ],
-  "复制失败": [
-    "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue",
-    "apps/web/src/components/singleAgentDialog.vue"
-  ],
-  "使用阿里云 OSS 存放视频参考素材。启用后，所选模型需要公网链接的本地图片和音频会在生成时自动上传；已有的 HTTPS 图片链接仍可直接使用。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "自动上传本地参考素材": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "启用阿里云 OSS 自动上传": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "地域（Region ID）": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "OSS 地域": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "Bucket 名称": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue",
-    "apps/server/src/types/mediaStorage.ts"
-  ],
-  "你的存储空间名称": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "OSS Bucket 名称": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "公网 Endpoint（选填）": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "OSS 公网 Endpoint": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "留空时按地域自动生成。填写 OSS 控制台显示的公网 HTTPS Endpoint，不包含 Bucket；目前不支持内网地址和自定义域名。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "填写仅授权该素材目录的 RAM 用户密钥。密钥保存在此应用的数据目录，由本地后端上传素材；视频供应商只收到限时下载链接。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "素材目录": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "OSS 素材目录": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "链接有效期（小时）": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "OSS 链接有效期（小时）": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "有效期必须覆盖视频排队和生成时间，默认 24 小时。仅上传本次引用的本地图片与音频，保持各类素材的引用顺序，引用数量以所选模型能力为准。图片支持 PNG、JPEG、WebP；音频支持 MP3、WAV、FLAC、MP4。单个本地素材最多 20 MiB，同次上传图片与音频合计最多 300 MiB，素材不压缩。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "保存设置": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "保存只校验配置格式；首次生成时才访问 OSS。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "首次开通与权限说明": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "在阿里云 OSS 创建专用 Bucket，选择标准存储，访问权限设为私有。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "创建专用 RAM 用户，为此 Bucket 的素材目录授予 oss:PutObject 和 oss:GetObject 权限，再填写其 AccessKey。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "在 OSS 控制台给该素材目录配置生命周期清理。清理期限应大于链接有效期的两倍；默认 24 小时链接建议保留素材 7 天。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "链接过期不会删除云端素材。应用会缓存上传结果，在有效窗口内复用相同素材；云端文件被删除后会重新上传。OSS 按存储、请求和外网流量计费，视频生成费用由视频渠道另行收取。": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "查看 OSS 限时下载链接说明": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "素材存储设置已保存": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
-  ],
-  "素材存储设置保存失败，请检查应用连接后重试；输入内容已保留": [
-    "apps/web/src/components/settings/panels/mediaStorage.vue"
   ],
   "Toonflow 说明": [
     "apps/web/src/components/settings/panels/personalization.vue"
@@ -2716,6 +1970,11 @@
   "编辑本地记忆": [
     "apps/web/src/components/settings/panels/personalization.vue"
   ],
+  "编辑": [
+    "apps/web/src/components/settings/panels/personalization.vue",
+    "apps/web/src/components/settings/panels/pluginMarket/index.vue",
+    "apps/desktop/src/index.ts"
+  ],
   "文件已被其他操作修改。当前草稿已保留，请先复制需要保留的内容，再重新加载最新版本。": [
     "apps/web/src/components/settings/panels/personalization.vue"
   ],
@@ -2739,7 +1998,6 @@
   "保存失败，请重试": [
     "apps/web/src/components/settings/panels/personalization.vue",
     "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue",
-    "apps/web/src/components/settings/tfAccount.vue",
     "apps/web/src/main.ts"
   ],
   "本地记忆": [
@@ -3039,16 +2297,14 @@
   "读取 FFmpeg 状态失败": [
     "apps/web/src/components/settings/panels/pluginMarket/ffmpeg.vue"
   ],
+  "操作失败": [
+    "apps/web/src/components/settings/panels/pluginMarket/ffmpeg.vue",
+    "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue"
+  ],
   "插件列表": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
-  "发现插件": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
   "已安装": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "网页版市场": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "开发者文档": [
@@ -3070,15 +2326,6 @@
   "测试阶段，暂未开放": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
-  "我的插件": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "收藏": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "我的": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
   "搜索插件": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
@@ -3086,28 +2333,10 @@
     "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue"
   ],
-  "填写 TF-Router API Key": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "保存并继续": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "前往 TF-Router 获取 API Key": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
   "{0}列表": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "{0} 的 GitHub": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "暂不支持安装": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "取消收藏": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "添加收藏": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "已禁用": [
@@ -3152,46 +2381,10 @@
   "暂无符合条件的已安装插件": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
-  "暂无符合条件的收藏插件": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "暂无符合条件的已发布插件": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "未找到相关插件": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "填写 TF-Router API Key 后即可浏览插件市场": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "插件市场列表格式错误": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "加载插件市场失败，请重试": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "TF-Router 用户信息错误，请重新填写 API Key": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
   "{0}列表格式错误": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "加载{0}失败，请重新打开列表重试": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "请输入有效的 TF-Router API Key": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "文本模型配置格式无效": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "存在同名的非官方 TF-router 供应商，请先在文本模型中修改其 ID": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "TF-router 媒体配置格式无效": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "验证或保存失败，请重试": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "Agent Card 地址已复制": [
@@ -3200,16 +2393,10 @@
   "Agent Card 地址": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
-  "收藏成功": [
+  "请选择文件扩展 ext-*.umd.js、Agent .agent.zip、节点 .umd.js、工具 .tool.js 或技能 .zip、.md、.tar、.tar.gz、.tgz 文件": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
-  "已取消收藏": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "修改收藏失败，请重试": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "{0}已更新": [
+  "Agent 功能处于测试阶段，暂未开放安装": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "{0}已安装": [
@@ -3217,12 +2404,6 @@
     "apps/web/src/lib/desktopProtocol.ts"
   ],
   "安装插件失败，请重试": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "请选择文件扩展 ext-*.umd.js、Agent .agent.zip、节点 .umd.js、工具 .tool.js 或技能 .zip、.md、.tar、.tar.gz、.tgz 文件": [
-    "apps/web/src/components/settings/panels/pluginMarket/index.vue"
-  ],
-  "Agent 功能处于测试阶段，暂未开放安装": [
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
   "导出插件失败，请重试": [
@@ -3250,6 +2431,9 @@
     "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue"
   ],
   "插件配置已保存": [
+    "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue"
+  ],
+  "保存失败，请重试；当前填写的内容已保留": [
     "apps/web/src/components/settings/panels/pluginMarket/pluginConfigDialog.vue"
   ],
   "插件说明": [
@@ -3324,57 +2508,6 @@
   ],
   "保存文件失败，请重试": [
     "apps/web/src/components/settings/panels/pluginMarket/skillEditorDialog.vue"
-  ],
-  "匿名使用统计": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "帮助我们了解常用功能，改进使用体验。默认开启，可随时关闭。": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "统计内容": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "统计不包含提示词、对话、文件内容、项目名称、路径、账号或密钥。": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "匿名 ID": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "使用与回访": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "随机匿名标识、访问次数与时间": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "使用活跃": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "使用时长和交互次数，不含输入内容": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "运行环境": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "软件版本、桌面或网页端、系统、浏览器和语言": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "功能使用": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "引导、画布与文档的使用情况": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "使用规模": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "项目、模型配置、节点与连线数量，以及节点类型": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "Agent 使用": [
-    "apps/web/src/components/settings/panels/privacy.vue"
-  ],
-  "发送次数、完成情况和耗时": [
-    "apps/web/src/components/settings/panels/privacy.vue"
   ],
   "让创作空间更合你的习惯，修改会自动保存。": [
     "apps/web/src/components/settings/panels/ui.vue"
@@ -3479,102 +2612,6 @@
   "选择厂商": [
     "apps/web/src/components/settings/providerPicker.vue"
   ],
-  "账户余额": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "刷新余额": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "充值": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "填写API Key开始使用官方供应商": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "粘贴 API Key": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "前往 TF-Router 官网 获取 API Key": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "密钥余额": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "无限制": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "累计消费": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "累计充值": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "余额查询失败，请重试": [
-    "apps/web/src/components/settings/tfAccount.vue"
-  ],
-  "TF-Router 充值": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "充值套餐": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "自定义金额": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "充值金额（元）": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "输入充值金额": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "支付方式": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "微信支付": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "支付宝": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "微信支付二维码": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "二维码图片加载失败": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "使用微信扫码支付": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "请在浏览器中完成支付宝支付": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "打开支付页面": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "订单已创建，但接口未返回有效的支付链接": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "订单号": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "完成支付后，关闭此充值弹窗以刷新账户余额。": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "获取支付二维码": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "前往支付宝支付": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "查看余额": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "读取充值套餐失败，请重试": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
-  "创建充值订单失败，请重试": [
-    "apps/web/src/components/settings/tfRechargeDialog.vue"
-  ],
   "我的消息": [
     "apps/web/src/components/singleAgentDialog.vue"
   ],
@@ -3620,6 +2657,12 @@
   "请选择已配置的文本模型": [
     "apps/web/src/components/singleAgentDialog.vue"
   ],
+  "已停止": [
+    "apps/web/src/components/singleAgentDialog.vue"
+  ],
+  "复制失败": [
+    "apps/web/src/components/singleAgentDialog.vue"
+  ],
   "构建代码": [
     "apps/web/src/components/updateBox.vue"
   ],
@@ -3636,8 +2679,7 @@
     "apps/web/src/components/updateBox.vue"
   ],
   "开始使用": [
-    "apps/web/src/components/updateBox.vue",
-    "apps/web/src/pages/hello/index.vue"
+    "apps/web/src/components/updateBox.vue"
   ],
   "成组": [
     "apps/web/src/lib/canvasShortcuts.ts"
@@ -3852,8 +2894,7 @@
     "apps/web/src/lib/i18n.ts"
   ],
   "返回": [
-    "apps/web/src/lib/i18n.ts",
-    "apps/web/src/pages/hello/index.vue"
+    "apps/web/src/lib/i18n.ts"
   ],
   "确认": [
     "apps/web/src/lib/i18n.ts"
@@ -4028,48 +3069,6 @@
   "选择保存位置失败": [
     "apps/web/src/lib/saveFile.ts"
   ],
-  "请先配置 TF-Router API Key": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "TF-Router 响应格式不正确": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "余额响应格式不正确": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "订单号不能为空": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "订单查询响应格式不正确": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "充值套餐响应格式不正确": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "充值套餐 ID 必须为正整数或 -1": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "请选择微信或支付宝支付": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "自定义充值金额必须在 0.01 至 50000 之间": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "支付响应格式不正确": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "页码必须为正整数": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "每页数量必须为 1 至 50 的整数": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "插件 ID 必须为正整数": [
-    "apps/web/src/lib/tf.ts"
-  ],
-  "插件收藏响应格式不正确": [
-    "apps/web/src/lib/tf.ts"
-  ],
   "媒体访问地址缺失": [
     "apps/web/src/lib/workspaceFiles.ts"
   ],
@@ -4087,6 +3086,24 @@
   ],
   "Android 暂不支持在文件管理器中定位项目文件，请使用下载或导出保存文件。": [
     "apps/web/src/lib/workspaceFiles.ts"
+  ],
+  "无法通知应用关闭结果，请重试": [
+    "apps/web/src/main.ts"
+  ],
+  "你正在预览视频，要返回画布，还是退出整个应用？": [
+    "apps/web/src/main.ts"
+  ],
+  "关闭视频或退出应用": [
+    "apps/web/src/main.ts"
+  ],
+  "返回画布": [
+    "apps/web/src/main.ts"
+  ],
+  "退出应用": [
+    "apps/web/src/main.ts"
+  ],
+  "关闭应用失败，请重试": [
+    "apps/web/src/main.ts"
   ],
   "通知桌面就绪失败（{0}）": [
     "apps/web/src/main.ts"
@@ -4115,16 +3132,10 @@
   "启动失败": [
     "apps/web/src/main.ts"
   ],
-  "配置文本模型": [
-    "apps/web/src/pages/hello/index.vue"
-  ],
   "快速开始": [
     "apps/web/src/pages/hello/index.vue"
   ],
-  "配置文本和媒体模型后即可开始创作，也可以稍后在设置中配置。": [
-    "apps/web/src/pages/hello/index.vue"
-  ],
-  "稍后配置": [
+  "稍后登录": [
     "apps/web/src/pages/hello/index.vue"
   ],
   "© {0} Toonflow · 保留所有权利。": [
@@ -4133,12 +3144,12 @@
   "保存引导状态失败，请重试": [
     "apps/web/src/pages/hello/index.vue"
   ],
+  "快捷操作": [
+    "apps/web/src/pages/home/index.vue"
+  ],
   "设置，有新版本可用": [
     "apps/web/src/pages/home/index.vue",
     "apps/web/src/pages/workspace/components/workspaceMenu.vue"
-  ],
-  "快捷操作": [
-    "apps/web/src/pages/home/index.vue"
   ],
   "点个 Star 支持一下": [
     "apps/web/src/pages/home/index.vue"
@@ -4298,6 +3309,11 @@
   "当前目录为空": [
     "apps/web/src/pages/home/workspacePicker.vue"
   ],
+  "名称": [
+    "apps/web/src/pages/home/workspacePicker.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue",
+    "apps/web/src/pages/workspace/panels/document/components/fileTree.vue"
+  ],
   "操作": [
     "apps/web/src/pages/home/workspacePicker.vue"
   ],
@@ -4335,13 +3351,13 @@
   "切换为悬浮": [
     "apps/web/src/pages/workspace/components/floatingAgent.vue"
   ],
-  "停靠到右侧": [
-    "apps/web/src/pages/workspace/components/floatingAgent.vue"
-  ],
-  "从左侧调整对话宽度": [
+  "停靠到左侧": [
     "apps/web/src/pages/workspace/components/floatingAgent.vue"
   ],
   "从右侧调整对话宽度": [
+    "apps/web/src/pages/workspace/components/floatingAgent.vue"
+  ],
+  "从左侧调整对话宽度": [
     "apps/web/src/pages/workspace/components/floatingAgent.vue"
   ],
   "从下方调整对话高度": [
@@ -4426,6 +3442,22 @@
     "apps/web/src/pages/workspace/components/workspacePresence.vue"
   ],
   "切换面板": [
+    "apps/web/src/pages/workspace/index.vue"
+  ],
+  "AI 助手": [
+    "apps/web/src/pages/workspace/index.vue"
+  ],
+  "显示或收起 AI 助手": [
+    "apps/web/src/pages/workspace/index.vue"
+  ],
+  "显示或收起节点面板": [
+    "apps/web/src/pages/workspace/index.vue"
+  ],
+  "节点面板": [
+    "apps/web/src/pages/workspace/index.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/nodeInspector.vue"
+  ],
+  "选择节点后查看操作": [
     "apps/web/src/pages/workspace/index.vue"
   ],
   "工作区已关闭": [
@@ -4924,6 +3956,9 @@
   "商务合作": [
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
   ],
+  "更多画布工具": [
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
+  ],
   "{0}二维码": [
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
   ],
@@ -5089,6 +4124,12 @@
   "分组缩放失败": [
     "apps/web/src/pages/workspace/panels/canvas/components/groupNode.vue"
   ],
+  "调整节点面板宽度": [
+    "apps/web/src/pages/workspace/panels/canvas/components/nodeInspector.vue"
+  ],
+  "收起节点面板": [
+    "apps/web/src/pages/workspace/panels/canvas/components/nodeInspector.vue"
+  ],
   "选区操作": [
     "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
   ],
@@ -5234,6 +4275,12 @@
     "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue"
   ],
   "断开连接": [
+    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+  ],
+  "已选中 {0} 个节点": [
+    "apps/web/src/pages/workspace/panels/canvas/index.vue"
+  ],
+  "节点设置": [
     "apps/web/src/pages/workspace/panels/canvas/index.vue"
   ],
   "画布菜单尚未就绪": [
@@ -5965,6 +5012,30 @@
   "画布调用不存在或已结束": [
     "apps/server/src/agent/bridge/canvas.ts"
   ],
+  "本机文件执行标识已使用，请重新发送": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "本机文件读取所属对话已结束": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "本机文件返回结果与请求不匹配": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "本机文件读取已取消": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "本机文件读取超时，请确认操作端仍在线": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "无法发送本机文件读取请求": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "本机文件执行不属于当前设备": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
+  "本机文件调用不存在、已结束或不属于当前设备": [
+    "apps/server/src/agent/bridge/clientFiles.ts"
+  ],
   "提问所属对话已结束": [
     "apps/server/src/agent/bridge/question.ts"
   ],
@@ -5975,6 +5046,9 @@
     "apps/server/src/agent/bridge/question.ts"
   ],
   "提问不存在或已结束": [
+    "apps/server/src/agent/bridge/question.ts"
+  ],
+  "此提问只能由授权本机目录的设备回答": [
     "apps/server/src/agent/bridge/question.ts"
   ],
   "用户跳过了本次提问": [
@@ -6044,6 +5118,9 @@
   "重发需要指定原对话": [
     "apps/server/src/agent/runtime/index.ts"
   ],
+  "此对话正在使用另一轮本机目录授权，请等待当前回复结束": [
+    "apps/server/src/agent/runtime/index.ts"
+  ],
   "对话正在运行，请等待回复完成": [
     "apps/server/src/agent/runtime/index.ts"
   ],
@@ -6060,6 +5137,9 @@
     "apps/server/src/agent/runtime/index.ts"
   ],
   "会话必须是普通文件": [
+    "apps/server/src/agent/runtime/index.ts"
+  ],
+  "该消息已被接收，请重新打开对话查看结果，避免重复执行": [
     "apps/server/src/agent/runtime/index.ts"
   ],
   "工具名称 memory 已被内置全局记忆工具占用": [
@@ -6113,6 +5193,18 @@
   "读取工作区 AGENTS.md 失败：{0}": [
     "apps/server/src/agent/runtime/resources.ts"
   ],
+  "历史列表缓存已更新，请重新打开历史菜单": [
+    "apps/server/src/agent/runtime/sessionIndex.ts"
+  ],
+  "此轮回复已结束，请重新打开对话查看当前状态": [
+    "apps/server/src/agent/runtime/sessions.ts"
+  ],
+  "此对话只能由授权本机目录的设备控制": [
+    "apps/server/src/agent/runtime/sessions.ts"
+  ],
+  "对话正在准备或结束回复，请稍后发送补充要求": [
+    "apps/server/src/agent/runtime/sessions.ts"
+  ],
   "父会话标识无效": [
     "apps/server/src/agent/runtime/sessions.ts"
   ],
@@ -6131,7 +5223,13 @@
   "消息不在当前对话中，请重新打开对话": [
     "apps/server/src/agent/runtime/sessions.ts"
   ],
+  "历史对话正在变化，请稍后重新打开": [
+    "apps/server/src/agent/runtime/sessions.ts"
+  ],
   "历史对话已变化，请重新打开后继续读取": [
+    "apps/server/src/agent/runtime/sessions.ts"
+  ],
+  "历史消息缓存读取失败，请重新打开对话": [
     "apps/server/src/agent/runtime/sessions.ts"
   ],
   "上次运行已中断": [
@@ -6368,6 +5466,9 @@
     "apps/server/src/lib/responseFormat.ts",
     "apps/server/src/routes/ai/media/generate.ts"
   ],
+  "成功": [
+    "apps/server/src/lib/responseFormat.ts"
+  ],
   "找不到这个文件或文件夹，可能已被移动、删除，或者位置选错了。": [
     "apps/server/src/lib/responseFormat.ts"
   ],
@@ -6461,6 +5562,51 @@
   "切换失败，请重试": [
     "apps/server/src/remoteConnection.ts"
   ],
+  "已登录，请返回 Toonflow": [
+    "apps/server/src/routes/account/callback.ts"
+  ],
+  "只允许本机接收登录回调": [
+    "apps/server/src/routes/account/callback.ts"
+  ],
+  "已取消登录，可以返回 Toonflow": [
+    "apps/server/src/routes/account/callback.ts"
+  ],
+  "登录未完成，请返回 Toonflow 查看原因并重新登录": [
+    "apps/server/src/routes/account/callback.ts"
+  ],
+  "请选择图片、音频或视频文件": [
+    "apps/server/src/routes/account/limits.ts",
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "参考素材不能为空": [
+    "apps/server/src/routes/account/limits.ts"
+  ],
+  "参考素材最多 {0} 个": [
+    "apps/server/src/routes/account/limits.ts",
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "参考素材合计不能超过 {0} MiB": [
+    "apps/server/src/routes/account/limits.ts",
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "图片不能超过 {0} MiB": [
+    "apps/server/src/routes/account/limits.ts"
+  ],
+  "音频不能超过 {0} MiB": [
+    "apps/server/src/routes/account/limits.ts"
+  ],
+  "视频不能超过 {0} MiB": [
+    "apps/server/src/routes/account/limits.ts"
+  ],
+  "请在 Toonflow 所在电脑登录": [
+    "apps/server/src/routes/account/start.ts"
+  ],
+  "本机文件执行必须由已配对的操作端取消": [
+    "apps/server/src/routes/agent/clientFileCancel.ts"
+  ],
+  "本机文件结果必须由已配对的操作端返回": [
+    "apps/server/src/routes/agent/clientFileResult.ts"
+  ],
   "查询已取消": [
     "apps/server/src/routes/agent/mentionSource.ts"
   ],
@@ -6473,7 +5619,13 @@
   "请选择节点输出": [
     "apps/server/src/routes/agent/mentionSource.ts"
   ],
+  "此轮回复已结束，请重新发送消息": [
+    "apps/server/src/routes/agent/steer.ts"
+  ],
   "函数参数必须是 object JSON Schema": [
+    "apps/server/src/routes/agent.ts"
+  ],
+  "本机文件读取仅支持已配对的操作端": [
     "apps/server/src/routes/agent.ts"
   ],
   "Agent 运行失败": [
@@ -6627,7 +5779,8 @@
     "apps/server/src/utils/plugins/nodes.ts"
   ],
   "节点已禁用": [
-    "apps/server/src/routes/nodes/files.ts"
+    "apps/server/src/routes/nodes/files.ts",
+    "apps/server/src/utils/whisper/index.ts"
   ],
   "节点文件无法读取": [
     "apps/server/src/routes/nodes/get.ts"
@@ -6686,23 +5839,6 @@
   ],
   "技能 ZIP 文件不能超过 20 MB": [
     "apps/server/src/routes/plugins/export.ts"
-  ],
-  "请在桌面端或服务器本机管理供应商": [
-    "apps/server/src/routes/providers/debug/inspect.ts",
-    "apps/server/src/routes/providers/debug/run.ts",
-    "apps/server/src/routes/providers/media/add.ts",
-    "apps/server/src/routes/providers/media/delete.ts",
-    "apps/server/src/routes/providers/media/models.ts",
-    "apps/server/src/routes/providers/media/save.ts"
-  ],
-  "请填写供应商名称": [
-    "apps/server/src/routes/providers/media/save.ts"
-  ],
-  "供应商名称不能超过 200 个字符": [
-    "apps/server/src/routes/providers/media/save.ts"
-  ],
-  "请填写不含查询参数的 HTTP API 基础地址": [
-    "apps/server/src/routes/providers/models.ts"
   ],
   "系统提示词不能超过 {0} 个字符": [
     "apps/server/src/routes/settings/save.ts"
@@ -6857,23 +5993,53 @@
   "无法打开本机文件夹选择器，请重试": [
     "apps/server/src/routes/workspaces/selectDirectory.ts"
   ],
-  "地域请填写 cn-hangzhou 等 Region ID，不包含 oss-": [
-    "apps/server/src/types/mediaStorage.ts"
+  "平台模型 ID 重复": [
+    "apps/server/src/types/account.ts"
   ],
-  "Bucket 名称须为 3～63 位小写字母、数字或短横线，首尾不能是短横线": [
-    "apps/server/src/types/mediaStorage.ts"
+  "平台默认模型不存在": [
+    "apps/server/src/types/account.ts"
   ],
-  "Endpoint 请填写 OSS 公网 HTTPS 地址，不包含 Bucket、路径或查询参数；不支持内网地址和自定义域名": [
-    "apps/server/src/types/mediaStorage.ts"
+  "逸仙平台地址必须是不含凭据、参数或路径的 HTTPS 站点地址": [
+    "apps/server/src/utils/account/index.ts"
   ],
-  "AccessKey ID 不能包含空格或其他符号": [
-    "apps/server/src/types/mediaStorage.ts"
+  "请登录或注册逸仙账户后开始生成": [
+    "apps/server/src/utils/account/index.ts"
   ],
-  "素材目录不能以 / 开头或结尾，不能包含空目录、反斜线或 ..": [
-    "apps/server/src/types/mediaStorage.ts"
+  "本地登录回调端口无效": [
+    "apps/server/src/utils/account/index.ts"
   ],
-  "地域": [
-    "apps/server/src/types/mediaStorage.ts"
+  "登录已过期或状态不匹配，请重新登录": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "已取消登录": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "授权未完成，请重新登录": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "授权失败，请重新登录": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "此次登录已取消，请重新登录": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "登录失败": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "只允许调用当前逸仙平台接口": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "账户已切换，请重新发起操作": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "登录已失效，请重新登录": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "当前版本过旧，请在设置的关于页面更新逸仙版 Toonflow": [
+    "apps/server/src/utils/account/index.ts"
+  ],
+  "平台返回的账户不匹配，请重新登录": [
+    "apps/server/src/utils/account/index.ts"
   ],
   "请先在设置中配置模型供应商": [
     "apps/server/src/utils/ai/index.ts"
@@ -6883,27 +6049,6 @@
   ],
   "媒体参考需要工作目录": [
     "apps/server/src/utils/ai/index.ts"
-  ],
-  "未获取到文本模型，保留原有列表": [
-    "apps/server/src/utils/ai/initialize.ts"
-  ],
-  "未知错误": [
-    "apps/server/src/utils/ai/initialize.ts"
-  ],
-  "媒体": [
-    "apps/server/src/utils/ai/initialize.ts"
-  ],
-  "获取模型列表失败（HTTP {0}），请检查 API 地址、协议和密钥": [
-    "apps/server/src/utils/ai/models.ts"
-  ],
-  "模型列表包含无效的模型 ID": [
-    "apps/server/src/utils/ai/models.ts"
-  ],
-  "模型列表缺少分页游标": [
-    "apps/server/src/utils/ai/models.ts"
-  ],
-  "模型列表分页游标重复": [
-    "apps/server/src/utils/ai/models.ts"
   ],
   "[本次请求省略此历史媒体，原文件与完整会话仍保留。需要查看细节时，请按此前附件或工具调用中的路径重新读取，不要凭摘要猜测。]": [
     "apps/server/src/utils/ai/requestBudget.ts"
@@ -6943,6 +6088,75 @@
   ],
   "清理预览缓存失败：": [
     "apps/server/src/utils/cache.ts"
+  ],
+  "释放本机文件授权失败：": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "本机目录授权已失效，请重新选择文件夹": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "请先撤销当前目录授权": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "本机目录授权过多，请关闭不用的聊天": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "请选择普通文件夹": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "目录选择所属聊天或连接已关闭": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "请等待当前本机文件读取结束": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "文件读取提前结束，请重新读取": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "只能读取授权目录内的普通文件": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "文件已修改，请从头重新读取": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "分段读取必须带上首次返回的 revision": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "读取位置超出文件长度": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "UTF-16 文本读取位置必须对齐字符边界": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "仅支持 UTF-8 或带 BOM 的 UTF-16 纯文本，请先转换文件编码": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "文件在读取期间被修改，请重新读取": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "授权目录已被替换，请重新授权": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "目录分页已失效，请重新列出目录": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "目录已修改，请重新列出目录": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "未完成的目录分页过多，请先读完已有分页": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "目录在读取期间被修改，请重新列出": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "本机文件调用所属执行已结束": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "本机文件授权已撤销": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
+  ],
+  "文件在读取期间被替换，请重新读取": [
+    "apps/server/src/utils/desktop/clientFiles.ts"
   ],
   "清理无效更新核验记录失败：": [
     "apps/server/src/utils/desktop/index.ts"
@@ -7098,16 +6312,7 @@
   "卸载全局技能及其文件，不影响工作区内的同名技能。": [
     "apps/server/src/utils/mcp/operations.ts"
   ],
-  "读取媒体供应商及预置 models、配置 revision；保存与删除时使用最新 revision。": [
-    "apps/server/src/utils/mcp/operations.ts"
-  ],
-  "从完整 TypeScript source 添加媒体供应商，沿用现有供应商结构检查。": [
-    "apps/server/src/utils/mcp/operations.ts"
-  ],
-  "修改供应商 TS 中的 models；revision 不匹配时拒绝覆盖。API Key 等凭证通过 updateSettings 配置。": [
-    "apps/server/src/utils/mcp/operations.ts"
-  ],
-  "删除指定媒体供应商及其保存的配置；必须提供当前 revision。": [
+  "读取逸仙平台的媒体模型。": [
     "apps/server/src/utils/mcp/operations.ts"
   ],
   "分页列出全局素材库的一层目录，每页最多 200 项；有 nextOffset 时继续读取。query 搜索子目录文件，每页最多 50 项，有 nextCursor 时继续。与工作区 assets 目录不同。": [
@@ -7311,41 +6516,17 @@
   "MP3 编码失败": [
     "apps/server/src/utils/media/audioProcessor.ts"
   ],
-  "[{0} 个字符]": [
-    "apps/server/src/utils/media/debug.ts"
+  "所选视频模型不存在": [
+    "apps/server/src/utils/media/generation.ts"
   ],
-  "[二进制或表单请求体]": [
-    "apps/server/src/utils/media/debug.ts"
+  "此供应商没有动态视频选项": [
+    "apps/server/src/utils/media/generation.ts"
   ],
-  "[请求体 {0} 个字符]": [
-    "apps/server/src/utils/media/debug.ts"
+  "此供应商没有面板素材库": [
+    "apps/server/src/utils/media/generation.ts"
   ],
-  "\n…响应已截断": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "模型已变更，请重新选择模型": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "供应商没有实现此模型的媒体生成方法": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "供应商未返回媒体数组": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "返回的媒体类型与模型不一致": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "媒体结果需要 HTTP 或 HTTPS 地址": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "媒体结果格式无效": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "调试预览的媒体总量不能超过 32 MB": [
-    "apps/server/src/utils/media/debug.ts"
-  ],
-  "媒体编码或 MIME 类型无效": [
-    "apps/server/src/utils/media/debug.ts"
+  "此供应商没有面板素材下载能力": [
+    "apps/server/src/utils/media/generation.ts"
   ],
   "参考媒体须为不超过 100 MB 的文件": [
     "apps/server/src/utils/media/generation.ts"
@@ -7401,49 +6582,22 @@
   "当前模型不支持参考图链接输入": [
     "apps/server/src/utils/media/generation.ts"
   ],
+  "当前模型不支持首尾帧链接输入": [
+    "apps/server/src/utils/media/generation.ts"
+  ],
+  "首尾帧模式需要同时提供首帧和尾帧图片": [
+    "apps/server/src/utils/media/generation.ts"
+  ],
+  "首尾帧模式不支持额外参考图片、音频或视频": [
+    "apps/server/src/utils/media/generation.ts"
+  ],
   "本地参考图与 HTTPS 链接合计最多 9 张": [
     "apps/server/src/utils/media/generation.ts"
   ],
-  "当前模型不支持 seed 或 seed 不是安全整数": [
+  "当前模型不支持 seed 或 seed 不是非负安全整数": [
     "apps/server/src/utils/media/generation.ts"
   ],
-  "OSS 本地参考素材为空或超过单个 20 MiB 的传输限制": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "OSS 本地参考素材合计超过 300 MiB 的传输限制": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "Dola 图片模型仅支持文生图，不能使用参考图或局部重绘": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "Dola 视频最多使用 9 张参考图片": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "Dola 参考图片为空或超过 20 MiB": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "特价 2.5 最多使用 30 张参考图片": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "参考图片为空或超过 50 MiB": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "参考图片合计不能超过 70 MiB": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "这 4 个 Foke Video 模型不支持参考视频或首尾帧模式": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "Foke Video 参考素材必须为非空文件": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "Foke Video 参考素材合计超过本地 90 MiB 传输上限": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "参考图为空或超过当前 25 MiB 单图传输预算": [
-    "apps/server/src/utils/media/generation.ts"
-  ],
-  "参考图合计超过当前 32 MiB 传输预算": [
+  "逸仙参考素材须先保存到工作区": [
     "apps/server/src/utils/media/generation.ts"
   ],
   "供应商未返回生成结果": [
@@ -7511,45 +6665,6 @@
   ],
   "已停止本地等待；原任务和费用不会因此取消，请恢复原任务": [
     "apps/server/src/utils/media/imageTasks.ts"
-  ],
-  "本地参考素材需要上传：请先在「设置 → 素材存储」填写并启用阿里云 OSS；仅使用图片参考时也可填写 HTTPS 图片链接": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "OSS 连接失败或超时，尚未提交视频任务；请检查网络、地域和 Endpoint 后重新生成": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请检查专用密钥是否具有素材目录的 oss:PutObject 和 oss:GetObject 权限": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请检查 AccessKey ID": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请检查 AccessKey Secret、地域和 Endpoint": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请校准电脑时间": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请检查 Bucket 名称和地域": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请使用该 Bucket 所在地域的公网 Endpoint": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "请检查存储配置和访问权限": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "OSS 本地参考素材为空或超过单个 20 MiB 的传输限制，尚未提交视频任务": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "OSS 本地参考素材合计超过 300 MiB 的传输限制，尚未提交视频任务": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "OSS 音频参考仅支持 MP3、WAV、FLAC 和 MP4 音频容器，请先转换格式": [
-    "apps/server/src/utils/media/oss.ts"
-  ],
-  "OSS 本地参考图目前支持 PNG、JPEG 和 WebP，请转换图片格式后生成": [
-    "apps/server/src/utils/media/oss.ts"
   ],
   "供应商 ID 不能是系统保留文件名": [
     "apps/server/src/utils/media/provider.ts"
@@ -7626,10 +6741,10 @@
   "供应商目录不能是符号链接或文件": [
     "apps/server/src/utils/media/provider.ts"
   ],
-  "供应商文件不能是符号链接或目录": [
+  "仅支持逸仙提供方": [
     "apps/server/src/utils/media/provider.ts"
   ],
-  "供应商 ID 无效": [
+  "供应商文件不能是符号链接或目录": [
     "apps/server/src/utils/media/provider.ts"
   ],
   "请先在媒体模型设置中添加供应商": [
@@ -7638,34 +6753,13 @@
   "供应商文件无法读取": [
     "apps/server/src/utils/media/provider.ts"
   ],
-  "媒体供应商“{0}”已安装，请在「设置 → 媒体模型」中编辑，或先删除后重新安装。": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
   "供应商文件不存在": [
     "apps/server/src/utils/media/provider.ts"
   ],
   "供应商文件已被修改，请刷新页面后再编辑": [
     "apps/server/src/utils/media/provider.ts"
   ],
-  "供应商文件已被修改，请刷新页面后再获取": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "供应商未配置 modelsUrl": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "获取媒体模型列表失败（HTTP {0}）": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "未获取到媒体模型，保留原有列表": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "模型 {0} 缺少 type，请在返回数据或 modelsUrl 的 type 参数中指定": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "模型 {0} 的 type 与请求类型不一致": [
-    "apps/server/src/utils/media/provider.ts"
-  ],
-  "供应商文件已被修改，请刷新页面后再删除": [
+  "供应商配置已变更，请重试": [
     "apps/server/src/utils/media/provider.ts"
   ],
   "供应商不能导入模块，请使用 this.tool 中的宿主工具": [
@@ -7679,6 +6773,36 @@
   ],
   "素材缓存文件无效，请保留记录并检查": [
     "apps/server/src/utils/media/referenceCache.ts"
+  ],
+  "参考素材为空或超过 {0} MiB": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "无法识别参考素材的文件格式": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "参考素材内容与媒体类型不匹配": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "参考素材已变化，请重新生成": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "余额不足，请充值后上传": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "账户存储已满": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "参考素材超过平台大小限制": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "服务器存储已满，请稍后再试": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "上传期间参考素材已变化，请重新生成": [
+    "apps/server/src/utils/media/upload.ts"
+  ],
+  "平台返回的素材类型不匹配": [
+    "apps/server/src/utils/media/upload.ts"
   ],
   "视频任务记录无效，请保留现场并检查文件": [
     "apps/server/src/utils/media/videoTasks.ts"
@@ -8127,6 +7251,10 @@
   "技能资源路径无效": [
     "apps/server/src/utils/plugins/install.ts"
   ],
+  "逸仙版不支持安装自定义供应商": [
+    "apps/server/src/utils/plugins/install.ts",
+    "apps/desktop/src/protocol.ts"
+  ],
   "下载地址中的文件名编码无效，请重新生成下载链接": [
     "apps/server/src/utils/plugins/install.ts"
   ],
@@ -8146,6 +7274,9 @@
     "apps/server/src/utils/plugins/install.ts"
   ],
   "团队": [
+    "apps/server/src/utils/plugins/install.ts"
+  ],
+  "不支持此插件类型": [
     "apps/server/src/utils/plugins/install.ts"
   ],
   "节点文件无效": [
@@ -8360,10 +7491,91 @@
   "团队文件路径无效": [
     "apps/server/src/utils/teams/install.ts"
   ],
+  "字幕节点未安装": [
+    "apps/server/src/utils/whisper/index.ts"
+  ],
+  "Python 路径不能为空": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "找不到 Python，请安装 Python 或配置路径": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "探测结果格式无效": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Python 不可用，无法探测 Whisper": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "当前 Python 环境未安装 openai-whisper": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Python 不可用，无法探测 PyTorch": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "当前 Python 环境未安装 PyTorch": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "未找到 FFmpeg": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "未找到 FFprobe": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 生成了多个 SRT 文件": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 未生成 SRT 文件": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 生成了空字幕": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 临时目录路径无效": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 模型无效": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 语言无效": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 输入路径必须是绝对路径": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 文件必须位于工作区内": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 输出不能覆盖源文件": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 输出必须是 SRT 文件": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 任务正在运行，请等待完成": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 源文件必须是普通文件": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 输出目录不存在": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 输出文件已存在": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "Whisper 运行环境不可用": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
+  "任务已失效": [
+    "apps/server/src/utils/whisper/runtime.ts"
+  ],
   "模型与生成参数": [
     "apps/server/src/utils/workspace/canvasMerge.ts"
   ],
   "生成结果与任务状态": [
+    "apps/server/src/utils/workspace/canvasMerge.ts"
+  ],
+  "提示词": [
     "apps/server/src/utils/workspace/canvasMerge.ts"
   ],
   "重绘提示词": [
@@ -8551,10 +7763,10 @@
   "安装链接不能包含换行或控制字符": [
     "apps/desktop/src/protocol.ts"
   ],
-  "安装链接不是有效 URL，应为 toonflow://install?type=node&url=编码后的下载地址": [
+  "安装链接不是有效 URL，应为 toonflow-yixian://install?type=node&url=编码后的下载地址": [
     "apps/desktop/src/protocol.ts"
   ],
-  "安装链接格式错误，应为 toonflow://install?type=node&url=编码后的下载地址": [
+  "安装链接格式错误，应为 toonflow-yixian://install?type=node&url=编码后的下载地址": [
     "apps/desktop/src/protocol.ts"
   ],
   "安装链接不能包含账号、密码、端口或 # 片段": [
@@ -8910,13 +8122,16 @@
   "FFmpeg 不能操作悬空符号链接": [
     "packages/ffmpeg/src/runtime.ts"
   ],
+  "不允许通过媒体清单间接访问文件": [
+    "packages/ffmpeg/src/validateRequest.ts"
+  ],
+  "concat 清单仅支持 file、duration、inpoint、outpoint 和 ffconcat version 1.0": [
+    "packages/ffmpeg/src/validateRequest.ts"
+  ],
   "滤镜不在允许范围内，请使用结构化参数与工作区相对路径": [
     "packages/ffmpeg/src/validateRequest.ts"
   ],
   "原始参数不在允许范围内，请使用专用方法": [
-    "packages/ffmpeg/src/validateRequest.ts"
-  ],
-  "不允许通过媒体清单间接访问文件": [
     "packages/ffmpeg/src/validateRequest.ts"
   ],
   "配对设备不能使用 FFmpeg 原始参数或滤镜": [

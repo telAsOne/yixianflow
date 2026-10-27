@@ -13,6 +13,19 @@ defineProps<{ disabled?: boolean; maxHeight: string }>();
 const prompt = defineModel<string>({ required: true });
 const input = ref<HTMLTextAreaElement>();
 const highlight = ref<HTMLElement>();
+defineExpose({
+  getSelection() {
+    const element = input.value;
+    if (!element) return;
+    const { selectionStart: start, selectionEnd: end, selectionDirection } = element;
+    return selectionDirection === "backward" ? { anchor: end, focus: start } : { anchor: start, focus: end };
+  },
+  restoreSelection({ anchor, focus }: { anchor: number; focus: number }) {
+    input.value?.focus({ preventScroll: true });
+    input.value?.setSelectionRange(Math.min(anchor, focus), Math.max(anchor, focus), anchor > focus ? "backward" : "forward");
+    syncScroll();
+  },
+});
 const parts = computed(() => {
   const result: { text: string; category?: string }[] = [];
   let offset = 0;

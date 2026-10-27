@@ -30,6 +30,7 @@ const inputSchema = z.object({
 });
 
 export default Router().post("/", validateFields(inputSchema.shape), async (req, res) => {
+  u.account.requireAccount();
   const { directory, canvas, clientFiles, ...options } = inputSchema.parse(req.body);
   const cwd = await u.workspace.resolveWorkspace(req, directory);
   const device = u.mobileLink.getMobileLinkDevice(req);

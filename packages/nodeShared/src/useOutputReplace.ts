@@ -1,3 +1,4 @@
+import { validateMediaFiles } from "./mediaLimits";
 import { onScopeDispose, ref } from "vue";
 import type { useNode } from "@toonflow/nodes-scaffold/runtime";
 import { showNodeError } from "./showNodeError";
@@ -15,9 +16,9 @@ export function useOutputReplace(kind: "image" | "video" | "audio", files: Retur
     input.value = "";
     if (!file || disposed || uploading.value || isBusy()) return;
     if (!file.type.startsWith(`${kind}/`)) return void showNodeError(`请选择${label}文件`, `${label}替换失败`);
-    if (!file.size || file.size > 100 * 1024 * 1024) return void showNodeError(`${label}不能为空且不能超过 100 MB`, `${label}替换失败`);
     uploading.value = true;
     try {
+      await validateMediaFiles([file]);
       const workspace = files.getWorkspaceFiles();
       const url = await files.uploadFile(file);
       if (disposed) { await workspace.remove(url); return; }

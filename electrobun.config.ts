@@ -1,3 +1,4 @@
+import { identifier } from "./apps/desktop/src/identity";
 import type { ElectrobunConfig } from "./.hutch/devkit/api/config/ElectrobunConfig";
 import packageInfo from "./package.json";
 
@@ -6,9 +7,9 @@ const startupTarget = process.platform === "darwin" ? (process.arch === "x64" ? 
 export default {
   app: {
     name: "toonflow",
-    identifier: "local.toonflow.desktop",
+    identifier,
     version: process.env.appVersion ?? packageInfo.version,
-    urlSchemes: ["toonflow"],
+    urlSchemes: ["toonflow-yixian"],
   },
   build: {
     mainProcess: "bun",
@@ -49,7 +50,7 @@ export default {
   },
   release: {
     // ACT: 本分支各平台从同一 Release 更新，客户端仍可显式选择其他更新源。
-    baseUrl: `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${process.env.GITHUB_REPOSITORY || "lboverfys/Toonflow-l"}/releases/latest/download`,
+    baseUrl: "https://yixian.lol/toonflow/updates",
     // ACT: 常规构建不访问更新服务器；release:desktop 显式开启增量构建。
     generatePatch: process.env.generateUpdatePatch === "1",
   },

@@ -14,7 +14,7 @@ export default router.get("/", async (req, res) => {
     throw err;
   });
   const nodes = await Promise.all(files
-    .filter((file) => file.isFile() && /^[a-z][a-zA-Z0-9]*\.umd\.js$/.test(file.name))
+    .filter((file) => file.isFile() && file.name !== "audioGenerationNode.umd.js" && /^[a-z][a-zA-Z0-9]*\.umd\.js$/.test(file.name))
     .sort((left, right) => left.name.localeCompare(right.name))
     .map(async (file) => {
       const name = file.name.slice(0, -7);

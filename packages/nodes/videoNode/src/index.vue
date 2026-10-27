@@ -65,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
 import { computed, nextTick, ref, watchEffect } from "vue";
 import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
@@ -147,9 +148,9 @@ async function uploadVideo(event: Event) {
   input.value = "";
   if (!file || uploading.value || exporting.value) return;
   if (!file.type.startsWith("video/")) return void ElMessage.error("请选择视频文件");
-  if (!file.size || file.size > 100 * 1024 * 1024) return void ElMessage.error("视频不能为空且不能超过 100 MB");
   uploading.value = true;
   try {
+    await validateMediaFiles([file]);
     const url = await files.uploadFile(file);
     // ACT: 复制节点可能仍引用旧视频，替换输出不删除共享文件。
     outputs.value.video = { dataType: "VIDEO", value: { url, mimeType: file.type } };

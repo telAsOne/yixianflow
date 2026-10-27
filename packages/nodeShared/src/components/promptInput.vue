@@ -58,18 +58,80 @@ const tokenPattern = computed(() => props.recognizeTokens && props.references.le
   ? new RegExp(`(${[...new Set(props.references.filter(item => !item.action).map(item => item.value))].filter(Boolean).sort((a, b) => b.length - a.length).map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g")
   : /(\{\{ref \d+\}\})/g);
 
-function caretOffset() {
+function selectionOffset(node: Node | null, offset: number) {
   if (!sender) return;
-  const cursor = sender.getCurrentNode();
-  const row = sender.chatEditor.NODES.findIndex(grid => grid.children.includes(cursor.instance));
-  if (row < 0) return;
-  const column = sender.chatEditor.NODES[row].children.indexOf(cursor.instance);
   const value = sender.getModel();
-  return (row ? getPromptText(value.slice(0, row)).length + 1 : 0) + getPromptText([value[row].slice(0, column)]).length + Math.min(cursor.instance.text.length, Math.max(0, cursor.offset));
+  if (node === sender.chatElement.richText) return getPromptText(value.slice(0, offset)).length + (offset > 0 && offset < value.length ? 1 : 0);
+  const row = sender.chatEditor.NODES.findIndex(grid => grid.$el.contains(node));
+  if (row < 0) return;
+  const grid = sender.chatEditor.NODES[row];
+  const start = row ? getPromptText(value.slice(0, row)).length + 1 : 0;
+  if (node === grid.$el) return start + getPromptText([value[row].slice(0, offset)]).length;
+  const column = grid.children.findIndex(child => child.$el.contains(node));
+  if (column < 0) return;
+  const child = grid.children[column];
+  const range = document.createRange();
+  range.selectNodeContents(child.$el);
+  range.setEnd(node!, offset);
+  const length = getPromptText([[value[row][column]]]).length;
+  const local = child.type === "Write" || child.type === "Input" ? range.toString().replace(/[\uFEFF\u200B]/g, "").length : offset ? length : 0;
+  return start + getPromptText([value[row].slice(0, column)]).length + Math.min(length, local);
+}
+
+function getSelection() {
+  const selection = sender?.getSelection();
+  if (!selection?.rangeCount) return;
+  const anchor = selectionOffset(selection.anchorNode, selection.anchorOffset);
+  const focus = selectionOffset(selection.focusNode, selection.focusOffset);
+  if (anchor !== undefined && focus !== undefined) return { anchor, focus };
+}
+
+function restoreSelection(selection: { anchor: number; focus: number }) {
+  const instance = sender;
+  if (!instance || props.disabled) return;
+  const value = instance.getModel();
+  const length = getPromptText(value).length;
+  const endpoint = (position: number) => {
+    let offset = Math.max(0, Math.min(length, position));
+    for (const [row, grid] of instance.chatEditor.NODES.entries()) {
+      for (const [column, target] of grid.children.entries()) {
+        const size = getPromptText([[value[row][column]]]).length;
+        if ((target.type === "Write" || target.type === "Input") && offset <= size) {
+          const node = target.type === "Write" ? target.$el.children[0].firstChild : target.$el.children[0].children[0].firstChild;
+          if (!node) return;
+          // XSender 用零宽字符承载空行及内部换行，历史位置只计算实际提示词。
+          let domOffset = 0;
+          let remaining = Math.min(target.text.length, Math.max(0, offset));
+          for (const character of node.textContent ?? "") {
+            if (character !== "\uFEFF" && character !== "\u200B") {
+              if (remaining <= 0) break;
+              remaining -= character.length;
+            }
+            domOffset += character.length;
+          }
+          return { target, node, offset: domOffset };
+        }
+        offset -= size;
+      }
+      offset--;
+    }
+  };
+  const anchor = endpoint(selection.anchor);
+  const focus = endpoint(selection.focus);
+  if (!anchor || !focus) return;
+  focus.target.focus(focus.offset);
+  instance.getSelection().setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+}
+
+function caretOffset() {
+  const cursor = sender?.getCurrentNode();
+  return getSelection()?.focus ?? (cursor && selectionOffset(cursor.node, cursor.offset));
 }
 
 defineExpose({
   getCaretOffset: caretOffset,
+  getSelection,
+  restoreSelection,
   replaceText(value: string) { syncModel(value.split("\n").map(text => [{ type: "Write", text }])); },
   async insertText(value: string) {
     if (!sender || props.disabled) return;
@@ -289,12 +351,45 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const editor = instance.chatElement.richText;
   // ACT: 1.4.6 未检查卸载节点和空 Range 矩形；只适配当前实例，升级到库内修复后可移除。
   const chatEditor = instance.chatEditor as typeof instance.chatEditor & {
+    undoHistory: { nodes: AnyTagProps[][]; selection?: { anchor: number; focus: number } }[];
+    redoHistory: { nodes: AnyTagProps[][]; selection?: { anchor: number; focus: number } }[];
     focusFirst(): void;
     focusLast(): void;
     focusMark(): void;
     cursorView(): void;
     insertNodes(nodes: AnyTagProps[][]): Promise<void>;
   };
+  // ACT: XSender 1.4.6 只记录上次输入后的光标；沿用其 50 条历史，补记本次编辑前的选区。
+  const captureHistorySelection = () => {
+    const entry = chatEditor.undoHistory.at(-1);
+    if (entry && JSON.stringify(entry.nodes) === JSON.stringify(instance.getModel())) entry.selection = getSelection() ?? entry.selection;
+  };
+  let restoringHistory = false;
+  const restoreHistory = async (event: KeyboardEvent) => {
+    if (props.disabled || event.isComposing || event.defaultPrevented) return;
+    const key = event.key.toLowerCase();
+    const historyKey = (event.ctrlKey || event.metaKey) && !event.altKey && (key === "z" || key === "y");
+    if (!historyKey) { captureHistorySelection(); return; }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (restoringHistory) return;
+    restoringHistory = true;
+    try {
+      await instance.nextTick();
+      if (sender !== instance) return;
+      captureHistorySelection();
+      const redo = key === "y" || event.shiftKey;
+      const entry = redo ? chatEditor.redoHistory.at(-1) : chatEditor.undoHistory.at(-2);
+      if (!entry) return;
+      await (redo ? instance.redo() : instance.undo());
+      await resetTask;
+      if (sender === instance && entry.selection) restoreSelection(entry.selection);
+    } finally { restoringHistory = false; }
+  };
+  editor.addEventListener("beforeinput", captureHistorySelection, true);
+  editor.addEventListener("paste", captureHistorySelection, true);
+  editor.addEventListener("cut", captureHistorySelection, true);
+  editor.addEventListener("keydown", restoreHistory, true);
   for (const method of ["focusFirst", "focusLast", "focusMark"] as const) {
     const focus = chatEditor[method].bind(chatEditor);
     chatEditor[method] = () => {
@@ -355,6 +450,10 @@ watch(senderElement, (element, _previous, onCleanup) => {
     sender = undefined;
     editor.removeEventListener("copy", copyText);
     editor.removeEventListener("cut", copyText);
+    editor.removeEventListener("beforeinput", captureHistorySelection, true);
+    editor.removeEventListener("paste", captureHistorySelection, true);
+    editor.removeEventListener("cut", captureHistorySelection, true);
+    editor.removeEventListener("keydown", restoreHistory, true);
     document.removeEventListener("pointerdown", closeOutside, true);
     popup.removeEventListener("click", selectReference, true);
     // ACT: 1.4.6 的 destroy 会删除排队回调仍需用到的字段；先走公开清理事件，库修复后可直接 destroy。

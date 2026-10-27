@@ -5,7 +5,6 @@
   "exports": {
     "./app": "./src/app.ts",
     "./canvasMerge": "./src/utils/workspace/canvasMerge.ts",
-    "./mediaStorage": "./src/types/mediaStorage.ts",
     "./remoteConnection": "./src/remoteConnection.ts",
     "./desktop": "./src/types/desktop.ts",
     "./clientFiles": "./src/utils/desktop/clientFiles.ts",
@@ -16,7 +15,8 @@
     "./singleAgent/types": "./src/utils/singleAgent/types.ts",
     "./whisper/types": "./src/utils/whisper/types.ts",
     "./agent/mentionSources": "./src/agent/mentionSources.ts",
-    "./i18n": "./src/lib/i18n.ts"
+    "./i18n": "./src/lib/i18n.ts",
+    "./account": "./src/types/account.ts"
   },
   "scripts": {
     "routes": "bun src/core.ts",

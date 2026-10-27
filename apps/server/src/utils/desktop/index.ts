@@ -5,7 +5,7 @@ import conf from "@/utils/conf";
 import type { DesktopRuntime, desktopUpdateAttempt, updateSnapshot } from "@/types/desktop";
 
 const updateBaseUrls = {
-  official: "https://api.toonflow.net/web/version/desktopUpdates",
+  official: "https://yixian.lol/toonflow/updates",
   github: "https://github.com/lboverfys/Toonflow-l/releases/latest/download",
 };
 const updateRuntimeId = crypto.randomUUID();
@@ -84,8 +84,7 @@ export function isValidUpdateUrl(value: unknown): value is string {
 function getUpdateBaseUrl(): string {
   const settings = conf.get("settings", {});
   if (settings.desktopUpdateSource === "custom" && isValidUpdateUrl(settings.desktopUpdateCustomUrl)) return settings.desktopUpdateCustomUrl;
-  if (process.env.TOONFLOW_PORTABLE === "1") return updateBaseUrls.github;
-  return settings.desktopUpdateSource === "official" ? updateBaseUrls.official : updateBaseUrls.github;
+  return settings.desktopUpdateSource === "github" ? updateBaseUrls.github : updateBaseUrls.official;
 }
 
 async function withUpdateSource<T>(updater: DesktopRuntime["updater"], updateBaseUrl: string, run: () => Promise<T>) {

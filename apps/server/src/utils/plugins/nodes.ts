@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import conf from "@/utils/conf";
 
-export const nodeNameSchema = z.string().max(96).regex(/^[a-z][a-zA-Z0-9]*$/);
+export const nodeNameSchema = z.string().max(96).regex(/^[a-z][a-zA-Z0-9]*$/).refine(name => name !== "audioGenerationNode", "节点不存在");
 export const nodesDirectory = resolve(dirname(conf.path), "nodes");
 export const configRulesSchema = z.array(z.record(z.string(), z.json())).max(100);
 type ConfigRule = z.infer<typeof configRulesSchema>[number];

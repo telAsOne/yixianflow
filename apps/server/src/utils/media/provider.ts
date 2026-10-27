@@ -5,10 +5,11 @@ import { lstat, mkdir, readFile, readdir, unlink, writeAtomic } from "@toonflow/
 import { dirname, join } from "node:path";
 import { createContext, SourceTextModule } from "node:vm";
 import type { AudioConvertOptions, Provider, ProviderTools, VideoTaskContext, ImageTaskContext } from "@toonflow/providers";
-import tfRouter from "@toonflow/providers/media/tfRouter";
+import { getApiKey, getBaseUrl, platformFetch } from "@/utils/account";
 import { parse, parseExpression } from "@babel/parser";
 import { z } from "zod";
 import conf from "@/utils/conf";
+import { modelSchema } from "@/types/account";
 import { convertAudio } from "@/utils/media/audioProcessor";
 import { createReferenceCache } from "@/utils/media/referenceCache";
 import { createWorkspaceFfmpeg } from "@/utils/ffmpeg";
@@ -22,11 +23,7 @@ const providerTranspiler = new Bun.Transpiler({ loader: "ts", target: "bun", def
 const providerIdSchema = z.string().max(96).regex(/^[a-z][a-zA-Z0-9]*$/)
   .refine(value => !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(value), "供应商 ID 不能是系统保留文件名");
 export const mediaProviderFileSchema = z.string().refine(value => value.endsWith(".ts") && providerIdSchema.safeParse(value.slice(0, -3)).success, "供应商文件名无效");
-export const mediaModelsSchema = z.array(z.object({
-  id: z.string().min(1).max(200).refine(value => !!value.trim()),
-  label: z.string().min(1).max(200).refine(value => !!value.trim()),
-  type: z.enum(["text", "image", "video", "audio"]),
-}).catchall(z.json())).max(2000).refine(models => new Set(models.map(model => model.id)).size === models.length, "模型 ID 不能重复");
+export const mediaModelsSchema = z.array(modelSchema.extend({ type: z.enum(["image", "video"]), taskRecovery: z.boolean().optional(), referenceInput: z.literal("platformAsset").optional(), referenceImageInput: z.literal("url").optional(), referenceAudioInput: z.literal("url").optional() })).max(2000).refine(models => new Set(models.map(model => model.id)).size === models.length, "模型 ID 不能重复");
 
 function invalid(message: string, status = 400): never {
   throw Object.assign(new Error(message), { status });
@@ -70,6 +67,7 @@ function createMediaTools(fetcher: typeof fetch = fetch): ProviderTools["media"]
   async function bytes(input: MediaInput) {
     if (input.type === "base64") return Buffer.from(input.data.replace(/^data:[^;]+;base64,/, ""), "base64");
     if (input.type === "binary") return Buffer.from(input.data);
+    if (input.type === "file") return Buffer.from(await input.file.arrayBuffer());
     const response = await fetcher(input.url);
     if (!response.ok) throw new Error(t`读取图片失败：HTTP ${response.status}`);
     return Buffer.from(await response.arrayBuffer());
@@ -219,8 +217,7 @@ function parseProvider(source: string) {
 function metadata(fileName: string, source: string) {
   const { id, label, icon, version, readme, modelsUrl, rules, models } = parseProvider(source);
   if (fileName !== `${id}.ts`) invalid("供应商 ID 与文件名不一致");
-  // ACT: 兼容旧 TF-Router 文件，缺少列表地址时使用内置定义。
-  return { fileName, id, label, icon, version, readme, modelsUrl: modelsUrl ?? (id === tfRouter.id ? tfRouter.modelsUrl : undefined), rules, models,
+  return { fileName, id, label, icon, version, readme, modelsUrl, rules, models,
     revision: createHash("sha256").update(source).digest("hex"), loadError: "" };
 }
 
@@ -250,26 +247,13 @@ export async function initializeMediaProviders(sourceDirectory: string, bundled:
   const marker = join(targetDirectory, "initialized");
   const previous = await readFile(marker, "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
   if (previous === revision) return;
-  for (const name of bundled) {
+  for (const name of bundled.filter(name => name === "yixianVideo.ts")) {
     const target = join(targetDirectory, name);
     const current = await readProvider(targetDirectory, name).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
     const source = await readFile(join(sourceDirectory, name), "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
     if (source === null) continue;
     const saved = current ? parseProvider(current.source) : undefined;
-    if (saved?.id === "autoDl" && saved.version === "1.0.0" && !saved.models.some(model => model.id === "minimaxH3FirstLastFrame")) {
-      const model = parseProvider(source).models.find(model => model.id === "minimaxH3FirstLastFrame");
-      if (model) saved.models.push(model);
-    }
-    if (saved?.id === "zealmanH3" && saved.version === "1.0.0") {
-      const old = saved.models.find(model => model.id === "u06");
-      const model = parseProvider(source).models.find(model => model.id === "u06");
-      if (old && model) Object.assign(old, { mode: model.mode, durationResolutionMap: model.durationResolutionMap, defaultDuration: model.defaultDuration, defaultResolution: model.defaultResolution });
-    }
-    if (saved?.id === "yixianVideo" && ["1.0.0", "1.0.1"].includes(saved.version ?? "") && !saved.models.some(model => model.id === "yixian-h3-u00n")) {
-      const model = parseProvider(source).models.find(model => model.id === "yixian-h3-u00n");
-      if (model) saved.models.push(model);
-    }
-    const next = saved ? replaceProviderConfig(source, saved.models, saved.label) : source;
+    const next = saved && conf.has("settings.yixianConfig") ? replaceProviderConfig(source, saved.models) : source;
     metadata(name, next);
     await writeAtomic(target, next);
   }
@@ -288,7 +272,7 @@ async function directory(create = false) {
 }
 
 async function readProvider(path: string, fileName: string) {
-  if (!mediaProviderFileSchema.safeParse(fileName).success) invalid("供应商文件名无效");
+  if (fileName !== "yixianVideo.ts") invalid("仅支持逸仙提供方", 403);
   const file = join(path, fileName);
   const info = await lstat(file);
   if (info.isSymbolicLink() || !info.isFile()) invalid("供应商文件不能是符号链接或目录", 403);
@@ -298,7 +282,7 @@ async function readProvider(path: string, fileName: string) {
 }
 
 export async function getMediaProvider(id: string) {
-  if (!providerIdSchema.safeParse(id).success) invalid("供应商 ID 无效");
+  if (id !== "yixianVideo") invalid("模型不可用，请选择其他模型");
   const path = await directory();
   if (!path) invalid("请先在媒体模型设置中添加供应商", 404);
   const current = await readProvider(path, `${id}.ts`).catch((error: NodeJS.ErrnoException) => {
@@ -312,7 +296,7 @@ export async function listMediaProviders() {
   const path = await directory();
   if (!path) return [];
   const files = await readdir(path, { withFileTypes: true });
-  return Promise.all(files.filter(file => file.isFile() && mediaProviderFileSchema.safeParse(file.name).success)
+  return Promise.all(files.filter(file => file.isFile() && file.name === "yixianVideo.ts")
     .sort((left, right) => left.name.localeCompare(right.name)).map(async file => {
       let current = { fileName: file.name, id: file.name.slice(0, -3), source: "", revision: "" };
       try {
@@ -324,20 +308,6 @@ export async function listMediaProviders() {
         return { ...file, label: current.id, version: "", readme: "", rules: [], models: [], loadError: translateMessage(error instanceof Error ? error.message : "供应商文件无法读取") };
       }
     }));
-}
-
-export async function addMediaProvider(source: string) {
-  const result = validateMediaProviderSource(source);
-  const { fileName } = result;
-  const path = join((await directory(true))!, fileName);
-  const release = lockWorkspaceFiles([path]);
-  try { await writeWorkspaceFile(path, source, true); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") invalid(t`媒体供应商“${result.label}”已安装，请在「设置 → 媒体模型」中编辑，或先删除后重新安装。`, 409);
-    throw error;
-  }
-  finally { release(); }
-  return result;
 }
 
 export async function saveMediaProvider(fileName: string, models: z.infer<typeof mediaModelsSchema>, revision: string, label?: string, expectedApiKey?: string) {
@@ -360,73 +330,14 @@ export async function saveMediaProvider(fileName: string, models: z.infer<typeof
 }
 
 export function getMediaProviderApiKey(id: string) {
-  const value: unknown = conf.get(`settings.mediaProviderConfigs.${id}.apiKey`);
-  return typeof value === "string" ? value.trim().replace(/^Bearer(?:\s+|$)/i, "").trim() : "";
+  if (id !== "yixianVideo") invalid("仅支持逸仙提供方");
+  return getApiKey();
 }
 
-export async function refreshMediaProviderModels(fileName: string, revision?: string, modelType?: ModelType, expectedApiKey?: string) {
-  if (!mediaProviderFileSchema.safeParse(fileName).success) invalid("供应商文件名无效");
-  const provider = await getMediaProvider(fileName.slice(0, -3));
-  if (revision !== undefined && revision !== provider.revision) invalid("供应商文件已被修改，请刷新页面后再获取", 409);
-  if (!provider.modelsUrl) invalid("供应商未配置 modelsUrl");
-  const apiKey = getMediaProviderApiKey(provider.id);
-  if (expectedApiKey !== undefined && apiKey !== expectedApiKey) invalid("供应商配置已变更，请重试", 409);
-  const modelTypes = provider.id === tfRouter.id && !modelType ? ["video", "image", "audio"] : [modelType];
-  // ACT: 各类型只并行获取，汇总后保存一次，避免同一供应商文件发生版本冲突。
-  const models = (await Promise.all(modelTypes.map(async requestedModelType => {
-    const modelsUrl = new URL(provider.modelsUrl!);
-    if (requestedModelType) modelsUrl.searchParams.set("type", requestedModelType);
-    const response = await fetch(modelsUrl, {
-      headers: { Accept: "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-      signal: AbortSignal.timeout(30000), redirect: "error",
-    });
-    if (!response.ok) throw new Error(t`获取媒体模型列表失败（HTTP ${response.status}）`);
-    const result = z.object({ data: z.array(mediaModelsSchema.element.partial({ label: true, type: true }).extend({
-      modelInfo: z.object({
-        mode: z.array(z.union([z.string().min(1), z.array(z.string().min(1))])).optional(),
-        audio: z.union([z.literal("optional"), z.boolean()]).optional(),
-        durationResolutionMap: z.array(z.object({ duration: z.array(z.number().positive()), resolution: z.array(z.string().min(1)) })).optional(),
-        imageSizes: z.array(z.string().min(1)).optional(),
-        imageRatios: z.array(z.string().min(1)).optional(),
-      }).catchall(z.json()).optional(),
-    })).max(2000) }).parse(await response.json());
-    if (!result.data.length) throw new Error("未获取到媒体模型，保留原有列表");
-    const requestedType = z.enum(["text", "image", "video", "audio"]).safeParse(modelsUrl.searchParams.get("type"));
-    return result.data.map(({ modelInfo, ...model }) => {
-      const id = model.id.trim();
-      const previous = provider.models.find(item => item.id === id)
-        ?? (provider.id === tfRouter.id ? tfRouter.models.find(item => item.id === id) : undefined);
-      const type = model.type ?? (requestedType.success ? requestedType.data : previous?.type);
-      if (!type) invalid(t`模型 ${id} 缺少 type，请在返回数据或 modelsUrl 的 type 参数中指定`);
-      if (requestedType.success && type !== requestedType.data) invalid(t`模型 ${id} 的 type 与请求类型不一致`);
-      // ACT: modelInfo 覆盖已有能力；缺省字段沿用同名配置，新模型不猜测生成能力。
-      const merged = { ...previous, ...model, ...modelInfo, id, label: model.label ?? previous?.label
-        ?? (typeof model.display_name === "string" ? model.display_name : typeof model.displayName === "string" ? model.displayName : id), type };
-      Reflect.deleteProperty(merged, "modelInfo");
-      return merged;
-    });
-  }))).flat();
-  const types = new Set(models.map(model => model.type));
-  return saveMediaProvider(fileName, [...provider.models.filter(model => !types.has(model.type)), ...models], provider.revision, undefined, apiKey);
-}
-
-export async function deleteMediaProvider(fileName: string, revision: string) {
-  if (!mediaProviderFileSchema.safeParse(fileName).success) invalid("供应商文件名无效");
-  const path = await directory();
-  if (!path) invalid("供应商文件不存在", 404);
-  const file = join(path, fileName);
-  const release = lockWorkspaceFiles([file]);
-  try {
-    const current = await readProvider(path, fileName);
-    if (current.revision !== revision) invalid("供应商文件已被修改，请刷新页面后再删除", 409);
-    await unlink(file);
-    conf.delete(`settings.mediaProviderConfigs.${current.id}`);
-  } finally { release(); }
-}
-
-export async function loadMediaProviderSource(source: string, config: Record<string, unknown> = {}, signal?: AbortSignal, fetchRequest = fetch, cwd?: string, videoTask?: VideoTaskContext, imageTask?: ImageTaskContext) {
+export async function loadMediaProviderSource(source: string, config: Record<string, unknown> = {}, signal?: AbortSignal, fetchRequest: typeof fetch = Object.assign(platformFetch, { preconnect: fetch.preconnect }), cwd?: string, videoTask?: VideoTaskContext, imageTask?: ImageTaskContext) {
   signal?.throwIfAborted();
   const { id } = parseProvider(source);
+  if (id !== "yixianVideo") invalid("仅支持逸仙提供方");
   // ACT: VM 只隔离可信供应商的全局上下文；不可信代码需要独立进程等更强隔离。
   const context = createContext({
     Buffer, URL, URLSearchParams, TextEncoder, TextDecoder, Blob, FormData,
@@ -443,7 +354,7 @@ export async function loadMediaProviderSource(source: string, config: Record<str
   signal?.throwIfAborted();
   const definition = (module.namespace as { default: Provider }).default;
   const rules = Array.isArray(definition.rules) ? definition.rules : [];
-  const providerConfig = { ...Object.fromEntries(rules.map(rule => [rule.field, rule.value])), ...structuredClone(config) };
+  const providerConfig = { ...Object.fromEntries(rules.map(rule => [rule.field, rule.value])), ...structuredClone(config), apiKey: getApiKey(), apiUrl: getBaseUrl() };
   const provider = {
     ...definition,
     config: providerConfig,

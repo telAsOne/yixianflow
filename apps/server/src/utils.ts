@@ -8,7 +8,7 @@ import * as singleAgent from "@/utils/singleAgent";
 import * as desktop from "@/utils/desktop";
 import * as clientFiles from "@/utils/desktop/clientFiles";
 import * as clientFileBridge from "@/agent/bridge/clientFiles";
-import * as providerDebug from "@/utils/media/debug";
+import * as account from "@/utils/account";
 import * as mediaGeneration from "@/utils/media/generation";
 import * as mediaProvider from "@/utils/media/provider";
 import * as ffmpeg from "@/utils/ffmpeg";
@@ -46,7 +46,7 @@ export default {
   desktop,
   clientFiles,
   clientFileBridge,
-  providerDebug,
+  account,
   mediaGeneration,
   mediaProvider,
   ffmpeg,

@@ -1,17 +1,7 @@
 const rules = [
-  { type: "input", field: "apiKey" as const, title: "API Key", value: "", props: { type: "password", showPassword: true, autocomplete: "off" }, validate: [{ required: true, message: "请填写逸仙 API Key" }] },
+  { type: "input", field: "apiKey" as const, title: "API Key", value: "", props: { type: "password", showPassword: true, autocomplete: "off" }, validate: [{ required: true, message: "请登录逸仙账户" }] },
   { type: "input", field: "apiUrl" as const, title: "API 地址", value: "https://yixian.lol" },
 ];
-
-const ratios = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"];
-const mediaLimits = { image: 20 * 1024 * 1024, audio: 64 * 1024 * 1024, video: 100 * 1024 * 1024 };
-const extensions: Record<string, string> = {
-  "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/bmp": "bmp", "image/tiff": "tiff",
-  "audio/wav": "wav", "audio/x-wav": "wav", "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a",
-  "audio/aac": "aac", "audio/x-aac": "aac", "audio/flac": "flac", "audio/x-flac": "flac", "audio/ogg": "ogg", "audio/opus": "opus",
-  "audio/aiff": "aiff", "audio/x-aiff": "aiff", "audio/amr": "amr",
-  "video/mp4": "mp4", "video/x-m4v": "m4v", "video/webm": "webm", "video/quicktime": "mov", "video/x-msvideo": "avi", "video/avi": "avi", "video/x-matroska": "mkv", "video/mpeg": "mpeg", "video/ogg": "ogv",
-};
 
 type YixianResponse = {
   success?: boolean;
@@ -56,72 +46,100 @@ function responseMessage(context: ProviderContext, response: Response, value: Yi
   return context.tool.errorMessage(`逸仙 HTTP ${response.status}：${context.tool.errorMessage(value) || "接口未返回有效结果"}`);
 }
 
+function modelFor(context: ProviderContext, id: string, type: ModelType) {
+  const model = context.models.find(model => model.id === id && model.type === type);
+  if (!model) throw new Error("模型不可用，请选择其他模型");
+  return model;
+}
+
 async function createSnapshot(context: ProviderContext, base: string, headers: Record<string, string>, request: VideoRequest): Promise<YixianSnapshot> {
-  const isU06 = request.model === "yixian-h3-u06";
-  const isU00n = request.model === "yixian-h3-u00n";
-  if (!isU06 && !isU00n && request.model !== "yixian-h3-u08") throw new Error("请选择逸仙 H3 极速版 U08、质量版 U06 或升级版 U00N");
-  if (!request.prompt.trim() || request.prompt.length > 20000) throw new Error("逸仙提示词须为 1～20000 个字符，且不能全为空白");
+  const model = modelFor(context, request.model, "video");
+  if (!request.prompt.trim()) throw new Error("请输入生成提示词");
   const images = request.images ?? [];
   const videos = request.videos ?? [];
   const audios = request.audios ?? [];
-  const maxVideos = isU06 ? 3 : isU00n ? 1 : 0;
-  if (images.length > 9 || audios.length > 3 || videos.length > maxVideos) throw new Error(`当前逸仙 H3 模型最多支持 9 张图片、3 段音频和 ${maxVideos} 段视频`);
-  if (audios.length && !images.length && !videos.length) throw new Error("使用音频参考时必须同时提供图片或视频参考");
-  if (request.firstFrame || request.lastFrame) throw new Error("逸仙 H3 不支持首尾帧模式，请使用混合参考模式");
-  if (request.mode && request.mode !== "text" && !Array.isArray(request.mode)) throw new Error("逸仙 H3 仅支持文生视频或混合参考模式");
-  if (request.mode === "text" && images.length + videos.length + audios.length) throw new Error("文生视频模式不能携带参考素材，请选择混合参考模式");
-  if (request.generateAudio !== undefined || request.watermark !== undefined || request.resolution || Object.keys(request.other ?? {}).length) throw new Error("逸仙 H3 的画质、声音和其他高级参数由服务端配置，请使用当前模型提供的选项");
-  const duration = request.duration ?? 10;
-  const ratio = request.ratio ?? (isU00n ? "9:16" : "16:9");
-  if (!Number.isInteger(duration) || duration < 1 || duration > 15) throw new Error("逸仙 H3 时长须为 1～15 秒的整数");
-  if (!ratios.includes(ratio)) throw new Error("逸仙 H3 不支持此画面比例");
-  if (request.seed !== undefined && (!isU06 || !Number.isSafeInteger(request.seed) || request.seed < 0 || request.seed > 2 ** 50)) throw new Error("只有逸仙 U06 支持 seed，范围为 0～1125899906842624 的整数");
-  for (const match of request.prompt.matchAll(/<(Picture|Video|Audio)\s+(\d+)>/g)) {
-    const count = match[1] === "Picture" ? images.length : match[1] === "Video" ? videos.length : audios.length;
-    if (Number(match[2]) < 1 || Number(match[2]) > count) throw new Error(`提示词 ${match[0]} 没有对应的参考素材`);
-  }
-  const references: { field: string; mediaType: keyof typeof mediaLimits; input: MediaInput }[] = [
-    ...images.map((input, index) => ({ field: `ref_image_${index}`, mediaType: "image" as const, input })),
-    ...videos.map((input, index) => ({ field: `ref_video_${index}`, mediaType: "video" as const, input })),
-    ...audios.map((input, index) => ({ field: `ref_audio_${index}`, mediaType: "audio" as const, input })),
-  ];
-  const uploads: { field: string; mediaType: string; bytes: Uint8Array; mimeType: string; extension: string }[] = [];
-  let total = 0;
-  for (const { field, mediaType, input } of references) {
-    const limit = mediaLimits[mediaType];
-    let bytes: Uint8Array;
-    let mimeType = input.mimeType?.split(";")[0].toLowerCase() ?? "";
-    if (input.type === "url") {
-      const url = new URL(input.url);
-      if (url.protocol !== "https:" || url.username || url.password || url.hash) throw new Error("参考素材须使用不含账号密码或片段的 HTTPS 地址");
-      const response = await context.tool.fetch(url, { signal: AbortSignal.timeout(60000), redirect: "error" });
-      if (!response.ok) { await response.body?.cancel(); throw new Error(`读取参考素材失败（HTTP ${response.status}）`); }
-      mimeType ||= response.headers.get("content-type")?.split(";")[0].toLowerCase() ?? "";
-      bytes = await readBytes(response, limit);
-    } else if (input.type === "binary") bytes = input.data;
-    else {
-      const data = input.data.replace(/^data:[^;,]+;base64,/, "").replace(/\s/g, "");
-      if (data.length > Math.ceil(limit / 3) * 4 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(data) || data.length % 4 === 1) throw new Error("参考素材 Base64 无效或超过大小限制");
-      bytes = Buffer.from(data, "base64");
-    }
-    const extension = extensions[mimeType];
-    if (!bytes.byteLength || bytes.byteLength > limit || !extension || !mimeType.startsWith(`${mediaType}/`)) throw new Error(`参考素材类型无效、为空或超过 ${limit / 1024 / 1024} MiB`);
-    total += bytes.byteLength;
-    if (total > 100 * 1024 * 1024) throw new Error("逸仙参考素材合计不能超过 Toonflow 的 100 MiB 传输上限");
-    uploads.push({ field, mediaType, bytes, mimeType, extension });
-  }
-  const parameters: Record<string, unknown> = { prompt: request.prompt, duration, aspect_ratio: ratio };
+  const count = images.length + videos.length + audios.length;
+  const matches = (mode: ImageMode | VideoMode) => {
+    if (Array.isArray(mode)) return !request.firstFrame && !request.lastFrame && count > 0
+      && [["image", images.length], ["video", videos.length], ["audio", audios.length]].every(([type, count]) =>
+        Number(count) <= Number(mode.find(value => value.startsWith(type + "Reference:"))?.split(":")[1] ?? 0));
+    if (mode === "text") return count === 0 && !request.firstFrame && !request.lastFrame;
+    if (mode === "singleImage") return images.length === 1 && !videos.length && !audios.length && !request.firstFrame && !request.lastFrame;
+    if (mode === "startEndRequired") return count === 0 && !!request.firstFrame && !!request.lastFrame;
+    if (mode === "endFrameOptional") return count === 0 && !!request.firstFrame;
+    if (mode === "startFrameOptional") return count === 0 && !!request.lastFrame;
+    return false;
+  };
+  const modes = model.mode ?? [];
+  if (!modes.some(mode => (request.mode === undefined || JSON.stringify(mode) === JSON.stringify(request.mode)) && matches(mode)))
+    throw new Error("参考素材与模型声明的生成模式或数量不匹配");
+  if (images.length < (model.minReferenceImages ?? 0)) throw new Error(`此模型至少需要 ${model.minReferenceImages} 张参考图片`);
+  if (request.other && Object.keys(request.other).length || request.watermark !== undefined) throw new Error("此模型没有声明这些高级参数");
+  const duration = request.duration ?? model.defaultDuration;
+  const resolution = request.resolution ?? model.defaultResolution;
+  const rows = model.durationResolutionMap ?? [];
+  if (duration !== undefined && !rows.some(row => row.duration.includes(duration) && (resolution === undefined || row.resolution.includes(resolution))))
+    throw new Error("时长或分辨率不在模型声明的范围内");
+  if (resolution !== undefined && !rows.some(row => row.resolution.includes(resolution) && (duration === undefined || row.duration.includes(duration))))
+    throw new Error("分辨率不在模型声明的范围内");
+  if (request.ratio !== undefined && !model.videoRatios?.includes(request.ratio)) throw new Error("画面比例不在模型声明的范围内");
+  if (request.seed !== undefined && (!model.supportsSeed || !Number.isSafeInteger(request.seed) || request.seed < 0)) throw new Error("模型不支持此 seed 或 seed 不是非负安全整数");
+  if (request.generateAudio !== undefined && ((model.audio === undefined || model.audio === false) && request.generateAudio || model.audio === true && !request.generateAudio))
+    throw new Error("声音设置不符合模型声明");
+  const parameters: Record<string, unknown> = { prompt: request.prompt };
+  if (duration !== undefined) parameters.duration = duration;
+  if (resolution !== undefined) parameters.resolution = resolution;
+  if (request.ratio !== undefined) parameters.aspect_ratio = request.ratio;
   if (request.seed !== undefined) parameters.seed = request.seed;
-  for (const { field, mediaType, bytes, mimeType, extension } of uploads) {
-    const form = new FormData();
-    form.append("media_type", mediaType);
-    form.append("file", new Blob([Buffer.from(bytes)], { type: mimeType }), `${field}.${extension}`);
-    const { response, value } = await apiRequest(context, `${base}/v1/media`, headers, { method: "POST", body: form });
-    const asset = value.data?.asset;
-    if (!response.ok || value.success !== true || typeof asset?.id !== "string" || !asset.id.trim() || asset.id.length > 2048 || asset.media_type !== mediaType) throw new Error(responseMessage(context, response, value));
-    parameters[field] = { asset_id: asset.id };
+  if (model.audio === true) parameters.generate_audio = true;
+  else if (model.audio === "optional" && request.generateAudio !== undefined) parameters.generate_audio = request.generateAudio;
+  for (const [field, input] of [
+    ...images.map((input, index) => [`ref_image_${index}`, input] as const),
+    ...videos.map((input, index) => [`ref_video_${index}`, input] as const),
+    ...audios.map((input, index) => [`ref_audio_${index}`, input] as const),
+    ["first_frame", request.firstFrame], ["last_frame", request.lastFrame],
+  ] as [string, MediaInput | undefined][]) {
+    if (!input) continue;
+    if (input.type !== "url" || !input.assetId) throw new Error("参考素材尚未上传到逸仙平台");
+    parameters[field] = { asset_id: input.assetId };
   }
   return { base, body: { model: request.model, parameters } };
+}
+
+async function generateImage(this: ProviderContext, request: ImageRequest): Promise<MediaAsset[]> {
+  const model = modelFor(this, request.model, "image");
+  const images = request.images ?? [];
+  const modes = model.mode ?? [];
+  if (!request.prompt.trim()) throw new Error("请输入生成提示词");
+  if (!modes.some(mode => mode === "text" && images.length === 0 || mode === "singleImage" && images.length === 1
+    || mode === "multiReference" && images.length >= Math.max(1, model.minReferenceImages ?? 0))) throw new Error("参考图片不符合模型声明的生成模式");
+  if (request.size !== undefined && !model.imageSizes?.includes(request.size)) throw new Error("图片尺寸不在模型声明的范围内");
+  if (request.ratio !== undefined && !model.imageRatios?.includes(request.ratio)) throw new Error("画面比例不在模型声明的范围内");
+  const n = request.n ?? 1;
+  if (!Number.isSafeInteger(n) || n < 1) throw new Error("图片数量无效");
+  const fields = { model: request.model, prompt: request.prompt, n, ...(request.size ? { size: request.size } : {}), ...(request.ratio ? { aspect_ratio: request.ratio } : {}) };
+  const headers: Record<string, string> = { Authorization: `Bearer ${this.config.apiKey}` };
+  let body: RequestInit["body"];
+  if (images.length) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) form.append(key, String(value));
+    for (const input of images) {
+      if (input.type !== "file") throw new Error("图像参考必须为工作区文件");
+      form.append("image[]", input.file, input.name);
+    }
+    body = form;
+  } else { headers["Content-Type"] = "application/json"; body = JSON.stringify(fields); }
+  const response = await this.tool.fetch(`${this.config.apiUrl}/v1/images/${images.length ? "edits" : "generations"}`, {
+    method: "POST", headers, body, signal: AbortSignal.timeout(300000), redirect: "error",
+  });
+  const bytes = await readBytes(response, 150 * 1024 * 1024);
+  const result = JSON.parse(bytes.toString("utf8")) as { data?: { url?: string; b64_json?: string }[]; error?: unknown };
+  if (!response.ok || !Array.isArray(result.data) || !result.data.length) throw new Error(this.tool.errorMessage(result) || `逸仙图像生成失败（HTTP ${response.status}）`);
+  return result.data.map(item => {
+    if (typeof item.b64_json === "string" && item.b64_json) return { type: "base64", data: item.b64_json, mimeType: "image/png", mediaType: "image" };
+    if (typeof item.url === "string" && /^https:\/\//.test(item.url)) return { type: "url", url: item.url, mediaType: "image" };
+    throw new Error("逸仙未返回有效图片");
+  });
 }
 
 async function wait(context: ProviderContext, milliseconds: number) {
@@ -138,27 +156,13 @@ async function wait(context: ProviderContext, milliseconds: number) {
 
 export default {
   id: "yixianVideo",
-  label: "逸仙视频",
-  version: "1.1.0",
+  label: "逸仙",
+  version: "2.0.0",
   apiUrl: "https://yixian.lol",
-  readme: "逸仙 API 的 MINIMAX-H3 极速版 U08 / 质量版 U06 / 升级版 U00N，支持 1～15 秒，默认 10 秒。所有模型支持最多 9 张参考图片、3 段参考音频；U06 额外支持最多 3 段参考视频及 seed（0 有效）；U00N 额外支持 1 段参考视频，不支持 seed。音频必须搭配图片或视频。连接画布素材节点或在 H3 编辑器上传，图片上限 20 MiB、音频 64 MiB、视频及全部素材合计 100 MiB。素材直接上传逸仙，无需 OSS；提示词使用 <Picture 1>、<Audio 1>、<Video 1> 引用。画质与高级参数使用服务端配置。中断后恢复原任务，不会重复提交；若提交回执丢失且无任务编号，请到逸仙视频专栏核查。",
+  readme: "模型及能力由逸仙平台统一管理。",
   rules,
-  models: [{
-    id: "yixian-h3-u08", label: "MINIMAX-H3 极速版 U08", type: "video",
-    mode: ["text", ["imageReference:9", "audioReference:3"]], taskRecovery: true, defaultDuration: 10,
-    videoRatios: ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"],
-    durationResolutionMap: [{ duration: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: [] }],
-  }, {
-    id: "yixian-h3-u06", label: "MINIMAX-H3 质量版 U06", type: "video",
-    mode: ["text", ["imageReference:9", "videoReference:3", "audioReference:3"]], taskRecovery: true, supportsSeed: true, defaultDuration: 10,
-    videoRatios: ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"],
-    durationResolutionMap: [{ duration: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: [] }],
-  }, {
-    id: "yixian-h3-u00n", label: "MINIMAX-H3 升级版 U00N", type: "video",
-    mode: ["text", ["imageReference:9", "videoReference:1", "audioReference:3"]], taskRecovery: true, defaultDuration: 10,
-    videoRatios: ["9:16", "16:9", "1:1", "2:3", "3:2", "3:4", "4:3", "21:9"],
-    durationResolutionMap: [{ duration: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: [] }],
-  }],
+  models: [],
+  generateImage,
   async generateVideo(request: VideoRequest): Promise<MediaAsset[]> {
     const task = this.videoTask;
     if (!task) throw new Error("逸仙视频需要持久化任务支持，请从视频节点或媒体生成工具使用");

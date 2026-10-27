@@ -6,6 +6,7 @@
       </transition>
     </router-view>
     <ffmpegRequired />
+    <signInDialog v-model="signInVisible" />
     <updateBox
       v-if="updateBoxBuild && !installFailure"
       v-model="updateBoxVisible"
@@ -37,6 +38,8 @@
 </template>
 
 <script setup lang="ts">
+import signInDialog from "@/components/account/signInDialog.vue";
+import { signInVisible, accountView, refreshAccount } from "@/stores/account";
 import { computed, onBeforeUnmount, ref, shallowRef, watch, watchEffect } from "vue";
 import { ElMessage, useZIndex } from "element-plus";
 import type { updateSnapshot } from "@toonflow/server/desktop";
@@ -154,6 +157,12 @@ watchEffect(() => {
   }
   root.style.setProperty("--el-color-primary-dark-2", `color-mix(in srgb, ${color} 80%, ${dark ? "#fff" : "#000"})`);
 });
+
+function requestSignIn() { accountView.value = undefined; signInVisible.value = true; }
+window.addEventListener("toonflow:sign-in", requestSignIn);
+const accountTimer = setInterval(() => { void refreshAccount().catch(error => console.warn("刷新账户失败", error)); }, 10 * 60_000);
+void refreshAccount().catch(error => console.warn("读取账户失败", error));
+onBeforeUnmount(() => { clearInterval(accountTimer); window.removeEventListener("toonflow:sign-in", requestSignIn); });
 </script>
 
 <style lang="scss">

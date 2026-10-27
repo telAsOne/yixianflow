@@ -9,6 +9,7 @@ export type { VideoTaskStatus, ImageTaskStatus } from "@toonflow/tools-scaffold/
 import type { NodeOutput } from "./values";
 
 export type NodeAiModel = {
+  isDefault?: boolean;
   providerId: string;
   providerLabel: string;
   modelId: string;
@@ -63,6 +64,7 @@ export type NodeAiTool = {
 
 async function readResult<T>(response: Response): Promise<T> {
   const result = await response.json();
+  if (response.status === 401 || result.code === 401) window.dispatchEvent(new Event("toonflow:sign-in"));
   if (!response.ok || result.code !== 200) throw Object.assign(new Error(result.message || `AI 请求失败（HTTP ${response.status}）`), { status: response.ok ? result.code : response.status });
   return result.data;
 }

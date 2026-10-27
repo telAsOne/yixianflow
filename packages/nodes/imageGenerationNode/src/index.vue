@@ -58,6 +58,7 @@
           @remove="removeReference" />
         <promptInput v-if="editor?.mode === 'inpaint'" v-model="data.inpaintPromptModel" v-model:text="data.inpaintPrompt" :references="referenceMentions" expandable />
         <promptInput v-else v-model="data.promptModel" v-model:text="data.prompt" :references="referenceMentions" expandable />
+        <p v-if="data.model && !selectedModel && !modelsLoading" role="alert">模型不可用，请选择其他模型</p>
         <div class="promptFooter">
           <el-select
             v-if="editor?.mode !== 'inpaint'"
@@ -279,8 +280,9 @@ async function confirmInpaint() {
 }
 
 async function startGeneration() {
+  const shouldResume = pendingTask.value;
   await refreshImageTask();
-  if (pendingTask.value) return resumeGeneration();
+  if (shouldResume || pendingTask.value) return resumeGeneration();
   const choice = selectedModel.value;
   if (generating.value) throw new Error("图片正在生成，请等待完成");
   if (panorama.value?.visible) throw new Error("请先关闭全景图，再启动图片生成");

@@ -10,7 +10,9 @@ import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/
 import { runVideoTask } from "@/utils/media/videoTasks";
 export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
-import { getOssStorageSettings, uploadOssReferences } from "@/utils/media/oss";
+import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
+import { file } from "@toonflow/file/bun";
+import { requireAccount, getConfigState } from "@/utils/account";
 import { detectMimeType } from "@/utils/media/mimeType";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
 
@@ -37,11 +39,15 @@ function imageOptions(value: unknown, pattern: RegExp) {
 
 export async function listMediaModels(): Promise<MediaModel[]> {
   const installedProviders = await listMediaProviders();
+  const { limits: uploadLimits, imageTotalMaxBytes } = getConfigState();
+  const defaults = conf.get("settings.defaultModels") as Record<string, { modelId: string } | null> | undefined;
   return installedProviders.flatMap(provider => provider.models.flatMap(model => {
-    if (model.type !== "image" && model.type !== "video" && model.type !== "audio") return [];
+    if (model.type !== "image" && model.type !== "video") return [];
     const builtIn = (mediaProviders as readonly Provider[]).find(item => item.id === provider.id)?.models.find(item => item.id === model.id);
     return [{
       providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label, type: model.type,
+      uploadLimits: model.type === "image" ? { ...uploadLimits, requestTotalMaxBytes: imageTotalMaxBytes } : uploadLimits,
+      isDefault: defaults?.[model.type]?.modelId === model.id,
       mode: model.mode, durationResolutionMap: model.durationResolutionMap, audio: model.audio,
       ...(model.type === "video" ? {
         videoRatios: imageOptions(model.videoRatios, /^[1-9]\d{0,3}:[1-9]\d{0,3}$/),
@@ -53,7 +59,6 @@ export async function listMediaModels(): Promise<MediaModel[]> {
         defaultResolution: typeof model.defaultResolution === "string" ? model.defaultResolution : undefined,
       } : {}),
       taskRecovery: model.taskRecovery === true,
-      ...(model.type === "audio" ? { voices: model.voices } : {}),
       ...(model.type === "image" ? {
         imageSizes: imageOptions(Array.isArray(model.imageSizes) ? model.imageSizes : builtIn?.imageSizes, /^[^\u0000-\u001f\u007f]+$/),
         imageRatios: imageOptions(Array.isArray(model.imageRatios) ? model.imageRatios : builtIn?.imageRatios, /^[1-9]\d{0,3}:[1-9]\d{0,3}$/),
@@ -155,6 +160,7 @@ export async function generateMedia(
   cwd: string, mediaType: "image" | "video" | "audio", request: MediaGenerationRequest,
   signal?: AbortSignal, videoTask?: VideoTaskContext, imageTask?: ImageTaskContext,
 ): Promise<GeneratedMedia[]> {
+  requireAccount();
   const directory = await realpath(cwd);
   const outputDirectory = request.outputDirectory ?? "assets/generated";
   const output = await resolveWorkspacePath(directory, outputDirectory, true);
@@ -197,7 +203,7 @@ async function generateMediaResult(
       if (request.images?.length || request.referenceImageUrls?.length || request.audios?.length || request.videos?.length) invalid("首尾帧模式不支持额外参考图片、音频或视频");
     }
     if (mediaType === "video" && model.referenceImageInput === "url" && (request.images?.length ?? 0) + (request.referenceImageUrls?.length ?? 0) > 9) invalid("本地参考图与 HTTPS 链接合计最多 9 张");
-    if (request.seed !== undefined && (mediaType !== "video" || model.supportsSeed !== true || !Number.isSafeInteger(request.seed))) invalid("当前模型不支持 seed 或 seed 不是安全整数");
+    if (request.seed !== undefined && (mediaType !== "video" || model.supportsSeed !== true || !Number.isSafeInteger(request.seed) || request.seed < 0)) invalid("当前模型不支持 seed 或 seed 不是非负安全整数");
     if (mediaType === "video" && model.referenceAudioInput === "url") {
       const modes = Array.isArray(model.mode) ? model.mode.filter(Array.isArray) : [];
       const limit = Math.max(0, ...modes.flat().filter((value): value is string => typeof value === "string" && /^audioReference:\d+$/.test(value)).map(value => Number(value.split(":")[1])));
@@ -215,114 +221,32 @@ async function generateMediaResult(
   }
   // 恢复使用首次保存的原始请求，不重新读取可能已修改或删除的参考素材。
   const restoring = videoTask?.requestSaved === true || imageTask?.requestSaved === true;
-  const uploadImages = !restoring && mediaType === "video" && model.referenceImageInput === "url";
-  const uploadAudios = !restoring && mediaType === "video" && model.referenceAudioInput === "url";
-  const localFrames = [request.firstFrame, request.lastFrame].filter((frame): frame is MediaReference => !!frame && "path" in frame);
-  const uploadReferences = [...(uploadImages ? [...(request.images ?? []), ...localFrames] : []), ...(uploadAudios ? request.audios ?? [] : [])];
-  const ossConfig = uploadReferences.length ? getOssStorageSettings() : undefined;
-  if (ossConfig) {
-    let total = 0;
-    for (const input of uploadReferences) {
-      const { path } = await resolveWorkspacePath(directory, input.path);
-      const info = await stat(path);
-      if (!info.isFile() || !info.size || info.size > 20 * 1024 * 1024) invalid("OSS 本地参考素材为空或超过单个 20 MiB 的传输限制");
-      total += info.size;
-      if (total > 300 * 1024 * 1024) invalid("OSS 本地参考素材合计超过 300 MiB 的传输限制");
+  let images: MediaInput[] | undefined;
+  let audios: MediaInput[] | undefined;
+  let videos: MediaInput[] | undefined;
+  let firstFrame: MediaInput | undefined;
+  let lastFrame: MediaInput | undefined;
+  if (!restoring) {
+    const frames = [request.firstFrame, request.lastFrame].filter((frame): frame is MediaReference => !!frame && "path" in frame);
+    if (request.referenceImageUrls?.length || [request.firstFrame, request.lastFrame].some(frame => frame && "url" in frame)) invalid("逸仙参考素材须先保存到工作区");
+    const references = [
+      ...(request.images ?? []).map(item => ({ ...item, mediaType: "image" as const })),
+      ...(request.audios ?? []).map(item => ({ ...item, mediaType: "audio" as const })),
+      ...(request.videos ?? []).map(item => ({ ...item, mediaType: "video" as const })),
+      ...frames.map(item => ({ ...item, mediaType: "image" as const })),
+    ];
+    if (mediaType === "video" && model.referenceInput === "platformAsset") {
+      const uploaded = await uploadPlatformReferences(directory, references, signal);
+      let index = request.images?.length ?? 0;
+      images = uploaded.slice(0, index);
+      audios = uploaded.slice(index, index += request.audios?.length ?? 0);
+      videos = uploaded.slice(index, index += request.videos?.length ?? 0);
+      if (request.firstFrame) firstFrame = uploaded[index++];
+      if (request.lastFrame) lastFrame = uploaded[index];
+    } else if (mediaType === "image") {
+      const prepared = await preparePlatformReferences(directory, references, signal, getConfigState().imageTotalMaxBytes);
+      images = prepared.map(item => ({ type: "file", file: file(item.path, { type: item.mimeType }), mimeType: item.mimeType, name: item.name }));
     }
-  }
-  if (!restoring && providerInfo.id === "dola") {
-    if (mediaType === "image" && request.images?.length) invalid("Dola 图片模型仅支持文生图，不能使用参考图或局部重绘");
-    if ((request.images?.length ?? 0) > 9) invalid("Dola 视频最多使用 9 张参考图片");
-    for (const image of request.images ?? []) {
-      const { path } = await resolveWorkspacePath(directory, image.path);
-      const info = await stat(path);
-      if (!info.isFile() || !info.size || info.size > 20 * 1024 * 1024) invalid("Dola 参考图片为空或超过 20 MiB");
-    }
-  }
-  if (!restoring && providerInfo.id === "laoliVideo") {
-    if ((request.images?.length ?? 0) > 30) invalid("特价 2.5 最多使用 30 张参考图片");
-    let total = 0;
-    for (const image of request.images ?? []) {
-      const { path } = await resolveWorkspacePath(directory, image.path);
-      const info = await stat(path);
-      if (!info.isFile() || !info.size || info.size > 50 * 1024 * 1024) invalid("参考图片为空或超过 50 MiB");
-      total += info.size;
-      if (total > 70 * 1024 * 1024) invalid("参考图片合计不能超过 70 MiB");
-    }
-  }
-  if (!restoring && providerInfo.id === "fankeVideo") {
-    const limits = (Array.isArray(model.mode) ? model.mode : []).find(Array.isArray) ?? [];
-    for (const [type, items] of [["image", request.images], ["audio", request.audios]] as const) {
-      const limit = Number(limits.find(value => typeof value === "string" && value.startsWith(`${type}Reference:`))?.split(":")[1] ?? 0);
-      if ((items?.length ?? 0) > limit) invalid(`此 Foke Video 模型最多支持 ${limit} 个 ${type === "image" ? "图片" : "音频"}参考`);
-    }
-    if (request.videos?.length || request.firstFrame || request.lastFrame) invalid("这 4 个 Foke Video 模型不支持参考视频或首尾帧模式");
-    let total = 0;
-    for (const input of [...(request.images ?? []), ...(request.audios ?? [])]) {
-      const { path } = await resolveWorkspacePath(directory, input.path);
-      const info = await stat(path);
-      if (!info.isFile() || !info.size) invalid("Foke Video 参考素材必须为非空文件");
-      total += info.size;
-      if (total > 90 * 1024 * 1024) invalid("Foke Video 参考素材合计超过本地 90 MiB 传输上限");
-    }
-  }
-  if (!restoring && providerInfo.id === "laoliImage") {
-    let total = 0;
-    for (const image of request.images ?? []) {
-      const { path } = await resolveWorkspacePath(directory, image.path);
-      const info = await stat(path);
-      if (!info.isFile() || !info.size || info.size > 25 * 1024 * 1024) invalid("参考图为空或超过当前 25 MiB 单图传输预算");
-      total += info.size;
-      if (total > 32 * 1024 * 1024) invalid("参考图合计超过当前 32 MiB 传输预算");
-    }
-  }
-  if (!restoring && providerInfo.id === "yixianVideo") {
-    const maxVideos = model.id === "yixian-h3-u06" ? 3 : model.id === "yixian-h3-u00n" ? 1 : 0;
-    if ((request.images?.length ?? 0) > 9 || (request.audios?.length ?? 0) > 3 || (request.videos?.length ?? 0) > maxVideos) invalid(`当前逸仙 H3 模型最多支持 9 张图片、3 段音频和 ${maxVideos} 段视频`);
-    if (request.audios?.length && !request.images?.length && !request.videos?.length) invalid("使用音频参考时必须同时提供图片或视频参考");
-    let total = 0;
-    // ACT: 宿主通过 Base64 传递素材，读取前限制合计 100 MiB；更大素材需改为流式上传。
-    for (const [type, items, limit] of [["图片", request.images, 20], ["音频", request.audios, 64], ["视频", request.videos, 100]] as const) {
-      for (const input of items ?? []) {
-        const { path } = await resolveWorkspacePath(directory, input.path);
-        const info = await stat(path);
-        if (!info.isFile() || !info.size || info.size > limit * 1024 * 1024) invalid(`逸仙参考${type}为空或超过 ${limit} MiB`);
-        total += info.size;
-        if (total > maxMediaSize) invalid("逸仙本地参考素材合计不能超过 100 MiB");
-      }
-    }
-  }
-  if (!restoring && providerInfo.id === "zealmanH3") {
-    if ((request.images?.length ?? 0) > 9 || (request.audios?.length ?? 0) > (model.id === "u32" ? 0 : 3)) invalid("ZEALMAN-H3 最多支持 9 张图片、3 段音频，U32 不支持音频参考");
-    if ((request.videos?.length ?? 0) > (model.id === "u06" ? 3 : 0) || request.firstFrame || request.lastFrame) invalid("ZEALMAN-H3 仅 U06 支持最多 3 段参考视频，预置工作流不支持首尾帧模式");
-    let total = 0;
-    // ACT: 宿主以 Base64 在内存传递素材，读取前限制合计 100 MiB；更大素材须先支持流式上传。
-    for (const input of [...(request.images ?? []), ...(request.videos ?? []), ...(request.audios ?? [])]) {
-      const { path } = await resolveWorkspacePath(directory, input.path);
-      const info = await stat(path);
-      if (!info.isFile() || !info.size) invalid("ZEALMAN-H3 参考素材必须为非空文件");
-      total += info.size;
-      if (total > maxMediaSize) invalid("ZEALMAN-H3 本地参考素材合计不能超过 100 MiB");
-    }
-  }
-  const references = async (items: MediaReference[] | undefined, type: string) => items ? Promise.all(items.map(item => readReference(directory, item, type, signal))) : undefined;
-  let images: MediaInput[] | undefined = restoring ? undefined : await references(request.images, "image");
-  let audios: MediaInput[] | undefined = restoring || mediaType === "image" ? undefined : await references(request.audios, "audio");
-  let [firstFrame, lastFrame] = await Promise.all([request.firstFrame, request.lastFrame].map(async (frame): Promise<MediaInput | undefined> => {
-    if (restoring || mediaType !== "video" || !frame) return undefined;
-    return "url" in frame ? { type: "url", url: frame.url } : readReference(directory, frame, "image", signal);
-  }));
-  if (!restoring && request.referenceImageUrls?.length) images = [...(images ?? []), ...request.referenceImageUrls.map((url): MediaInput => ({ type: "url", url }))];
-  if (ossConfig) {
-    const imageInputs = uploadImages ? [...(images ?? []), ...(firstFrame ? [firstFrame] : []), ...(lastFrame ? [lastFrame] : [])] : [];
-    const uploaded = await uploadOssReferences([...imageInputs, ...(uploadAudios ? audios ?? [] : [])], ossConfig, signal);
-    if (uploadImages) {
-      let frameIndex = images?.length ?? 0;
-      if (images) images = uploaded.slice(0, frameIndex);
-      if (firstFrame) firstFrame = uploaded[frameIndex++];
-      if (lastFrame) lastFrame = uploaded[frameIndex];
-    }
-    if (uploadAudios && audios) audios = uploaded.slice(imageInputs.length);
   }
   signal?.throwIfAborted();
   const assets = mediaType === "audio"
@@ -334,7 +258,7 @@ async function generateMediaResult(
     ? await provider.generateImage!({ model: request.modelId, prompt: request.prompt, images, ratio: request.ratio, size: request.size })
     : await provider.generateVideo!({
       model: request.modelId, prompt: request.prompt, images,
-      videos: restoring ? undefined : await references(request.videos, "video"), audios,
+      videos, audios,
       firstFrame, lastFrame,
       ratio: request.ratio, resolution: request.resolution, duration: request.duration,
       generateAudio: request.generateAudio, mode: request.mode, seed: request.seed,
@@ -342,7 +266,7 @@ async function generateMediaResult(
     });
   if (!Array.isArray(assets) || !assets.length) invalid("供应商未返回生成结果");
   if (videoTask && assets.length !== 1) invalid("此任务应生成一条视频");
-  if (imageTask && assets.length !== (providerInfo.id === "dola" ? 4 : 1)) invalid("图片任务返回的数量与渠道约定不符，已保留原任务");
+  if (imageTask && assets.length !== 1) invalid("图片任务返回的数量与渠道约定不符，已保留原任务");
   if (videoTask?.downloaded) {
     if (assets[0] !== videoTask.downloaded) invalid("供应商返回的文件不是本任务下载结果");
     signal?.throwIfAborted();
@@ -383,3 +307,5 @@ async function generateMediaResult(
     throw err;
   }
 }
+
+export { validateReferenceSelection } from "./upload";

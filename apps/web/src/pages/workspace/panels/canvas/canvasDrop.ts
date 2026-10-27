@@ -1,4 +1,5 @@
 import axios from "axios";
+import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
 import { ElMessage } from "element-plus";
 import type { useVueFlow } from "@vue-flow/core";
 import { uploadNodeFile } from "@toonflow/nodes-scaffold/workspaceFiles";
@@ -92,6 +93,7 @@ export async function dropCanvasFiles(event: DragEvent, context: CanvasFileConte
 export async function importCanvasFiles(droppedFiles: File[], position: { x: number; y: number }, context: CanvasFileContext) {
   const { signal, flow, availableNodes } = context;
   const files = useWorkspaceFiles(context.directory);
+  await validateMediaFiles(droppedFiles.map(file => ({ type: inferredMediaType(file), size: file.size })).filter(file => /^(image|audio|video)\//.test(file.type)));
   for (const [index, file] of droppedFiles.entries()) {
     if (signal.aborted) break;
     const id = crypto.randomUUID();

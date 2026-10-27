@@ -182,7 +182,6 @@ import type { ClientFileDirectory, ClientFileResult } from "@toonflow/tools-scaf
 import { createPastedTextFile, readTextAttachment } from "./textAttachments";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { writeClipboardText } from "@/lib/clipboard";
-import anonymousData from "@/lib/anonymousData";
 import { modelChoices } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { AgentAttachment, AgentConversation, AgentMessage } from "./types";
@@ -646,7 +645,6 @@ async function sendMessage(source?: AgentMessage) {
   const pendingQuestions = new Map<string, string>();
   const activeChildFiles = new Set<string>();
   let clientFiles: { runId: string; directory: ClientFileDirectory } | undefined;
-  const finishStats = anonymousData.startAgent();
   try {
     if (!source) await instance.reset();
     requestController.signal.throwIfAborted();
@@ -660,6 +658,7 @@ async function sendMessage(source?: AgentMessage) {
       body: JSON.stringify({ prompt, messageId: userMessage.id, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, clientFiles, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
       signal: requestController.signal,
     });
+    if (response.status === 401) window.dispatchEvent(new Event("toonflow:sign-in"));
     for await (const event of readAgentEvents(response, requestController.signal)) {
       // 子任务复用发起委派时的画布与取消通道，界面切换不改变工具执行目标。
       let toolEvent: AgentEvent = event;
@@ -716,11 +715,9 @@ async function sendMessage(source?: AgentMessage) {
       }
     }
     if (source && !accepted) throw new Error("服务端未确认重发，请重新打开对话后重试");
-    finishStats(requestController.signal.aborted || stopping.value ? "cancelled" : "success");
     emit("sent", mentionPlainText(prompt, mentions) || attachments[0]?.name || "新对话");
   } catch (error) {
     const cancelled = requestController.signal.aborted || stopping.value;
-    finishStats(cancelled ? "cancelled" : "failed");
     const responseMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
     const message = cancelled ? "已停止生成" : responseMessage || (error instanceof Error ? error.message : "发送失败，请重试");
     if (!accepted || !ownsStream) { userMessage.error = message; ElMessage.error(message); }

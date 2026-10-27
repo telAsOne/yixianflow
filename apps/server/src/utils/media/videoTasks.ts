@@ -1,3 +1,4 @@
+import { platformFetch } from "@/utils/account";
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
 import { constants, copyFile, createReadStream, link, mkdir, open, readFile, stat, unlink, writeAtomic } from "@toonflow/file";
@@ -167,7 +168,7 @@ async function downloadAttempt(
         const target = new URL(url);
         if (!(target.protocol === "https:" || (source === "publicHttpCdn" && target.protocol === "http:")) || target.username || target.password) invalid("成品链接的协议或账号密码不符合此渠道下载要求");
       }
-      response = await fetch(url, {
+      response = await (source === "gateway" ? platformFetch : fetch)(url, {
         headers: { ...headers, ...(offset ? { Range: `bytes=${offset}-`, "If-Range": record.download!.validator! } : {}) },
         signal: downloadSignal, redirect: "manual",
       });

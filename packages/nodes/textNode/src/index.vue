@@ -27,6 +27,7 @@
             @remove="removeReference" />
         </div>
         <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" />
+        <p v-if="model && !selectedModel && !modelsLoading" role="alert">模型不可用，请选择其他模型</p>
         <div class="promptFooter">
           <el-select v-model="model" class="modelSelect" filterable :loading="modelsLoading" :disabled="generating" placeholder="选择模型" aria-label="生成模型" noDataText="请先在设置中添加模型" placement="top-start" @change="rememberPreferences" @visibleChange="(visible: boolean) => visible && loadModels()">
             <template #prefix><icon-sparkles :size="17" /></template>
@@ -49,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from "vue";
+import { computed, inject, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElAlert, ElButton, ElCard, ElSelect, ElDialog, ElOption, ElOptionGroup, ElMessage, ElMessageBox } from "element-plus";
 import { IconEdit, IconFileText, IconSparkles, IconArrowUp } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeAiModel, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
@@ -207,6 +208,9 @@ nodeEvent.on("copy", () => {
 });
 
 onMounted(loadModels);
+const refreshModels = (event: Event) => { if ((event as CustomEvent<{ type: string }>).detail.type === "provider") void loadModels(); };
+window.addEventListener("toonflow:plugin-installed", refreshModels);
+onScopeDispose(() => window.removeEventListener("toonflow:plugin-installed", refreshModels));
 
 async function loadModels() {
   if (modelsLoading.value) return;
@@ -214,7 +218,7 @@ async function loadModels() {
   try {
     models.value = await ai.getModels();
     if (!model.value) {
-      const first = models.value[0];
+      const first = models.value.find(model => model.isDefault) ?? models.value[0];
       model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
   } catch (error) {

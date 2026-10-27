@@ -13,7 +13,6 @@ import { registerDesktopProtocol } from "@/lib/desktopProtocol";
 import { registerDownloads } from "@/lib/saveFile";
 import { isMobile, isRemoteConnection } from "@/lib/mobile";
 import { getMissingBrowserFeatures } from "@/lib/browserCapabilities";
-import { registerAnonymousData } from "@/lib/anonymousData";
 import { flushSettings, loadSettings, settingsStorage } from "@/stores/settings";
 import { flushWorkspaceSave } from "@/lib/mcpControl";
 import { checkDesktopUpdate } from "@/stores/desktopUpdate";
@@ -90,7 +89,6 @@ async function notifyDesktopReady(failed = false) {
   app.use(createPinia().use(createPersistedState({ storage: settingsStorage })));
   app.use(router);
   await router.isReady();
-  app.onUnmount(registerAnonymousData());
   app.mount("#app");
   isMounted = true;
   app.onUnmount(registerDownloads());

@@ -200,7 +200,6 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { generalSettings } from "@/stores/settings";
 import { getShortcutBindings, shortcutLabel, shortcutMatches, shortcutPressed } from "@/lib/canvasShortcuts";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
-import anonymousData from "@/lib/anonymousData";
 import { createClipboardMediaFile, dropCanvasFiles, getClipboardMediaFiles, importCanvasFiles, isCanvasFileDrag } from "./canvasDrop";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
@@ -279,9 +278,6 @@ const navigation = useCanvasNavigation(flow, () =>
 );
 const canvasDirty = ref(false);
 const canvasSaveError = ref("");
-onScopeDispose(anonymousData.observeCanvas(() => props.active && canvasId.value
-  ? { nodes: flow.nodes.value, edgeCount: flow.edges.value.length }
-  : undefined));
 let dragCopy: ReturnType<InstanceType<typeof selectionToolbar>["startDragCopy"]>;
 flow.onNodeDragStart(({ event, nodes }) => {
   dragCopy = undefined;

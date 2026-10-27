@@ -80,25 +80,25 @@ export async function createApp({
 
   if (process.env.NODE_ENV === "dev") {
     await buildRoute();
-    app.use(logger("dev"));
+    app.use(logger("dev", { skip: req => req.path === "/api/account/callback" }));
   }
   const { sameOriginOnly, allowedHosts } = await import("@/lib/middleware");
   app.use(languageRequest);
   if (hostnames) app.use(allowedHosts(hostnames));
   app.use(sameOriginOnly);
   app.use("/a2a", express.json({ limit: "2mb" }));
-  app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "100mb" }));
+  app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "512mb" }));
   // ACT: 源码、Base64 安装包、画布快照和含媒体的对话保留原上限，其余 JSON 限制为 10 MB。
   app.use([
     "/api/tools/install", "/api/nodes/install", "/api/ext/install", "/api/skills/install", "/api/agents/install",
     "/api/skills/save", "/api/agents/save", "/api/workspaces/canvas/save", "/api/workspaces/canvas/recovery/save",
-    "/api/ai/generate", "/api/providers/debug/run", "/api/agent", "/api/singleAgent/toolResult", "/api/mcp/control/result",
+    "/api/ai/generate", "/api/agent", "/api/singleAgent/toolResult", "/api/mcp/control/result",
   ], express.json({ limit: "100mb" }));
   app.use(express.json({ limit: "10mb" }));
   app.use("/api/desktop", desktopRequest);
 
-  const { default: initializeProviderModels } = await import("@/utils/ai/initialize");
-  await initializeProviderModels();
+  const { initializeAccount } = await import("@/utils/account");
+  await initializeAccount(appVersion || process.env.appVersion || "2.0.0");
   const router = await import("@/router");
   router.default(app);
   const [{ createMcpRouter }, { getMcpTools }, { authorizeMcp }, { skillResources }] = await Promise.all([

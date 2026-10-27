@@ -1,7 +1,6 @@
 import { getLocale, t, validationOptions } from "@/lib/i18n";
 import { z } from "zod";
 import { toolNameSchema } from "@toonflow/tools-scaffold/runtime";
-import { mediaModelsSchema, mediaProviderFileSchema } from "@/utils/media/provider";
 import { getAppRequestHeaders, getMcpRuntime } from "@/utils/mcp/runtime";
 
 const maxBytes = 20 * 1024 * 1024;
@@ -95,19 +94,7 @@ export const appOperations: {
     parameters: z.strictObject({ name: skillName }), refresh: { type: "skill", nameField: "name" },
   },
   {
-    name: "listMediaProviders", description: "读取媒体供应商及预置 models、配置 revision；保存与删除时使用最新 revision。", method: "GET", path: "/api/providers/media/list", parameters: z.strictObject({}),
-  },
-  {
-    name: "addMediaProvider", description: "从完整 TypeScript source 添加媒体供应商，沿用现有供应商结构检查。", method: "POST", path: "/api/providers/media/add",
-    parameters: z.strictObject({ source: z.string().min(1).max(2 * 1024 * 1024) }), refresh: { type: "provider" },
-  },
-  {
-    name: "saveMediaProviderModels", description: "修改供应商 TS 中的 models；revision 不匹配时拒绝覆盖。API Key 等凭证通过 updateSettings 配置。", method: "PUT", path: "/api/providers/media/save",
-    parameters: z.strictObject({ fileName: mediaProviderFileSchema, models: mediaModelsSchema, revision }), refresh: { type: "provider", nameField: "fileName" },
-  },
-  {
-    name: "deleteMediaProvider", description: "删除指定媒体供应商及其保存的配置；必须提供当前 revision。", method: "DELETE", path: "/api/providers/media/delete",
-    parameters: z.strictObject({ fileName: mediaProviderFileSchema, revision }), refresh: { type: "provider", nameField: "fileName" },
+    name: "listMediaProviders", description: "读取逸仙平台的媒体模型。", method: "GET", path: "/api/providers/media/list", parameters: z.strictObject({}),
   },
   {
     name: "listAssets", description: "分页列出全局素材库的一层目录，每页最多 200 项；有 nextOffset 时继续读取。query 搜索子目录文件，每页最多 50 项，有 nextCursor 时继续。与工作区 assets 目录不同。", method: "GET", path: "/api/assets/list", parameters: z.strictObject({ path: z.string().optional(), offset: z.number().int().nonnegative().optional(), directoriesOnly: z.enum(["true", "false"]).optional(), query: z.string().max(256).optional(), cursor: z.string().optional() }),

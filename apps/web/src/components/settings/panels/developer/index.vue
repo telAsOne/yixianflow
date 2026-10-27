@@ -29,7 +29,6 @@
           <h3>供应商开发工具</h3>
           <p>授权读取本地供应商文件，调试生成接口与媒体结果。</p>
         </div>
-        <el-button :icon="IconCode" @click="providerDebugVisible = true">开发供应商</el-button>
       </div>
       <div class="developerRow">
         <div class="toolDescription">
@@ -108,7 +107,6 @@
         </div>
       </div>
     </div>
-    <providerDebugDialog v-if="providerDebugVisible" v-model="providerDebugVisible" />
     <systemPromptDialog v-if="systemPromptVisible" v-model="systemPromptVisible" />
     <updateBox v-if="updateBoxVisible" v-model="updateBoxVisible" :version="updateBoxBuild.version" :buildCode="updateBoxBuild.hash || translate('未提供')" />
     <div v-if="developerLocked" class="developerConfirm">
@@ -140,8 +138,6 @@ const developerStore = useDeveloperStore();
 const hello = useHelloStore();
 const router = useRouter();
 const resettingHello = ref(false);
-const providerDebugDialog = defineAsyncComponent(() => import("./providerDebugDialog.vue"));
-const providerDebugVisible = ref(false);
 const systemPromptDialog = defineAsyncComponent(() => import("./systemPromptDialog.vue"));
 const systemPromptVisible = ref(false);
 const updateBox = defineAsyncComponent(() => import("@/components/updateBox.vue"));

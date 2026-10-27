@@ -1,3 +1,4 @@
+import { platformFetch } from "@/utils/account";
 import type { Api, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
@@ -104,7 +105,7 @@ export function withRequestBudget(stream: Stream, provider: RequestProvider, sta
         return payload;
       },
       fetch: Object.assign(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-        const response = await fetchRequest(input, init);
+        const response = await platformFetch(input, init);
         if (response.status !== 413) return response;
         await response.body?.cancel();
         const retry = canRecover && !recovery;

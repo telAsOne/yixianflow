@@ -13,7 +13,7 @@ const entrySchema = z.object({
 
 export function createReferenceCache(id: string, config: Record<string, unknown>, cwd?: string, signal?: AbortSignal): ProviderTools["withReferenceCache"] {
   return async action => {
-    const scope = createHash("sha256").update(JSON.stringify([id, new URL(String(config.apiUrl)).origin, String(config.apiKey ?? "").trim()])).digest("hex");
+    const scope = createHash("sha256").update(JSON.stringify([id, new URL(String(config.apiUrl)).origin, config.userId ?? String(config.apiKey ?? "").trim()])).digest("hex");
     const directory = join(dirname(conf.path), "mediaReferenceCache", id, scope);
     const pathFor = (digest: string) => {
       if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error("素材缓存须使用 SHA-256 摘要");

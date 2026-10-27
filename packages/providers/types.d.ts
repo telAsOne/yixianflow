@@ -24,6 +24,7 @@ interface ProviderModel {
   videoRatios?: string[];
   /** 图片和首尾帧须使用公网链接，本地图片由宿主上传。 */
   referenceImageInput?: "url";
+  referenceInput?: "platformAsset";
   /** 参考音频须由宿主上传为公网链接。 */
   referenceAudioInput?: "url";
   supportsSeed?: boolean;
@@ -47,6 +48,7 @@ type ProviderConfig<TRules extends readonly ProviderFormRule[]> = {
 
 interface ProviderContext<TConfig = Record<string, unknown>> {
   config: TConfig;
+  models: ProviderModel[];
   signal?: AbortSignal;
   /** 宿主直接注入工具，供应商无需 import；FFmpeg 为按需安装的插件能力。 */
   tool: ProviderTools;
@@ -108,7 +110,8 @@ interface MediaRequest {
 
 /** 抽象层的媒体来源；供应商负责转换为平台需要的 URL、文件或字节。 */
 type MediaInput =
-  | { type: "url"; url: string; mimeType?: string; name?: string }
+  | { type: "url"; url: string; mimeType?: string; name?: string; assetId?: string }
+  | { type: "file"; file: Blob; mimeType: string; name: string }
   | { type: "base64"; data: string; mimeType: string; name?: string }
   | { type: "binary"; data: Uint8Array; mimeType: string; name?: string };
 
@@ -281,7 +284,7 @@ interface ProviderDefinition<TRules extends readonly ProviderFormRule[] = readon
    * 媒体模型列表 GET 地址，使用配置的 apiKey 作为 Bearer 凭据，返回 { data: 模型数组 }。
    * 模型须含 id，type 可由 URL 的 type 参数或同名已有模型补全。
    * 可选 modelInfo 对象提供模型能力（如 mode、audio、durationResolutionMap、imageSizes、imageRatios），获取时合并至模型顶层。
-   * 提供此字段后可手动获取；TF-Router 手动获取图片、视频、音频，并在有 key 的程序启动时自动更新。
+   * 模型目录由逸仙管理面板维护。
    */
   modelsUrl?: string;
   protocol?: "openai-completions" | "openai-responses" | "anthropic-messages";

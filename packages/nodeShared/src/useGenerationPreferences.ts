@@ -2,7 +2,7 @@ import { inject, nextTick } from "vue";
 
 const preferenceFields: Record<string, Record<string, string>> = {
   image: { model: "string", size: "string", ratio: "string" },
-  video: { model: "string", duration: "number", resolution: "string", ratio: "string", mode: "string", generateAudio: "boolean" },
+  video: { duration: "number", resolution: "string", ratio: "string", mode: "string", generateAudio: "boolean" },
   audio: { model: "string", language: "string", sampleRate: "number", format: "string" },
   text: { model: "string" },
 };

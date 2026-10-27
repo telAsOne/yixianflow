@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
 import { computed, ref } from "vue";
 import { IconMusic, IconUpload, IconTransfer, IconScissors, IconGauge } from "@tabler/icons-vue";
 import { ElButton, ElMessage } from "element-plus";
@@ -118,9 +119,9 @@ async function uploadAudio(event: Event) {
   input.value = "";
   if (!file || uploading.value || actions.value?.processing) return;
   if (!file.type.startsWith("audio/")) return void ElMessage.error("请选择音频文件");
-  if (!file.size || file.size > 100 * 1024 * 1024) return void ElMessage.error("音频不能为空且不能超过 100 MB");
   uploading.value = true;
   try {
+    await validateMediaFiles([file]);
     const url = await files.uploadFile(file);
     // ACT: 复制节点可能仍引用旧音频，替换输出不删除共享文件。
     outputs.value.audio = { dataType: "AUDIO", value: { url, mimeType: file.type } };

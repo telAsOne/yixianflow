@@ -7,6 +7,12 @@ export function detectMimeType(bytes: Uint8Array, fallback: string) {
   if (/^GIF8[79]a/.test(text)) return "image/gif";
   if (text.startsWith("RIFF") && text.slice(8, 12) === "WEBP") return "image/webp";
   if (text.startsWith("RIFF") && text.slice(8, 12) === "WAVE") return "audio/wav";
+  if (text.startsWith("BM")) return "image/bmp";
+  if (text.startsWith("II*") || text.startsWith("MM\u0000*")) return "image/tiff";
+  if (text.startsWith("FORM") && /^AIF[FC]/.test(text.slice(8, 12))) return "audio/aiff";
+  if (text.startsWith("#!AMR")) return "audio/amr";
+  if (text.startsWith("RIFF") && text.slice(8, 12) === "AVI ") return "video/x-msvideo";
+  if (header[0] === 0 && header[1] === 0 && header[2] === 1 && [0xba, 0xb3].includes(header[3]!)) return "video/mpeg";
   if (text.startsWith("fLaC")) return "audio/flac";
   if (text.startsWith("OggS")) return mimeType.startsWith("video/") ? "video/ogg" : mimeType === "audio/opus" ? "audio/opus" : "audio/ogg";
   if (header[0] === 0xff && (header[1]! & 0xf6) === 0xf0) return "audio/aac";

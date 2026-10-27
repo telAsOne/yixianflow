@@ -84,15 +84,6 @@ export function updateGeneralSettings(patch: Partial<typeof generalSettings.valu
   settings.value = { ...settings.value, general: { ...(current && typeof current === "object" && !Array.isArray(current) ? current : {}), ...patch } };
 }
 
-export const privacySettings = computed(() => {
-  const raw = settings.value.privacy;
-  const privacy = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-  return {
-    dataCollectionEnabled: privacy.dataCollectionEnabled !== false,
-    anonymousId: typeof privacy.anonymousId === "string" ? privacy.anonymousId : "",
-  };
-});
-
 export type CustomProviderModel = { id: string; label: string; contextWindow?: number; maxOutputTokens?: number };
 export type CustomProvider = { id: string; label: string; icon?: string; version?: string; apiUrl: string; apiKey: string; protocol: string; requestBodyLimitMiB?: number; models: CustomProviderModel[] };
 export const customProviders = computed<CustomProvider[]>(() => Array.isArray(settings.value.customProviders)
@@ -101,7 +92,7 @@ export const customProviders = computed<CustomProvider[]>(() => Array.isArray(se
   : []);
 
 export const modelChoices = computed(() => customProviders.value.flatMap(provider => provider.models.map(model => ({
-  value: JSON.stringify([provider.id, model.id]), providerId: provider.id, modelId: model.id, label: model.label, contextWindow: model.contextWindow,
+  value: JSON.stringify([provider.id, model.id]), isDefault: (settings.value.defaultModels as { text?: { modelId: string } } | undefined)?.text?.modelId === model.id, providerId: provider.id, modelId: model.id, label: model.label, contextWindow: model.contextWindow,
 }))));
 
 export async function loadSettings() {
@@ -166,3 +157,15 @@ watch(settings, () => {
     void saveSettings().catch(() => { ElMessage.error("设置保存失败，请稍后重试"); });
   }, Math.max(0, Math.min(300, 2000 - (Date.now() - firstPendingAt))));
 }, { deep: true, flush: "sync" });
+
+export function applyManagedSettings(value: Record<string, unknown>) {
+  applyingSettings = true;
+  try {
+    for (const key of ["customProviders", "defaultModels", "yixianConfig"]) {
+      if (Object.hasOwn(value, key)) settings.value[key] = value[key];
+    }
+  } finally { applyingSettings = false; }
+  invalidateNodeModels("language");
+  invalidateNodeModels("media");
+  window.dispatchEvent(new CustomEvent("toonflow:plugin-installed", { detail: { type: "provider", name: "yixianVideo" } }));
+}

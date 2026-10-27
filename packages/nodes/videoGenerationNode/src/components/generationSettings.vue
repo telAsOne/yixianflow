@@ -44,7 +44,7 @@
       <div v-if="model?.supportsSeed === true" class="seedField">
         <div class="sectionLabel">随机种子（seed，可选）</div>
         <el-input-number v-model="seed" :controls="false" :min="-Infinity" :max="Infinity" :disabled="disabled" placeholder="留空使用供应商默认值" aria-label="视频随机种子 seed" />
-        <div v-if="seed != null && !Number.isSafeInteger(seed)" class="fieldError" role="alert">seed 必须为 JavaScript 安全范围内的整数</div>
+        <div v-if="seed != null && (!Number.isSafeInteger(seed) || seed < 0)" class="fieldError" role="alert">seed 必须为 JavaScript 安全范围内的非负整数</div>
       </div>
     </div>
   </el-popover>

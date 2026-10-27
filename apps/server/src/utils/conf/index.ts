@@ -28,6 +28,12 @@ export function removeLegacySettings(settings: Record<string, unknown>) {
       changed = true;
     }
   }
+  if (Array.isArray(settings.customProviders)) {
+    const providers = settings.customProviders.filter(item => item?.id === "yixian").map(({ apiKey, ...provider }) => provider);
+    if (JSON.stringify(providers) !== JSON.stringify(settings.customProviders)) { settings.customProviders = providers; changed = true; }
+  }
+  if (settings.mediaProviderConfigs && Object.keys(settings.mediaProviderConfigs).length) { settings.mediaProviderConfigs = {}; changed = true; }
+  if (Object.hasOwn(settings, "mediaStorage")) { delete settings.mediaStorage; changed = true; }
   return changed;
 }
 
@@ -37,7 +43,7 @@ if (removeLegacySettings(settings)) config.set("settings", settings);
 // ACT: 仅初始化尚未配置的文本供应商；已有列表（包括用户清空的列表）保持原样。
 if (!config.has("settings.customProviders")) {
   config.set("settings.customProviders", languageProviders.map(({ id, label, icon, version, apiUrl, protocol, models }) =>
-    ({ id, label, icon, version, apiUrl, protocol, models, apiKey: "" })));
+    ({ id, label, icon, version, apiUrl, protocol, models })));
 }
 
 export default config;
