@@ -90,6 +90,27 @@ async function renameJsonFile(path: string, target: string) {
 - 所有请求错误原样抛给调用方处理，JSON 解析失败抛出 `SyntaxError`；不要吞掉写入失败或无条件重试。新增文件的自动编号只处理服务端明确返回的同名冲突。
 - 此封装只负责工作区文件；全局设置继续使用设置接口，项目列表继续由 Pinia 持久化，移除列表项不等于删除工作区文件。
 
+## 画布界面分区
+
+画布界面按职责分区，新增入口放到对应区域，不再堆进顶部栏：
+
+| 区域 | 位置 | 内容 |
+| --- | --- | --- |
+| 顶部栏 | `pages/workspace/index.vue` | 退出、设置、项目与画布菜单、节点搜索、画布/文档切换、协作状态、AI 助手与节点面板开关。画布只通过 `menuTarget` 传送画布菜单和搜索按钮。 |
+| 左侧创作栏 | `canvas/components/canvasDock.vue` | 新建节点（点击或拖到画布）、上传、素材库、快速开始。素材库面板贴在创作栏右侧。 |
+| 右下角导航 | `canvas/components/canvasControls.vue` | 返回视图、聚焦、缩放、地图、更多画布工具（整理、吸附、连线）、帮助。作为 Vue Flow `Panel` 渲染，地图叠在其上方，随节点面板宽度让位。 |
+| 空画布引导 | `canvas/components/canvasStarter.vue` | 仅在画布已加载且没有节点时显示；外层不拦截指针，画布双击、拖放、粘贴照常可用。 |
+| 右侧节点面板 | `canvas/components/nodeInspector.vue` | 选中节点的设置与插件插槽。 |
+
+- 节点排序、内置图标和快速开始流程统一在 `canvas/useNodeCreation.ts` 维护，左侧创作栏、空画布引导和右键菜单共用；新增内置节点时同步其中的图标表。快速开始只列出所需节点均已启用的流程，整组创建计为一次撤销。
+- 画布复制粘贴集中在 `canvas/useCanvasClipboard.ts`，画布主组件只负责装配与快捷键分发。
+- 浮动在画布上的控件会遮挡节点，调整其尺寸或位置时同步 `canvas/index.vue` 中 `canvasFocusInsets` 的留白。
+
+## 开发环境
+
+- 根目录脚本依赖 `bun run --filter`，请使用根 `package.json` 中 `packageManager` 固定的 Bun 版本。Bun 1.4.0 下 `--filter` 对任意过滤条件都会报 `FileNotFound`，此时可进入对应子包目录直接执行 `bun run build` 等脚本。
+- Linux 上独立 server 只允许使用数据目录下 `workspaces/` 内的工作区；本地调试画布时把测试工作区放在仓库 `data/workspaces/`（已被 Git 忽略）。
+
 ## Server 开发规范
 
 以下规则适用于 `apps/server`，与上面的通用代码规范同时遵守。
