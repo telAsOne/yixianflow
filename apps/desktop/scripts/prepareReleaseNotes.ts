@@ -8,8 +8,14 @@ const previousTag = process.env.previousReleaseTag ?? "";
 const output = process.env.releaseNotesFile;
 const token = process.env.GH_TOKEN;
 if (!/^\d+\.\d+\.\d+$/.test(version) || !/^[a-f0-9]{40}$/.test(commit)
-  || !/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^portable-v\d+\.\d+\.\d+$/.test(previousTag) || !output || !token) {
+  || !/^[\w.-]+\/[\w.-]+$/.test(repository) || (previousTag && !/^portable-v\d+\.\d+\.\d+$/.test(previousTag)) || !output || !token) {
   throw new Error("生成更新说明需要版本号、源码提交、仓库、上一发布标签、输出路径及 GitHub 认证。");
+}
+if (!previousTag) {
+  await mkdir(dirname(output), { recursive: true });
+  await writeAtomic(output, JSON.stringify({ version, commit, previousTag, markdown: `首个发布版本 ${version}。\n` }, null, 2));
+  console.log(`已生成 ${version} 的首个发布说明：${output}`);
+  process.exit(0);
 }
 
 type Comparison = {

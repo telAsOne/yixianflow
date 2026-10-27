@@ -49,8 +49,8 @@ export default {
     },
   },
   release: {
-    // ACT: 本分支各平台从同一 Release 更新，客户端仍可显式选择其他更新源。
-    baseUrl: "https://yixian.lol/toonflow/updates",
+    // ACT: 只通过 GitHub Release 分发，客户端从当前仓库最新 Release 检查更新。
+    baseUrl: "https://github.com/telAsOne/yixianflow/releases/latest/download",
     // ACT: 常规构建不访问更新服务器；release:desktop 显式开启增量构建。
     generatePatch: process.env.generateUpdatePatch === "1",
   },

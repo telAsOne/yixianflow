@@ -40,50 +40,62 @@ jobs:
         id: parameters
         env:
           releaseVersion: ${{ inputs.version }}
-          defaultBranch: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ($env:GITHUB_REF -ne "refs/heads/$env:defaultBranch") { throw '请从仓库默认分支运行此发布流程' }
+          if ($env:GITHUB_REF -ne 'refs/heads/master') { throw '请从 master 分支运行此发布流程' }
           $version = ([string]$env:releaseVersion).Trim()
           $api = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY"
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
-          $head = Invoke-RestMethod "$api/git/ref/heads/$env:defaultBranch" -Headers $headers -TimeoutSec 30
+          $head = Invoke-RestMethod "$api/git/ref/heads/master" -Headers $headers -TimeoutSec 30
           if ($head.object.sha -ne $env:GITHUB_SHA) {
             'needed=false' >> $env:GITHUB_OUTPUT
             '分支已有更新的提交，跳过此旧任务。' >> $env:GITHUB_STEP_SUMMARY
             exit 0
           }
-          $latest = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
-          if ($latest.tag_name -notmatch '^portable-v(\d+\.\d+\.\d+)$') { throw '当前最新版不是便携版，请先检查 Releases' }
-          $current = [version]$Matches[1]
-          if (!$version -and $latest.target_commitish -eq $env:GITHUB_SHA) {
-            'needed=false' >> $env:GITHUB_OUTPUT
-            '此提交已经发布，跳过重复构建。' >> $env:GITHUB_STEP_SUMMARY
-            exit 0
+          $latestResponse = Invoke-WebRequest "$api/releases/latest" -Headers $headers -SkipHttpErrorCheck -TimeoutSec 30
+          if ($latestResponse.StatusCode -notin @(200, 404)) { throw "读取最新发布失败：HTTP $($latestResponse.StatusCode)" }
+          $previousTag = ''
+          $current = $null
+          if ($latestResponse.StatusCode -eq 200) {
+            $latest = $latestResponse.Content | ConvertFrom-Json
+            if ($latest.tag_name -notmatch '^portable-v(\d+\.\d+\.\d+)$') { throw '当前最新版不是便携版，请先检查 Releases' }
+            $current = [version]$Matches[1]
+            $previousTag = $latest.tag_name
+            if (!$version -and $latest.target_commitish -eq $env:GITHUB_SHA) {
+              'needed=false' >> $env:GITHUB_OUTPUT
+              '此提交已经发布，跳过重复构建。' >> $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
           }
           if (!$version) {
-            $patch = $current.Build
-            # ACT: 分页只保留最大补丁号，避开失败草稿和已有版本，不逐条查询发布记录。
-            for ($page = 1; ; $page++) {
-              $releases = Invoke-RestMethod "$api/releases?per_page=100&page=$page" -Headers $headers -TimeoutSec 30
-              foreach ($release in $releases) {
-                if ($release.tag_name -notmatch '^portable-v(\d+\.\d+\.\d+)$') { continue }
-                $used = [version]$Matches[1]
-                if ($used.Major -eq $current.Major -and $used.Minor -eq $current.Minor) { $patch = [Math]::Max($patch, $used.Build) }
+            if (!$current) {
+              $packageVersion = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+              if ($packageVersion -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw 'package.json 版本号必须为 X.Y.Z' }
+              $version = $packageVersion
+            } else {
+              $patch = $current.Build
+              # ACT: 分页只保留最大补丁号，避开失败草稿和已有版本，不逐条查询发布记录。
+              for ($page = 1; ; $page++) {
+                $releases = Invoke-RestMethod "$api/releases?per_page=100&page=$page" -Headers $headers -TimeoutSec 30
+                foreach ($release in $releases) {
+                  if ($release.tag_name -notmatch '^portable-v(\d+\.\d+\.\d+)$') { continue }
+                  $used = [version]$Matches[1]
+                  if ($used.Major -eq $current.Major -and $used.Minor -eq $current.Minor) { $patch = [Math]::Max($patch, $used.Build) }
+                }
+                if ($releases.Count -lt 100) { break }
               }
-              if ($releases.Count -lt 100) { break }
+              $version = '{0}.{1}.{2}' -f $current.Major, $current.Minor, ($patch + 1)
             }
-            $version = '{0}.{1}.{2}' -f $current.Major, $current.Minor, ($patch + 1)
           }
           if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw '版本号必须为 X.Y.Z，不带 v 前缀' }
-          if ([version]$version -le $current) { throw '新版本必须高于当前正式版本' }
+          if ($current -and [version]$version -le $current) { throw '新版本必须高于当前正式版本' }
           foreach ($endpoint in @("git/ref/tags/portable-v$version", "releases/tags/portable-v$version")) {
             $existing = Invoke-WebRequest "$api/$endpoint" -Headers $headers -SkipHttpErrorCheck -TimeoutSec 30
             if ($existing.StatusCode -eq 200) { throw '同名版本标签或发布已存在，请检查 Releases；不覆盖已有版本' }
             if ($existing.StatusCode -ne 404) { throw "无法确认版本是否存在：HTTP $($existing.StatusCode)" }
           }
           "version=$version" >> $env:GITHUB_OUTPUT
-          "previousTag=$($latest.tag_name)" >> $env:GITHUB_OUTPUT
+          "previousTag=$previousTag" >> $env:GITHUB_OUTPUT
           'needed=true' >> $env:GITHUB_OUTPUT
           "本次发布版本：$version" >> $env:GITHUB_STEP_SUMMARY
 
@@ -188,22 +200,9 @@ jobs:
           compression-level: 0
           retention-days: 7
 
-  buildMac:
-    name: 构建 Mac 安装包与应用内更新包
-    needs: prepare
-    if: needs.prepare.outputs.needed == 'true'
-    uses: ./.github/workflows/debug.yml
-    with:
-      target: mac
-      ref: ${{ github.sha }}
-      version: ${{ needs.prepare.outputs.version }}
-      # ACT: 完整更新包也支持应用内更新，首版及后续版本均不依赖上一版补丁。
-      generatePatch: false
-      macCodesign: false
-
   publish:
     name: 核对附件并发布最新版
-    needs: [build, buildMac]
+    needs: build
     runs-on: windows-2025
     timeout-minutes: 15
     permissions:
@@ -216,33 +215,13 @@ jobs:
         with:
           name: toonflowPortable-${{ needs.build.outputs.version }}
           path: ${{ env.artifactDirectory }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: toonflow-${{ needs.build.outputs.version }}-mac*
-          path: ${{ env.artifactDirectory }}
-          merge-multiple: true
       - name: 校验发布包
         run: |
           $names = @('toonflowPortable.zip', 'stable-win-x64-toonflowPortable.tar.zst', 'stable-win-x64-portable-update.json', 'releaseNotes.json')
           $files = @(Get-ChildItem -LiteralPath $env:artifactDirectory -File)
-          foreach ($arch in @('arm64', 'x64')) {
-            $prefix = "stable-macos-$arch-"
-            $manifestName = "${prefix}update.json"
-            $mac = Get-Content -LiteralPath (Join-Path $env:artifactDirectory $manifestName) -Raw | ConvertFrom-Json
-            if ($mac.version -ne $env:releaseVersion -or $mac.platform -ne 'macos' -or $mac.arch -ne $arch -or $mac.hash -notmatch '^[a-zA-Z0-9]{1,64}$') { throw 'Mac 更新清单版本、平台或架构不匹配' }
-            $archiveName = if ($arch -eq 'x64' -and !$mac.artifact) { "${prefix}toonflow.app.tar.zst" } else { $mac.artifact.file }
-            if (!$archiveName -or !$archiveName.StartsWith($prefix) -or $archiveName -notmatch '^[a-zA-Z0-9._-]+\.tar\.zst$') { throw 'Mac 更新包名称无效' }
-            $macArchive = Get-Item -LiteralPath (Join-Path $env:artifactDirectory $archiveName)
-            if (!$macArchive.Length) { throw 'Mac 更新包为空' }
-            # ACT: 原生 Mac SDK 清单只记录归档名；归档身份在 Mac 构建中核对，SHA-256 在上传后与 GitHub digest 核对。
-            if ($mac.artifact -and ($mac.schemaVersion -ne 1 -or $mac.identifier -ne 'local.toonflow.desktop' -or $mac.channel -ne 'stable')) { throw 'Mac 更新包应用标识或通道不匹配' }
-            $installers = @($files | Where-Object { $_.Name.EndsWith('.dmg') -and $_.Name.Contains($arch) -and $_.Length -gt 0 })
-            if ($installers.Count -ne 1) { throw '每种 Mac 架构必须有一个 DMG 安装包' }
-            $names += @($manifestName, $archiveName, $installers[0].Name)
-          }
           if ($files.Count -ne $names.Count -or (Compare-Object ($files.Name | Sort-Object) ($names | Sort-Object))) { throw '发布文件清单不一致' }
           $notes = Get-Content -LiteralPath (Join-Path $env:artifactDirectory 'releaseNotes.json') -Raw | ConvertFrom-Json
-          if ($notes.version -ne $env:releaseVersion -or $notes.commit -ne $env:GITHUB_SHA -or $notes.previousTag -notmatch '^portable-v\d+\.\d+\.\d+$' -or !($notes.markdown -is [string]) -or !$notes.markdown.Trim()) { throw '更新说明与发布版本或源码提交不一致' }
+          if ($notes.version -ne $env:releaseVersion -or $notes.commit -ne $env:GITHUB_SHA -or ($notes.previousTag -and $notes.previousTag -notmatch '^portable-v\d+\.\d+\.\d+$') -or !($notes.markdown -is [string]) -or !$notes.markdown.Trim()) { throw '更新说明与发布版本或源码提交不一致' }
           $manifest = Get-Content -LiteralPath (Join-Path $env:artifactDirectory $names[2]) -Raw | ConvertFrom-Json
           if ($manifest.schemaVersion -ne 1 -or $manifest.version -ne $env:releaseVersion -or $manifest.distribution -ne 'portable' -or $manifest.identifier -ne 'local.toonflow.desktop' -or $manifest.channel -ne 'stable' -or $manifest.platform -ne 'win' -or $manifest.arch -ne 'x64' -or $manifest.hash -notmatch '^[a-f0-9]{64}$' -or $manifest.artifact.file -ne $names[1]) { throw '便携更新清单不符合当前版本' }
           $archive = Get-Item -LiteralPath (Join-Path $env:artifactDirectory $names[1])
@@ -271,31 +250,33 @@ jobs:
           $api = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY"
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
           $tag = "portable-v$env:releaseVersion"
-          $latest = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
-          if ($latest.tag_name -notmatch '^portable-v(\d+\.\d+\.\d+)$' -or [version]$env:releaseVersion -le [version]$Matches[1]) { throw '正式版本已变化，停止发布旧版本或相同版本' }
+          $latestResponse = Invoke-WebRequest "$api/releases/latest" -Headers $headers -SkipHttpErrorCheck -TimeoutSec 30
+          if ($latestResponse.StatusCode -notin @(200, 404)) { throw "读取最新发布失败：HTTP $($latestResponse.StatusCode)" }
+          $latestTag = ''
+          if ($latestResponse.StatusCode -eq 200) {
+            $latest = $latestResponse.Content | ConvertFrom-Json
+            if ($latest.tag_name -notmatch '^portable-v(\d+\.\d+\.\d+)$' -or [version]$env:releaseVersion -le [version]$Matches[1]) { throw '正式版本已变化，停止发布旧版本或相同版本' }
+            $latestTag = $latest.tag_name
+          }
           $notes = Get-Content -LiteralPath (Join-Path $env:artifactDirectory 'releaseNotes.json') -Raw | ConvertFrom-Json
-          if ($notes.previousTag -ne $latest.tag_name) { throw '上一发布版本已变化，停止发布过期的更新说明' }
+          if ($notes.previousTag -ne $latestTag) { throw '上一发布版本已变化，停止发布过期的更新说明' }
           foreach ($endpoint in @("git/ref/tags/$tag", "releases/tags/$tag")) {
             $existing = Invoke-WebRequest "$api/$endpoint" -Headers $headers -SkipHttpErrorCheck -TimeoutSec 30
             if ($existing.StatusCode -eq 200) { throw '同名版本已存在；不覆盖正式版本或失败草稿，请先检查 Releases' }
             if ($existing.StatusCode -ne 404) { throw "无法确认版本是否存在：HTTP $($existing.StatusCode)" }
           }
           $body = @"
-          Toonflow-l $env:releaseVersion：Windows x64 便携版、Apple Silicon 和 Intel Mac 安装包。
+          Toonflow-l $env:releaseVersion：Windows x64 便携版。
 
-          应用内直接更新：在「设置 → 关于」使用 GitHub（Toonflow-l），依次点击「检查更新 → 下载更新 → 重启并更新」。Windows 和两种 Mac 均提供完整更新包；更新前请保存内容并等待生成任务完成。
+          应用内直接更新：在「设置 → 关于」使用 GitHub，依次点击「检查更新 → 下载更新 → 重启并更新」；更新前请保存内容并等待生成任务完成。
 
-          Windows：下载 toonflowPortable.zip，完整解压到可写目录后双击 toonflow.exe，需要 Microsoft Edge WebView2 Runtime 120 或更新版本。
-
-          Mac：M 系列芯片下载带 arm64 的 .dmg，Intel 芯片下载带 x64 的 .dmg。将 toonflow.app 复制到可写的应用目录（如 ~/Applications）再启动，不要直接在 DMG 内运行。设置保存在 .app 同级的 data 目录，应用更新会保留该目录。
-
-          Mac 安装包未使用 Developer ID 签名或 Apple 公证。首次打开若被拦截，请在「系统设置 → 隐私与安全性」中选择「仍要打开」。.json 与 .tar.zst 附件供应用内更新使用，无需手动解压。
+          Windows：下载 toonflowPortable.zip，完整解压到可写目录后双击 toonflow.exe，需要 Microsoft Edge WebView2 Runtime 120 或更新版本。.json 与 .tar.zst 附件供应用内更新使用，无需手动解压。
 
           构建来自仓库提交 $env:GITHUB_SHA，不包含本机配置或 API 密钥。已完成类型检查、构建与发布包校验；自动发布流程不调用模型生成接口，不进行桌面交互验证。
 
           $($notes.markdown)
           "@
-          $payload = @{ tag_name = $tag; target_commitish = $env:GITHUB_SHA; name = "Toonflow-l $env:releaseVersion（Windows / macOS）"; body = $body; draft = $true; prerelease = $false; make_latest = 'false' } | ConvertTo-Json
+          $payload = @{ tag_name = $tag; target_commitish = $env:GITHUB_SHA; name = "Toonflow-l $env:releaseVersion（Windows）"; body = $body; draft = $true; prerelease = $false; make_latest = 'false' } | ConvertTo-Json
           $release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body $payload -TimeoutSec 30
           $names = @(Get-ChildItem -LiteralPath $env:artifactDirectory -File | Where-Object Name -ne 'releaseNotes.json' | Select-Object -ExpandProperty Name)
           $paths = @($names | ForEach-Object { Join-Path $env:artifactDirectory $_ })
