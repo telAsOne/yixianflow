@@ -37,7 +37,6 @@
         </el-popover>
       </div>
     </el-card>
-    <div class="menuExtension"><slot /></div>
   </div>
   <el-dropdown ref="itemMenu" trigger="contextmenu" virtualTriggering :virtualRef="menuAnchor" placement="bottom-start" :showArrow="false" :hideOnClick="false" :appendTo="canvasPicker" popperClass="canvasActionMenu" @command="handleItemCommand" @visibleChange="(opened: boolean) => { if (!opened) moveVisible = false; }">
     <template #dropdown>
@@ -790,12 +789,6 @@ defineExpose({ getCanvases, addCanvas, switchCanvas, renameCanvas, syncCanvasPat
       white-space: nowrap;
     }
   }
-}
-
-.menuExtension {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
 }
 
 .canvasMenu {

@@ -320,7 +320,8 @@
   ],
   "画布操作失败": [
     "apps/web/src/components/agent/conversation.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
+    "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue",
+    "apps/web/src/pages/workspace/panels/canvas/index.vue"
   ],
   "画布操作已取消": [
     "apps/web/src/components/agent/conversation.vue"
@@ -3133,7 +3134,8 @@
     "apps/web/src/main.ts"
   ],
   "快速开始": [
-    "apps/web/src/pages/hello/index.vue"
+    "apps/web/src/pages/hello/index.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasDock.vue"
   ],
   "稍后登录": [
     "apps/web/src/pages/hello/index.vue"
@@ -3362,6 +3364,45 @@
   ],
   "从下方调整对话高度": [
     "apps/web/src/pages/workspace/components/floatingAgent.vue"
+  ],
+  "文生图": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "写下画面描述，连到图片生成出图。": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "画面描述": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "生成画面": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "图生视频": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "上传一张参考图，让画面动起来。": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "参考图": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "生成视频": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "剧本到镜头": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "从剧本出发，先出分镜画面，再生成镜头视频。": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "剧本": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "分镜画面": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
+  ],
+  "镜头视频": [
+    "apps/web/src/pages/workspace/panels/canvas/useNodeCreation.ts"
   ],
   "退出项目": [
     "apps/web/src/pages/workspace/components/workspaceMenu.vue"
@@ -3779,11 +3820,11 @@
   ],
   "素材库": [
     "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasDock.vue"
   ],
   "关闭素材库": [
     "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasDock.vue"
   ],
   "文件夹名称": [
     "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
@@ -3832,6 +3873,9 @@
   ],
   "已保存到素材库": [
     "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue"
+  ],
+  "创作工具": [
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasDock.vue"
   ],
   "移动到": [
     "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue",
@@ -3900,10 +3944,10 @@
     "apps/web/src/pages/workspace/panels/canvas/components/canvasConflict.vue"
   ],
   "搜索节点与分组": [
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
+    "apps/web/src/pages/workspace/panels/canvas/index.vue"
   ],
   "打开素材库": [
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasDock.vue"
   ],
   "关闭网格吸附": [
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
@@ -3911,16 +3955,10 @@
   "开启网格吸附": [
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
   ],
-  "网格吸附": [
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
-  ],
   "隐藏连线": [
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
   ],
   "显示连线": [
-    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
-  ],
-  "显示或隐藏连线": [
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
   ],
   "查看整个画布": [
@@ -4124,6 +4162,15 @@
   "分组缩放失败": [
     "apps/web/src/pages/workspace/panels/canvas/components/groupNode.vue"
   ],
+  "开始创作": [
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasStarter.vue"
+  ],
+  "双击空白处添加节点，或把图片、视频、音频、文本拖进画布。": [
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasStarter.vue"
+  ],
+  "让 AI 助手搭建": [
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasStarter.vue"
+  ],
   "调整节点面板宽度": [
     "apps/web/src/pages/workspace/panels/canvas/components/nodeInspector.vue"
   ],
@@ -4164,7 +4211,9 @@
     "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue"
   ],
   "上传": [
-    "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
+    "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasDock.vue",
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasStarter.vue"
   ],
   "粘贴中…": [
     "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
@@ -4176,7 +4225,8 @@
     "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
   ],
   "节点插件加载失败": [
-    "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
+    "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue",
+    "apps/web/src/pages/workspace/panels/canvas/index.vue"
   ],
   "该节点的接收规则不允许整组选中节点连接": [
     "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue"
@@ -4258,6 +4308,9 @@
   ],
   "连接选中节点": [
     "apps/web/src/pages/workspace/panels/canvas/components/selectionHandle.vue"
+  ],
+  "画布导航": [
+    "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
   ],
   "打组": [
     "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue"
@@ -7734,7 +7787,8 @@
     "apps/desktop/src/index.ts"
   ],
   "请检查默认浏览器设置后重试。": [
-    "apps/desktop/src/index.ts"
+    "apps/desktop/src/index.ts",
+    "apps/server/src/routes/account/start.ts"
   ],
   "尚未完成保存": [
     "apps/desktop/src/index.ts"

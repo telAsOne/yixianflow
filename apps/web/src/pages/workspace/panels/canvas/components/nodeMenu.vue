@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, type Component } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from "vue";
 import { useVueFlow, type ConnectingHandle, type GraphNode, type HandleType } from "@vue-flow/core";
 import { isTypeCompatible, useNodeEvent, validateConnection, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { ElMessage } from "element-plus";
@@ -87,11 +87,11 @@ import selectionHandle from "./selectionHandle.vue";
 import { getSelectionConnections } from "../selectionConnections";
 import { getSelectionRoots, getSelectionTree } from "../selectionNodes";
 import { arrangeSelection } from "../arrangeSelection";
+import { sortNodeOptions } from "../useNodeCreation";
 import {
   IconClipboard,
   IconCopyPlus,
   IconTrash,
-  IconBox,
   IconUpload,
   IconPlus,
   IconArrowBackUp,
@@ -139,12 +139,8 @@ const canArrangeSelection = computed(() => {
       && Number.isFinite(node.dimensions.width) && node.dimensions.width > 0
       && Number.isFinite(node.dimensions.height) && node.dimensions.height > 0);
 });
-const nodeOrder: Record<string, number> = { "remote-textNode": 0, "remote-imageNode": 1, "remote-videoNode": 2, "remote-audioNode": 3 };
 const filteredNodes = computed(() => {
-  const nodes = remoteNodes.map(node => ({
-    ...node,
-    icon: (flow.nodeTypes?.value?.[node.type] as { icon?: Component } | undefined)?.icon ?? IconBox,
-  })).sort((left, right) => (nodeOrder[left.type] ?? 4) - (nodeOrder[right.type] ?? 4));
+  const nodes = sortNodeOptions(flow, remoteNodes);
   if (pendingGroup.value.length) {
     if (!flow.nodesConnectable.value || pendingGroup.value.some(node => flow.findNode(node.id) !== node || node.connectable === false)) return [];
     return nodes.filter(node => {

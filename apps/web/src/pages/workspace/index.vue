@@ -27,7 +27,6 @@
     <header ref="headerElement" class="workspaceChrome">
       <workspaceMenu class="workspaceMenu" @openSettings="settingsVisible = true" />
       <div v-show="activePanel === 'canvas'" ref="menuTarget" class="canvasMenuTarget" :inert="refreshing" />
-      <div v-show="activePanel === 'canvas'" ref="controlsTarget" class="canvasControlsTarget" :inert="refreshing" />
       <div class="workspaceActions">
         <el-segmented :modelValue="activePanel" class="panelSwitcher" :options="panelOptions" aria-label="切换面板" @change="switchPanel">
           <template #default="{ item }">
@@ -105,14 +104,13 @@ const headerHeight = ref(56);
 const viewportWidth = ref(window.innerWidth);
 const compact = computed(() => viewportWidth.value < 960);
 const menuTarget = ref<HTMLElement>();
-const controlsTarget = ref<HTMLElement>();
 const inspectorAvailable = ref(false);
 const inspectorShown = computed(() => activePanel.value === "canvas" && inspectorAvailable.value && inspectorVisible.value);
 const agentMaxWidth = computed(() => compact.value ? Math.min(520, viewportWidth.value) : Math.min(520, viewportWidth.value - 320
   - (inspectorShown.value ? Math.min(inspectorWidth.value, viewportWidth.value - 640) : 0)));
 const agentWidth = computed(() => agentVisible.value && agentLayout.value.docked ? Math.max(0, Math.min(agentLayout.value.width, agentMaxWidth.value)) : 0);
 const inspectorMaxWidth = computed(() => compact.value ? Math.min(600, viewportWidth.value) : Math.min(600, viewportWidth.value - (agentVisible.value ? agentWidth.value : 0) - 320));
-provide(workspaceLayoutKey, { menuTarget, controlsTarget, compact, inspectorAvailable, inspectorVisible, inspectorWidth, inspectorMaxWidth });
+provide(workspaceLayoutKey, { menuTarget, compact, inspectorAvailable, inspectorVisible, inspectorWidth, inspectorMaxWidth });
 watch(inspectorShown, visible => { if (visible && compact.value) agentVisible.value = false; }, { immediate: true });
 watch(agentVisible, visible => { if (visible && compact.value) inspectorVisible.value = false; });
 watch(compact, value => { if (value && inspectorShown.value) agentVisible.value = false; });
@@ -139,6 +137,7 @@ function setDocumentPanel(value: Element | ComponentPublicInstance | null) {
 provide("canvas", () => canvasPanelRef.value?.getCanvasContext());
 provide("mentionCanvas", () => canvasPanelRef.value?.mentionSource);
 provide("activateCanvasPanel", () => switchPanel("canvas"));
+provide("openAgent", () => { agentVisible.value = true; });
 provide("performWorkspaceFileAction", (directory: string, action: "copy" | "rename" | "move" | "delete", path: string, target?: string, entryType: "canvas" | "directory" = "canvas") =>
   documentPanelRef.value ? documentPanelRef.value.performFileAction(directory, action, path, target, entryType) : performFileAction(directory, action, path, target));
 
@@ -336,8 +335,7 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
     background: var(--el-bg-color);
 
     .workspaceMenu { flex-shrink: 0; }
-    .canvasMenuTarget { min-width: 0; }
-    .canvasControlsTarget { flex: 1; min-width: 0; }
+    .canvasMenuTarget { flex: 1; min-width: 0; }
 
     .workspaceActions {
       display: flex;
@@ -394,7 +392,7 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
       }
     }
 
-    @media (max-width: 1500px) {
+    @media (max-width: 1100px) {
       .panelSwitcher .optionLabel,
       .workspaceActions :deep(.presenceSummary) {
         position: absolute;
@@ -407,7 +405,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
     }
 
     @media (max-width: 760px) {
-      .canvasControlsTarget { flex: 1 0 100%; order: 1; }
       .canvasMenuTarget { flex: 1 0 160px; }
       .workspaceActions { gap: 4px; }
     }
