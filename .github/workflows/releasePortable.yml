@@ -269,7 +269,7 @@ jobs:
             if ($existing.StatusCode -ne 404) { throw "无法确认版本是否存在：HTTP $($existing.StatusCode)" }
           }
           $body = @"
-          Toonflow-l $env:releaseVersion：Windows x64 便携版。
+          Yixianflow $env:releaseVersion：Windows x64 便携版。
 
           应用内直接更新：在「设置 → 关于」使用 GitHub，依次点击「检查更新 → 下载更新 → 重启并更新」；更新前请保存内容并等待生成任务完成。
 
@@ -279,7 +279,7 @@ jobs:
 
           $($notes.markdown)
           "@
-          $payload = @{ tag_name = $tag; target_commitish = $env:GITHUB_SHA; name = "Toonflow-l $env:releaseVersion（Windows）"; body = $body; draft = $true; prerelease = $false; make_latest = 'false' } | ConvertTo-Json
+          $payload = @{ tag_name = $tag; target_commitish = $env:GITHUB_SHA; name = "Yixianflow $env:releaseVersion（Windows）"; body = $body; draft = $true; prerelease = $false; make_latest = 'false' } | ConvertTo-Json
           $release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body $payload -TimeoutSec 30
           $names = @(Get-ChildItem -LiteralPath $env:artifactDirectory -File | Where-Object Name -ne 'releaseNotes.json' | Select-Object -ExpandProperty Name)
           $paths = @($names | ForEach-Object { Join-Path $env:artifactDirectory $_ })
@@ -297,4 +297,4 @@ jobs:
           $published = Invoke-RestMethod "$api/releases/$($release.id)" -Method Patch -Headers $headers -ContentType 'application/json' -Body $publish -TimeoutSec 30
           $latest = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
           if ($published.draft -or $latest.id -ne $published.id) { throw '发布状态与最新版标记未匹配，请检查 Releases' }
-          "[下载 Toonflow-l $env:releaseVersion]($($published.html_url))" >> $env:GITHUB_STEP_SUMMARY
+          "[下载 Yixianflow $env:releaseVersion]($($published.html_url))" >> $env:GITHUB_STEP_SUMMARY

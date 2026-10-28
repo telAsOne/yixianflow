@@ -4,10 +4,7 @@ import type { Request } from "express";
 import conf from "@/utils/conf";
 import type { DesktopRuntime, desktopUpdateAttempt, updateSnapshot } from "@/types/desktop";
 
-const updateBaseUrls = {
-  official: "https://yixian.lol/toonflow/updates",
-  github: "https://github.com/lboverfys/Toonflow-l/releases/latest/download",
-};
+const updateBaseUrl = "https://github.com/telAsOne/yixianflow/releases/latest/download";
 const updateRuntimeId = crypto.randomUUID();
 let cancelledUpdateAttempt: string | undefined;
 
@@ -59,7 +56,7 @@ function getInstallFailure(local: Awaited<ReturnType<DesktopRuntime["updater"]["
     currentVersion: local.version,
     currentHash: local.hash,
     message,
-    downloadUrl: "https://github.com/lboverfys/Toonflow-l/releases/latest",
+    downloadUrl: "https://github.com/telAsOne/yixianflow/releases/latest",
   };
 }
 
@@ -73,18 +70,6 @@ interface DesktopState {
   updateProgress?: updateSnapshot["updateProgress"];
   checkedBaseUrl?: string;
   lastBaseUrl?: string;
-}
-
-export function isValidUpdateUrl(value: unknown): value is string {
-  if (typeof value !== "string" || !value || value.length > 2048 || value.trim() !== value || !URL.canParse(value)) return false;
-  const url = new URL(value);
-  return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password && !url.search && !url.hash;
-}
-
-function getUpdateBaseUrl(): string {
-  const settings = conf.get("settings", {});
-  if (settings.desktopUpdateSource === "custom" && isValidUpdateUrl(settings.desktopUpdateCustomUrl)) return settings.desktopUpdateCustomUrl;
-  return settings.desktopUpdateSource === "github" ? updateBaseUrls.github : updateBaseUrls.official;
 }
 
 async function withUpdateSource<T>(updater: DesktopRuntime["updater"], updateBaseUrl: string, run: () => Promise<T>) {
@@ -141,12 +126,11 @@ export async function getDesktopUpdate(req: Request): Promise<updateSnapshot> {
   const { version, channel, hash } = local;
   // ACT: Intel 1.18.1 首次检查前没有状态，旧清单也可能缺少状态字段。
   const update = updater.updateInfo();
-  const updateBaseUrl = getUpdateBaseUrl();
   const validUpdate = state.checkedBaseUrl === updateBaseUrl;
   const applyError = state.applyingUpdate && state.updateHandoffComplete ? update?.error : undefined;
   const installFailure = getInstallFailure(local, applyError || update?.installError);
   if (applyError) state.applyingUpdate = false;
-  // ACT: 安装失败跨重启保留，不被切换更新源或普通联网错误覆盖。
+  // ACT: 安装失败跨重启保留，不被普通联网错误覆盖。
   const error = installFailure?.message || (state.lastBaseUrl === updateBaseUrl ? state.updateError || (validUpdate ? update?.error || "" : "") : "") || update?.installError || "";
   return {
     version, channel, hash,
@@ -170,7 +154,6 @@ export async function checkDesktopUpdate(req: Request): Promise<void> {
     throw Object.assign(new Error("更新操作正在执行，请稍后再试。"), { status: 409 });
   state.checkingUpdate = true;
   state.updateError = "";
-  const updateBaseUrl = getUpdateBaseUrl();
   state.checkedBaseUrl = undefined;
   state.lastBaseUrl = updateBaseUrl;
   try {
@@ -199,7 +182,6 @@ export async function downloadDesktopUpdate(req: Request): Promise<void> {
     throw Object.assign(new Error("当前客户端不支持应用内更新，请下载安装包。"), { status: 400 });
   if (state.checkingUpdate || state.downloadingUpdate || state.applyingUpdate)
     throw Object.assign(new Error("更新操作正在执行，请稍后再试。"), { status: 409 });
-  const updateBaseUrl = getUpdateBaseUrl();
   if (state.checkedBaseUrl !== updateBaseUrl)
     throw Object.assign(new Error("更新源已切换，请重新检查更新。"), { status: 400 });
   if (!updater.updateInfo()?.updateAvailable)
@@ -244,7 +226,6 @@ export async function applyDesktopUpdate(req: Request): Promise<void> {
     throw Object.assign(new Error("当前客户端不支持应用内更新，请下载安装包。"), { status: 400 });
   if (state.checkingUpdate || state.downloadingUpdate || state.applyingUpdate)
     throw Object.assign(new Error("更新操作正在执行，请稍后再试。"), { status: 409 });
-  const updateBaseUrl = getUpdateBaseUrl();
   if (state.checkedBaseUrl !== updateBaseUrl)
     throw Object.assign(new Error("更新源已切换，请重新检查更新。"), { status: 400 });
   if (!updater.updateInfo()?.updateReady)
