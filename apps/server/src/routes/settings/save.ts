@@ -22,5 +22,6 @@ export default router.put("/", validateFields({ settings: z.record(z.string(), z
   }
   u.conf.set("settings", settings);
   await u.mcpRuntime.reloadMcpRuntime();
-  res.json(success({ customProviders: settings.customProviders }, "设置已保存"));
+  const currentConfig = u.account.getAccount() && u.account.getConfigState().revision;
+  res.json(success({ customProviders: currentConfig ? settings.customProviders : [] }, "设置已保存"));
 });

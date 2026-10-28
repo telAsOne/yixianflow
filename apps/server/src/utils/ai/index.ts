@@ -5,7 +5,7 @@ import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/pro
 import type { Context, Model } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import conf from "@/utils/conf";
-import { requireAccount } from "@/utils/account";
+import { requireAccount, getAccount, getConfigState } from "@/utils/account";
 import { readReference } from "@/utils/media/generation";
 import modelContextLimits from "@/utils/ai/modelContextLimits";
 import { withRequestBudget } from "@/utils/ai/requestBudget";
@@ -61,6 +61,7 @@ export function getConfiguredModel(providerId: string, modelId: string) {
 }
 
 export function listAiModels() {
+  if (!getAccount() || !getConfigState().revision) return [];
   const defaultModel = (conf.get("settings.defaultModels.text") as { modelId: string } | null | undefined)?.modelId;
   const providers = conf.get("settings", {}).customProviders;
   if (!Array.isArray(providers)) return [];

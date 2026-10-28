@@ -10,7 +10,7 @@ export const refreshingModels = ref(false);
 export async function refreshAccount() {
   const { data } = await api.get<{ data: AccountView }>("/api/account/get", { timeout: 35000 });
   const previous = accountView.value?.revision;
-  if (!data.data.authenticated) {
+  if (!data.data.authenticated || !data.data.revision) {
     applyManagedSettings({ customProviders: [], defaultModels: {}, yixianConfig: undefined });
   } else if (data.data.revision !== previous) {
     const settings = await api.get("/api/settings/get");

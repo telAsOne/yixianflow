@@ -12,7 +12,7 @@ export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
 import { file } from "@toonflow/file/bun";
-import { requireAccount, getConfigState } from "@/utils/account";
+import { requireAccount, getAccount, getConfigState } from "@/utils/account";
 import { detectMimeType } from "@/utils/media/mimeType";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
 
@@ -38,6 +38,7 @@ function imageOptions(value: unknown, pattern: RegExp) {
 }
 
 export async function listMediaModels(): Promise<MediaModel[]> {
+  if (!getAccount() || !getConfigState().revision) return [];
   const installedProviders = await listMediaProviders();
   const { limits: uploadLimits, imageTotalMaxBytes } = getConfigState();
   const defaults = conf.get("settings.defaultModels") as Record<string, { modelId: string } | null> | undefined;

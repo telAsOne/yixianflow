@@ -7,5 +7,7 @@ const router = Router();
 export default router.get("/", (req, res) => {
   u.mcpControl.assertAppRequest(req);
   res.set("Cache-Control", "no-store");
-  res.json(success(u.conf.get("settings", {})));
+  const settings = u.conf.get("settings", {});
+  const currentConfig = u.account.getAccount() && u.account.getConfigState().revision;
+  res.json(success(currentConfig ? settings : { ...settings, customProviders: [], defaultModels: {}, yixianConfig: undefined }));
 });
