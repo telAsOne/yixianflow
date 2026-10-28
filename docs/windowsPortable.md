@@ -19,7 +19,7 @@
 
 这些目录相对于 `toonflow.exe` 创建，应用只修改自身进程的环境变量，不修改系统 PATH。移动便携包前先退出应用；外部项目目录不会随包移动，移动项目后需重新打开它。
 
-从支持在线更新的便携版开始，在「设置 → 关于」中使用「检查更新 → 下载更新 → 重启并更新」。默认更新源为 `lboverfys/Toonflow-l` 的 GitHub Releases；发布者需要先上传便携更新包。尚未发布时会提示更新文件不存在，当前版本仍可使用。不要用官方安装包覆盖此定制版。
+从支持在线更新的便携版开始，在「设置 → 关于」中使用「检查更新 → 下载更新 → 重启并更新」。更新源固定为 `telAsOne/yixianflow` 的公开 GitHub Releases，用户无需登录或填写 GitHub 凭证，旧设置中的其他更新源会被清理；发布者需要先上传便携更新包。尚未发布时会提示更新文件不存在，当前版本仍可使用。不要用官方安装包覆盖此定制版。
 
 GitHub 更新请求在启动时读取 Windows 当前用户的系统代理；代理软件和端口由系统现有设置决定，不写死地址，也不修改系统配置或模型请求。调整系统代理后请重新打开应用。
 
@@ -43,7 +43,7 @@ bun apps/desktop/scripts/packagePortableWindows.ts D:\rubbish\zhongjian\artifact
 
 第二步只使用第一步生成的本地归档，拒绝覆盖已有产物目录。编译器使用 Windows 现有 .NET Framework C# 编译器，解压缩使用 Windows 自带 tar；不调用 NSIS，不安装工具。
 
-除了可直接运行的 `toonflowPortable` 目录和 `toonflowPortable.zip`，还生成独立的 `stable-win-x64-portable-update.json` 和 `stable-win-x64-toonflowPortable.tar.zst`。发布更新时，两个文件须来自同一次打包，并上传到同一个 GitHub Release；版本号须递增。清单包含便携版标识、压缩包长度与 SHA-256，启动器也计入构建号，客户端不接收安装版更新包。默认分支的代码推送会触发下方的自动发布流程，发布成功后软件才能发现更新。本地验证可使用设置中现有的「自定义更新源」，无需服务器部署。
+除了可直接运行的 `toonflowPortable` 目录和 `toonflowPortable.zip`，还生成独立的 `stable-win-x64-portable-update.json` 和 `stable-win-x64-toonflowPortable.tar.zst`。发布更新时，两个文件须来自同一次打包，并上传到同一个 GitHub Release；版本号须递增。清单包含便携版标识、压缩包长度与 SHA-256，启动器也计入构建号，客户端不接收安装版更新包。默认分支的代码推送会触发下方的自动发布流程，发布成功后软件才能发现更新。
 
 ## 在 GitHub 自动发布便携版
 
@@ -51,7 +51,7 @@ bun apps/desktop/scripts/packagePortableWindows.ts D:\rubbish\zhongjian\artifact
 
 1. 先将准备发布的修改推送到 GitHub 默认分支。
 2. 在「Actions → 发布 Windows 便携版」查看构建进度。
-3. 流程成功后，新的 `portable-vX.Y.Z` Release 自动设为最新版，软件用户自行点击检查更新。
+3. 流程成功后，新的 `portable-vX.Y.Z` Release 以 `Yixianflow X.Y.Z（Windows）` 为名称并自动设为最新版，软件用户自行点击检查更新。
 
 只有 `docs/`、根目录 `README.md` 或 `AGENTS.md` 的修改时跳过发布；`packages/skills/` 等随程序分发的 Markdown 文件仍会触发发布。已发布的当前提交重复运行时跳过，开始处理前发现分支已有更新提交的旧任务也跳过。发布流程串行执行，正在运行的任务不会被新 push 取消；GitHub 可能合并等待中的多次 push，最终处理最新提交。
 

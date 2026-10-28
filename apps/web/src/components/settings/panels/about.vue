@@ -20,21 +20,13 @@
           </div>
         </div>
         <div class="updateActions">
-          <el-button v-if="isMobile" tag="a" size="small" type="primary" plain href="https://github.com/HBAI-Ltd/Toonflow-app/releases/latest" target="_blank" rel="noopener noreferrer">
+          <el-button v-if="isMobile" tag="a" size="small" type="primary" plain href="https://github.com/telAsOne/yixianflow/releases/latest" target="_blank" rel="noopener noreferrer">
             前往 GitHub 更新
           </el-button>
           <template v-else>
-            <el-select :modelValue="updateSource" aria-label="更新源" size="small" :disabled="working || sourceSaving" @change="saveUpdateSource">
-              <template #prefix>
-                <icon-brand-github v-if="updateSource === 'github'" :size="14" aria-hidden="true" />
-                <icon-world v-else :size="14" aria-hidden="true" />
-              </template>
-              <el-option label="逸仙" value="official" />
-              <el-option label="GitHub（Toonflow-l）" value="github" />
-              <el-option v-if="customUpdateUrl" label="自定义源" value="custom" />
-            </el-select>
+            <el-tag size="small" type="info">GitHub · Yixianflow</el-tag>
             <el-badge isDot :hidden="!hasDesktopUpdate">
-              <el-button size="small" type="primary" plain :loading="checking" :disabled="sourceSaving" @click="openUpdate">
+              <el-button size="small" type="primary" plain :loading="checking" @click="openUpdate">
                 {{ snapshot?.installFailure ? "查看更新失败原因" : snapshot?.updateReady ? "更新已就绪" : snapshot?.updating || action === "download" ? "查看更新进度" : "检查更新" }}
               </el-button>
             </el-badge>
@@ -55,7 +47,7 @@
     </el-card>
 
     <el-card class="infoCard repositoryCard" shadow="never">
-      <a class="repositoryLink" :href="repositoryUrl" target="_blank" rel="noopener noreferrer" aria-label="GitHub 仓库：lboverfys/Toonflow-l">
+      <a class="repositoryLink" :href="repositoryUrl" target="_blank" rel="noopener noreferrer" aria-label="GitHub 仓库：telAsOne/yixianflow">
         <icon-brand-github class="repositoryIcon" :size="22" aria-hidden="true" />
         <div class="repositoryInfo">
           <span class="repositoryTitle">GitHub 仓库</span>
@@ -169,7 +161,6 @@ import { translate, t } from "@toonflow/i18n/vue";
 
 import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import axios from "axios";
-import { ElMessage } from "element-plus";
 import { isMobile, isRemoteConnection } from "@/lib/mobile";
 import { QRCode } from "tdesign-vue-next";
 import {
@@ -185,10 +176,7 @@ import {
   IconQrcode,
 } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/logo.svg";
-import { saveSettings } from "@/stores/settings";
 import {
-  desktopUpdateSource as updateSource,
-  desktopUpdateCustomUrl as customUpdateUrl,
   desktopUpdateSnapshot as snapshot,
   desktopUpdateError as updateError,
   desktopUpdateAction as action,
@@ -197,13 +185,12 @@ import {
   runDesktopUpdate,
 } from "@/stores/desktopUpdate";
 
-const repositoryUrl = "https://github.com/lboverfys/Toonflow-l";
+const repositoryUrl = "https://github.com/telAsOne/yixianflow";
 const communityUrl = "https://work.weixin.qq.com/u/vc36adcc89845edcbe?v=5.0.3.63936&bb=85b8d228e8";
 const isDesktop = new URLSearchParams(window.location.search).get("desktop") === "1";
 const clientBuild = ref<{ version: string; channel: string }>();
 const currentVersion = computed(() => isDesktop && isRemoteConnection
   ? clientBuild.value?.version || "" : snapshot.value?.version || import.meta.env.appVersion);
-const sourceSaving = ref(false);
 const checking = computed(() => desktopUpdateChecking.value);
 const working = computed(() => !!action.value);
 const updateInProgress = computed(() => working.value || !!snapshot.value?.updating);
@@ -255,30 +242,12 @@ function openUpdate() {
   void runUpdate("check");
 }
 
-async function saveUpdateSource(source: string) {
-  if (isRemoteConnection) return;
-  if (source === updateSource.value || sourceSaving.value || working.value) return;
-  if (source !== "official" && source !== "github" && (source !== "custom" || !customUpdateUrl.value)) return;
-  sourceSaving.value = true;
-  try {
-    await saveSettings(() => ({ desktopUpdateSource: source }));
-  } catch (error) {
-    ElMessage.error(getUpdateError(error));
-  } finally {
-    sourceSaving.value = false;
-  }
-}
-
-function getUpdateError(error: unknown) {
-  return axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || error.message : String(error);
-}
-
 function formatBytes(bytes: number) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 async function runUpdate(nextAction: "read" | "check" | "download" | "apply") {
-  if (working.value || sourceSaving.value) return;
+  if (working.value) return;
   updateError.value = "";
   if (!isDesktop) {
     updateError.value = "请在桌面客户端中检查更新。";
@@ -389,10 +358,6 @@ async function runUpdate(nextAction: "read" | "check" | "download" | "apply") {
 
           a {
             text-decoration: none;
-          }
-
-          :deep(.el-select) {
-            width: 120px;
           }
         }
       }
