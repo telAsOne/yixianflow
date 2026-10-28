@@ -1,5 +1,8 @@
 <template>
-  <nodeSkeleton v-bind="nodeProps" style="width: 320px">
+  <nodeSkeleton v-bind="nodeProps" :topVisible="node.selected" :fullscreenVisible="false" style="width: 320px">
+    <template #top>
+      <el-button :icon="IconCube3dSphere" :loading="modelLoading" @click="openEditor">打开3D导演台</el-button>
+    </template>
     <button v-loading="modelLoading" type="button" class="directorContent nopan" :disabled="modelLoading" :title="modelError || undefined" aria-label="打开导演台" @dblclick.stop @click.stop="openEditor">
       <img v-if="preview" class="scenePreview" :src="preview" alt="最后镜头" draggable="false" />
       <div v-else class="emptyPreview">
@@ -24,7 +27,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useVueFlow } from "@vue-flow/core";
 import { IconCube3dSphere } from "@tabler/icons-vue";
-import { ElLoading, ElMessage } from "element-plus";
+import { ElButton, ElLoading, ElMessage } from "element-plus";
 import { nodeSkeleton, useNode, useNodeFiles, z, type NodeHandle, type NodeData, type NodeAiModel } from "@toonflow/nodes-scaffold/runtime";
 import { useNodeReferences } from "@toonflow/node-shared/useNodeReferences";
 import promptInput from "@toonflow/node-shared/promptInput";
@@ -289,9 +292,10 @@ async function loadModels() {
     const available = await ai.getModels();
     if (disposed) return;
     models.value = available;
-    const first = models.value[0];
-    // ACT: 只给空配置选默认模型，保留暂时不可用的旧选择。
-    if (!model.value) model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
+    if (!selectedModel.value && !tasks.value.some(task => !task.error)) {
+      const first = models.value.find(item => item.isDefault) ?? models.value[0];
+      model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
+    }
   } catch (error) {
     if (!disposed) ElMessage.error(error instanceof Error ? error.message : "模型加载失败");
   } finally {

@@ -1,4 +1,4 @@
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import type { useVueFlow, ViewportTransform, XYPosition } from "@vue-flow/core";
 
 export type CanvasNavigation = ReturnType<typeof useCanvasNavigation>;
@@ -32,13 +32,16 @@ export function useCanvasNavigation(flow: ReturnType<typeof useVueFlow>, binding
     });
   }
 
-  function focusNodes(nodeIds: string[]) {
-    if (!ready()) return Promise.resolve(false);
+  async function focusNodes(nodeIds: string[]) {
+    await nextTick();
+    const element = flow.vueFlowRef.value;
+    if (element?.offsetWidth && element.offsetHeight) flow.dimensions.value = { width: element.offsetWidth, height: element.offsetHeight };
+    if (!ready()) return false;
     const nodes = nodeIds.filter(id => {
       const node = flow.findNode(id);
       return node && !node.hidden && node.dimensions.width > 0 && node.dimensions.height > 0;
     });
-    if (!nodes.length) return Promise.resolve(false);
+    if (!nodes.length) return false;
     rememberView();
     // ACT: 聚焦立即结算；当前 Vue Flow 的动画被其他视口操作打断时不会 resolve，搜索不能依赖它解锁。
     return flow.fitView({ nodes, padding: 0.3, minZoom: flow.minZoom.value, maxZoom: 1.2, duration: 0 });

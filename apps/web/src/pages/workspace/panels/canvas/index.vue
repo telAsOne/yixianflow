@@ -132,7 +132,7 @@
     <div class="assetPanel">
       <assetLibrary ref="assetLibraryRef" v-model="assetsVisible" :directory="project?.directory" />
     </div>
-    <nodeInspector v-show="inspectorShown" v-model:width="workspaceLayout.inspectorWidth.value" :maxWidth="workspaceLayout.inspectorMaxWidth.value" :title="inspectorTitle" @close="workspaceLayout.inspectorVisible.value = false">
+    <nodeInspector v-show="inspectorShown" v-model:width="workspaceLayout.inspectorWidth.value" :maxWidth="workspaceLayout.inspectorMaxWidth.value" :title="inspectorTitle" :requiresModel="inspectorRequiresModel" @close="workspaceLayout.inspectorVisible.value = false">
       <div class="nodeDock">
         <div ref="nodeDockSelection" class="dockSlot" />
         <div ref="nodeDockTop" class="dockSlot" />
@@ -284,6 +284,8 @@ const edgeDisconnect = ref<{ id: string; x: number; y: number }>();
 const flow = useVueFlow(props.runtimeKey);
 const inspectorShown = computed(() => workspaceLayout.inspectorVisible.value && workspaceLayout.inspectorAvailable.value);
 const inspectorTitle = computed(() => flow.getSelectedNodes.value.length > 1 ? `已选中 ${flow.getSelectedNodes.value.length} 个节点` : flow.getSelectedNodes.value[0]?.data.label || "节点设置");
+const inspectorRequiresModel = computed(() => flow.getSelectedNodes.value.length === 1
+  && ["remote-textNode", "remote-imageGenerationNode", "remote-videoGenerationNode", "remote-director3dNode"].includes(flow.getSelectedNodes.value[0]?.type ?? ""));
 const { nodeTypes, nodeLoads, nodeErrors, nodeListLoading, remoteNodeTypes, availableNodes, ensureNodeType, prepareNodeMenu } = useRemoteNodes(flow, {
   signal: () => canvasController.signal, revision: () => canvasSave.revision,
 });
@@ -391,6 +393,7 @@ function showInspector() {
 }
 flow.onNodeClick(showInspector);
 flow.onSelectionEnd(showInspector);
+watch(() => flow.getSelectedNodes.value.map(node => node.id).join(","), showInspector);
 provide("canvas", getCanvasContext);
 const { readDocumentNode, saveDocumentNode, mountDocumentNode, observeDocumentNode } = useDocumentNodes({
   directory: () => project.value?.directory, canvasId, findNode, canvasDirty, canvasSaveError, nodeErrors, flushCanvasSave,
@@ -840,6 +843,7 @@ const defaultEdgeOptions = markRaw({
 <style lang="scss" scoped>
 .canvas {
   position: relative;
+  background: var(--el-bg-color-page);
   width: 100%;
   height: 100%;
   container-type: inline-size;

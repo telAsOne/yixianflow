@@ -18,6 +18,7 @@ const builtinIcons: Record<string, Component> = {
   "remote-imageGenerationNode": IconPhotoAi,
   "remote-videoGenerationNode": IconCameraAi,
   "remote-subtitleNode": IconSubtitles,
+  "remote-subtitleBurnNode": IconSubtitles,
   "remote-director3dNode": IconCube3dSphere,
 };
 // 新节点左上角相对落点的偏移，使节点大致居中于点击或拖放位置。
@@ -105,16 +106,29 @@ export function useNodeCreation(flow: ReturnType<typeof useVueFlow>, options: {
     const signal = options.signal();
     await options.ensureNodeType(type);
     signal.throwIfAborted();
-    let target = snap({ x: center.x - nodeOffset.x, y: center.y - nodeOffset.y });
-    // 连续点击不让新节点完全叠在上一个节点上。
-    while (!position && flow.getNodes.value.some(node => Math.abs(node.position.x - target.x) < 8 && Math.abs(node.position.y - target.y) < 8)) {
-      target = { x: target.x + 40, y: target.y + 40 };
-    }
+    const target = snap({ x: center.x - nodeOffset.x, y: center.y - nodeOffset.y });
     const id = crypto.randomUUID();
-    flow.addNodes({ id, type, position: target, data: { label: option.label } });
-    await nextTick();
-    const created = flow.findNode(id);
-    if (created) select([created]);
+    await options.batchHistory(async () => {
+      flow.addNodes({ id, type, position: target, data: { label: option.label } });
+      await nextTick();
+      const created = flow.findNode(id);
+      if (!created) return;
+      select([created]);
+      if (position) return;
+      await waitForNodes([id], signal);
+      // 点击新建按实际尺寸沿当前行避让；拖放仍使用用户指定的落点。
+      const neighbors = flow.getNodes.value.filter(node => node.id !== id && !node.hidden
+        && node.computedPosition.y < target.y + created.dimensions.height + 32
+        && node.computedPosition.y + node.dimensions.height + 32 > target.y)
+        .sort((left, right) => left.computedPosition.x - right.computedPosition.x);
+      for (const node of neighbors) {
+        const right = node.computedPosition.x + node.dimensions.width + 32;
+        if (target.x < right && target.x + created.dimensions.width + 32 > node.computedPosition.x)
+          target.x = flow.snapToGrid.value ? Math.ceil(right / flow.snapGrid.value[0]) * flow.snapGrid.value[0] : right;
+      }
+      created.position = snap(target);
+    });
+    if (!position) await options.focusNodes([id]);
   }
 
   async function addStarter(id: string) {

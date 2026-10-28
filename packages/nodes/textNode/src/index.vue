@@ -29,7 +29,7 @@
         <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" />
         <p v-if="model && !selectedModel && !modelsLoading" role="alert">模型不可用，请选择其他模型</p>
         <div class="promptFooter">
-          <el-select v-model="model" class="modelSelect" filterable :loading="modelsLoading" :disabled="generating" placeholder="选择模型" aria-label="生成模型" noDataText="请先在设置中添加模型" placement="top-start" @change="rememberPreferences" @visibleChange="(visible: boolean) => visible && loadModels()">
+          <el-select v-model="model" class="modelSelect" filterable :loading="modelsLoading" :disabled="generating" placeholder="选择模型" aria-label="生成模型" noDataText="请登录逸仙账户并刷新模型" placement="top-start" @change="rememberPreferences" @visibleChange="(visible: boolean) => visible && loadModels()">
             <template #prefix><icon-sparkles :size="17" /></template>
             <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
               <el-option v-for="item in provider.models" :key="item.modelId" :label="item.label" :value="JSON.stringify([item.providerId, item.modelId])" />
@@ -217,7 +217,7 @@ async function loadModels() {
   modelsLoading.value = true;
   try {
     models.value = await ai.getModels();
-    if (!model.value) {
+    if (!selectedModel.value && !generating.value) {
       const first = models.value.find(model => model.isDefault) ?? models.value[0];
       model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }

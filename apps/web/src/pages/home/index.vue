@@ -3,7 +3,7 @@
     <header class="topBar">
       <div class="brand">
         <img class="brandLogo" :src="logoUrl" alt="" aria-hidden="true" />
-        <span class="brandName">Toonflow</span>
+        <span class="brandName">Yixianflow</span>
       </div>
       <nav class="topActions" aria-label="快捷操作">
         <el-button class="chromeButton" text :type="deviceHubEnabled ? 'success' : undefined" :icon="deviceHubEnabled || mobileConnection.mode === 'remote' ? IconDeviceDesktop : IconQrcode" @click="mobileConnectVisible = true">
@@ -14,18 +14,13 @@
             <span class="chromeLabel">设置</span>
           </el-button>
         </el-badge>
-        <el-tooltip content="点个 Star 支持一下" placement="bottom-end" :showArrow="false">
-          <el-button class="chromeButton" text :icon="IconBrandGithub" tag="a" href="https://github.com/HBAI-Ltd/Toonflow-app" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-            <span class="chromeLabel">GitHub</span>
-          </el-button>
-        </el-tooltip>
       </nav>
     </header>
     <main class="pageContent">
       <section class="creationPanel" aria-label="创建项目">
         <div class="hero">
-          <img class="heroLogo" :src="logoUrl" alt="Toonflow" />
-          <h1>Toonflow</h1>
+          <img class="heroLogo" :src="logoUrl" alt="Yixianflow" />
+          <h1>Yixianflow</h1>
         </div>
         <div class="composer" :class="{ busy: creating || opening }">
           <div class="composerLabel"><icon-sparkles :size="14" aria-hidden="true" />灵感创作模式</div>
@@ -89,7 +84,7 @@ import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type InputInstance } from "element-plus";
 import {
-  IconSettings, IconBrandGithub, IconQrcode, IconDeviceDesktop,
+  IconSettings, IconQrcode, IconDeviceDesktop,
   IconArrowUp, IconLayoutGrid, IconList, IconSortDescending,
   IconSortAscending, IconFolder, IconEdit, IconSparkles, IconInfoCircle,
   IconTrash, IconFolderPlus, IconFolderOpen,
@@ -281,7 +276,7 @@ async function createProject(fromPrompt = true) {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
-  background: var(--el-bg-color);
+  background: var(--el-bg-color-page);
   color: var(--el-text-color-primary);
 
   .topBar {
@@ -290,7 +285,7 @@ async function createProject(fromPrompt = true) {
     z-index: 2;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 16px;
     height: 56px;
     padding: 0 clamp(16px, 3vw, 28px);
@@ -320,9 +315,15 @@ async function createProject(fromPrompt = true) {
     }
 
     .topActions {
+      order: -1;
       display: flex;
       align-items: center;
       gap: 2px;
+      padding: 4px;
+      border: 1px solid var(--el-border-color-light);
+      border-radius: var(--ui-radius-large);
+      background: var(--el-bg-color-overlay);
+      box-shadow: var(--floatingShadow);
 
       .chromeButton {
         height: 32px;
@@ -387,7 +388,7 @@ async function createProject(fromPrompt = true) {
 
         h1 {
           margin: 0;
-          font-size: clamp(28px, 4vw, 34px);
+          font-size: clamp(30px, 4vw, 40px);
           font-weight: 600;
           letter-spacing: -0.03em;
         }
