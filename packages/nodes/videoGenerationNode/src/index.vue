@@ -90,7 +90,7 @@
             :disabled="generating || deleting || pendingTask || taskChecking || zealmanLoading || zealmanEnqueuing || promptOptimizing || uploadingReferences || !!data.zealmanQueue.length"
             placeholder="选择模型"
             aria-label="生成模型"
-            noDataText="请先在设置中添加视频模型"
+            noDataText="请登录逸仙账户并刷新模型"
             @change="rememberPreferences"
             placement="top-start"
             @visibleChange="(visible: boolean) => visible && loadModels().catch((error) => showNodeError(error, '模型读取失败'))">

@@ -9,7 +9,7 @@
                 <div class="welcomeHeader">
                   <span class="welcomeIcon" aria-hidden="true"><span class="welcomeLogo" :style="{ maskImage: `url(${logoUrl})` }" /></span>
                   <div>
-                    <p class="welcomeLabel">你好，我是 Toonflow 助手</p>
+                    <p class="welcomeLabel">你好，我是 Yixianflow 助手</p>
                     <h3>从一个想法开始</h3>
                   </div>
                 </div>
@@ -70,8 +70,10 @@
                 <template v-else>
                   <el-button v-if="item.content" class="messageAction" text circle aria-label="复制消息" title="复制消息" @click="copyMessage(mentionPlainText(item.content, item.mentions))"><icon-copy :size="14" /></el-button>
                   <template v-if="item.role === 'user'">
+                    <el-button v-if="item.error" class="messageAction" text :disabled="locked || remoteRunning || !selectedModelChoice" @click="sendMessage(item)">重试发送</el-button>
                     <el-button class="messageAction" text :circle="!item.error" :disabled="locked || remoteRunning" :aria-label="item.error ? '恢复输入' : '编辑消息'" :title="item.error ? '恢复输入' : '编辑消息'" @click="editMessage(item)"><icon-pencil :size="14" /><span v-if="item.error">恢复输入</span></el-button>
                   </template>
+                  <el-button v-if="item.role === 'assistant' && item.error" class="messageAction" text :disabled="locked || remoteRunning" @click="fillPrompt('请从上次中断处继续，先检查已经完成的操作，避免重复创建节点或重复生成。')">继续处理</el-button>
                   <el-button v-if="!item.report" class="messageAction" text circle :loading="deletingId === item.id" :disabled="locked || remoteRunning" aria-label="删除消息" title="删除消息" @click="deleteMessage(item)"><icon-trash v-if="deletingId !== item.id" :size="14" /></el-button>
                 </template>
               </div>
@@ -404,8 +406,13 @@ async function selectSkill(name: string) {
 async function fillPrompt(prompt: string) {
   const instance = sender;
   if (!instance || locked.value) return;
-  draftMentions.value = [];
-  await instance.reset({ clearHistory: false, chatNode: [[{ type: "Write", text: prompt }]] });
+  if (instance.isEmpty(false)) {
+    draftMentions.value = [];
+    await instance.reset({ clearHistory: false, chatNode: [[{ type: "Write", text: prompt }]] });
+  } else {
+    instance.focus("last");
+    await instance.setText(`\n${prompt}`);
+  }
   if (sender === instance) instance.focus("last");
 }
 
@@ -1027,6 +1034,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
           height: 24px;
           padding: 0;
           color: var(--el-text-color-secondary);
+          &:not(.is-circle) { width: auto; padding: 0 6px; }
         }
       }
 

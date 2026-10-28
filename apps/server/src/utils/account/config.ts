@@ -39,22 +39,26 @@ export async function refreshConfig(): Promise<void> {
         ...(image.enabled ? image.models.map(model => ({ ...model, type: "image" as const })) : []),
         ...(video.enabled ? video.models.map(model => ({ ...model, type: "video" as const, taskRecovery: true, referenceInput: "platformAsset" as const })) : []),
       ];
+      const { id, label, icon, version, protocol } = yixian;
+      const customProviders = [{ id, label, icon, version, protocol, apiUrl: `${account.baseUrl}/v1`,
+        models: text.enabled ? text.models : [], requestBodyLimitMiB: text.requestBodyLimitMiB }];
+      const defaultModels = Object.fromEntries(Object.entries(config.categories).map(([type, category]) => [type,
+        category.enabled ? { providerId: type === "text" ? "yixian" : "yixianVideo", modelId: category.defaultModel } : null]));
       const saved = conf.get("settings.yixianConfig") as { config?: unknown } | undefined;
-      if (JSON.stringify(saved?.config) === JSON.stringify(config) && JSON.stringify(provider.models) === JSON.stringify(models)) {
+      if (JSON.stringify(saved?.config) === JSON.stringify(config) && JSON.stringify(provider.models) === JSON.stringify(models)
+        && JSON.stringify(conf.get("settings.customProviders")) === JSON.stringify(customProviders)
+        && JSON.stringify(conf.get("settings.defaultModels")) === JSON.stringify(defaultModels)) {
         configError = "";
         return;
       }
       if (getAccount() !== account) return;
       await saveMediaProvider(provider.fileName, models, provider.revision);
       if (getAccount() !== account) return;
-      const { id, label, icon, version, protocol } = yixian;
       const settings = conf.get("settings", {});
       conf.set("settings", { ...settings,
-        customProviders: [{ id, label, icon, version, protocol, apiUrl: `${account.baseUrl}/v1`,
-          models: text.enabled ? text.models : [], requestBodyLimitMiB: text.requestBodyLimitMiB }],
+        customProviders,
         mediaProviderConfigs: {},
-        defaultModels: Object.fromEntries(Object.entries(config.categories).map(([type, category]) => [type,
-          category.enabled ? { providerId: type === "text" ? "yixian" : "yixianVideo", modelId: category.defaultModel } : null])),
+        defaultModels,
         yixianConfig: { baseUrl: account.baseUrl, userId: account.user.id, config },
       });
       configError = "";

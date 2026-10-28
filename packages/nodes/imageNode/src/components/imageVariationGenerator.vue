@@ -1,6 +1,6 @@
 <template>
   <footer class="variationFooter">
-    <el-select v-model="settings.model" class="modelSelect" filterable :loading="modelsLoading" :disabled="busy" placeholder="选择图片模型" :aria-label="`${label}模型`" noDataText="请先在设置中添加图片模型" placement="top-start" @change="rememberPreferences" @visibleChange="(visible: boolean) => visible && refreshModels()">
+    <el-select v-model="settings.model" class="modelSelect" filterable :loading="modelsLoading" :disabled="busy" placeholder="选择图片模型" :aria-label="`${label}模型`" noDataText="请登录逸仙账户并刷新模型" placement="top-start" @change="rememberPreferences" @visibleChange="(visible: boolean) => visible && refreshModels()">
       <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
         <el-option v-for="model in provider.models" :key="model.modelId" :label="model.label" :value="JSON.stringify([model.providerId, model.modelId])" />
       </el-option-group>
@@ -89,8 +89,8 @@ async function refreshModels() {
       inheritModelConfig = false;
     }
     models.value = result.filter(item => item.type === "image");
-    if (!props.settings.model) {
-      const choice = models.value[0];
+    if (!selectedModel.value) {
+      const choice = models.value.find(item => item.isDefault) ?? models.value[0];
       props.settings.model = choice ? JSON.stringify([choice.providerId, choice.modelId]) : "";
     }
   } catch (error) { if (!disposed) showNodeError(error, "模型读取失败"); }

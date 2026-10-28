@@ -84,16 +84,20 @@ export function updateGeneralSettings(patch: Partial<typeof generalSettings.valu
   settings.value = { ...settings.value, general: { ...(current && typeof current === "object" && !Array.isArray(current) ? current : {}), ...patch } };
 }
 
-export type CustomProviderModel = { id: string; label: string; contextWindow?: number; maxOutputTokens?: number };
+export type CustomProviderModel = { id: string; label: string; contextWindow?: number; maxOutputTokens?: number; think?: boolean };
 export type CustomProvider = { id: string; label: string; icon?: string; version?: string; apiUrl: string; apiKey: string; protocol: string; requestBodyLimitMiB?: number; models: CustomProviderModel[] };
 export const customProviders = computed<CustomProvider[]>(() => Array.isArray(settings.value.customProviders)
   ? settings.value.customProviders.filter((item): item is CustomProvider => !!item && typeof item.id === "string" && typeof item.label === "string" && Array.isArray(item.models)
     && item.models.every((model: CustomProviderModel) => !!model && typeof model.id === "string" && typeof model.label === "string"))
   : []);
 
-export const modelChoices = computed(() => customProviders.value.flatMap(provider => provider.models.map(model => ({
-  value: JSON.stringify([provider.id, model.id]), isDefault: (settings.value.defaultModels as { text?: { modelId: string } } | undefined)?.text?.modelId === model.id, providerId: provider.id, modelId: model.id, label: model.label, contextWindow: model.contextWindow,
-}))));
+export const modelChoices = computed(() => {
+  const defaultModel = (settings.value.defaultModels as { text?: { providerId: string; modelId: string } } | undefined)?.text;
+  return customProviders.value.flatMap(provider => provider.models.map(model => ({
+    value: JSON.stringify([provider.id, model.id]), isDefault: defaultModel?.providerId === provider.id && defaultModel.modelId === model.id,
+    providerId: provider.id, modelId: model.id, label: model.label, contextWindow: model.contextWindow, think: model.think,
+  })));
+});
 
 export async function loadSettings() {
   if (settingsReady) return;

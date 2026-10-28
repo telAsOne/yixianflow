@@ -33,9 +33,9 @@ async function explainError() {
   explanationError.value = "";
   const signal = AbortSignal.any([props.signal, AbortSignal.timeout(60000)]);
   try {
-    // ACT: 沿用生成节点的首个文本模型默认值；不额外维护一份模型偏好。
-    const model = (await ai.getModels(signal))[0];
-    if (!model) throw new Error("请先在设置中添加文本模型，再重试 AI 解释。");
+    const models = await ai.getModels(signal);
+    const model = models.find(item => item.isDefault) ?? models[0];
+    if (!model) throw new Error("请登录逸仙账户并刷新模型，再重试 AI 解释。");
     modelLabel.value = `${model.providerLabel} / ${model.label}`;
     const result = await ai.generate({
       providerId: model.providerId,

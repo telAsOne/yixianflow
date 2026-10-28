@@ -10,7 +10,9 @@ export const refreshingModels = ref(false);
 export async function refreshAccount() {
   const { data } = await api.get<{ data: AccountView }>("/api/account/get", { timeout: 35000 });
   const previous = accountView.value?.revision;
-  if (data.data.revision !== previous) {
+  if (!data.data.authenticated) {
+    applyManagedSettings({ customProviders: [], defaultModels: {}, yixianConfig: undefined });
+  } else if (data.data.revision !== previous) {
     const settings = await api.get("/api/settings/get");
     applyManagedSettings(settings.data.data);
   }
@@ -31,6 +33,6 @@ export async function refreshModels() {
 export async function logout() {
   await api.post("/api/account/logout");
   accountView.value = undefined;
-  applyManagedSettings({});
+  applyManagedSettings({ customProviders: [], defaultModels: {}, yixianConfig: undefined });
   await refreshAccount();
 }

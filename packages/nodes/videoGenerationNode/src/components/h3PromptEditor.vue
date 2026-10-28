@@ -408,13 +408,14 @@ async function loadModels() {
   modelsLoading.value = true;
   try {
     models.value = await props.ai.getModels();
-    if (!state.value.model) {
+    if (!selectedModel.value && !optimizing.value) {
       let preferred = "";
       try { preferred = JSON.parse(preferences?.getItem("toonflow:generation:text") ?? "{}").model ?? ""; } catch { /* 旧模型偏好无效时由已配置模型列表选择。 */ }
-      const choice = models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === preferred) ?? models.value[0];
-      if (choice) state.value.model = JSON.stringify([choice.providerId, choice.modelId]);
+      const choice = models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === preferred)
+        ?? models.value.find(item => item.isDefault) ?? models.value[0];
+      state.value.model = choice ? JSON.stringify([choice.providerId, choice.modelId]) : "";
     }
-    if (!models.value.length) error.value = "请先在设置中配置文本模型，再使用 Skill 优化";
+    if (!models.value.length) error.value = "请登录逸仙账户并刷新模型，再使用 Skill 优化";
   } catch (cause) { error.value = cause instanceof Error ? cause.message : "文本模型读取失败"; }
   finally { modelsLoading.value = false; }
 }

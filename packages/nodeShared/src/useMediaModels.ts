@@ -22,8 +22,8 @@ export function useMediaModels(type: "image" | "video" | "audio", data: Readonly
     pending = getModels().then(items => {
       if (disposed || isBusy()) return;
       models.value = items.filter(item => item.type === type);
-      // ACT: 仅空配置选择默认模型，暂时不可用的模型保持原选择，避免静默更换供应商。
-      if (!data.value.model) {
+      // ACT: 平台统一管理模型，旧偏好或已下架型号回到本类默认值；运行中的任务保留原请求。
+      if (!models.value.some(model => JSON.stringify([model.providerId, model.modelId]) === data.value.model)) {
         const first = models.value.find(model => model.isDefault) ?? models.value[0];
         data.value.model = first ? JSON.stringify([first.providerId, first.modelId]) : "";
       }

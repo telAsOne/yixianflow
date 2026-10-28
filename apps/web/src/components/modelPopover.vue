@@ -33,8 +33,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="推理等级">
-          <el-segmented v-model="reasoningEffort" :options="reasoningOptions" :disabled="disabled" block aria-label="推理等级" />
+          <el-segmented v-model="reasoningEffort" :options="reasoningOptions" :disabled="disabled || !selectedModelChoice?.think" block aria-label="推理等级" />
         </el-form-item>
+        <div v-if="!modelChoices.length || accountView?.configError" class="modelHelp" role="status">
+          <span>{{ accountView?.configError || (accountView?.authenticated ? '暂无可用模型，请刷新模型列表' : '登录逸仙账户后自动加载可用模型') }}</span>
+          <el-button text type="primary" :loading="refreshingModels" :disabled="disabled" @click="syncModels">{{ accountView?.authenticated ? '刷新模型' : '登录 / 注册' }}</el-button>
+        </div>
       </el-form>
     </el-popover>
   </div>
@@ -44,7 +48,10 @@
 import { computed, ref, watch } from "vue";
 import { IconChevronDown } from "@tabler/icons-vue";
 import { modelIcon } from "@toonflow/model-icons";
+import { ElMessage } from "element-plus";
+import { errorMessage } from "@/lib/api";
 import { customProviders, modelChoices } from "@/stores/settings";
+import { accountView, signInVisible, refreshModels, refreshingModels } from "@/stores/account";
 
 const selectedModel = defineModel<string>({ default: "" });
 const reasoningEffort = defineModel<string>("reasoningEffort", { default: "" });
@@ -60,9 +67,18 @@ const modelGroups = computed(() => customProviders.value);
 const selectedModelChoice = computed(() => modelChoices.value.find(item => item.value === selectedModel.value));
 const reasoningLabel = computed(() => reasoningOptions.find(item => item.value === reasoningEffort.value)?.label ?? "默认");
 watch(modelChoices, items => {
-  if (!selectedModel.value) selectedModel.value = (items.find(item => item.isDefault) ?? items[0])?.value ?? "";
+  if (selectedModel.value && items.some(item => item.value === selectedModel.value)) return;
+  selectedModel.value = (items.find(item => item.isDefault) ?? items[0])?.value ?? "";
+  reasoningEffort.value = "";
 }, { immediate: true });
 watch(() => !props.active || props.disabled, close => { if (close) visible.value = false; });
+watch(selectedModelChoice, choice => { if (!choice?.think) reasoningEffort.value = ""; }, { immediate: true });
+
+async function syncModels() {
+  if (!accountView.value?.authenticated) { visible.value = false; signInVisible.value = true; return; }
+  try { await refreshModels(); }
+  catch (error) { ElMessage.error(errorMessage(error, "刷新模型失败")); }
+}
 </script>
 
 <style lang="scss">
@@ -103,6 +119,15 @@ watch(() => !props.active || props.disabled, close => { if (close) visible.value
 }
 
 .agentModelPopover {
+  .modelHelp {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+  }
   .modelOptions {
     .el-form-item {
       margin-bottom: 24px;
