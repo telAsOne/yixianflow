@@ -1,12 +1,29 @@
 import { z } from "zod";
-import type { ToolDefinition, ToolPlugin } from "@toonflow/tools-scaffold/runtime";
-import { audioGenerationSchema, imageGenerationSchema, listMediaModelsSchema, videoGenerationSchema } from "./runtime";
+import type { GeneratedMedia, ToolDefinition, ToolPlugin } from "@toonflow/tools-scaffold/runtime";
+import { audioGenerationSchema, imageGenerationSchema, listMediaModelsSchema, resumeVideoTaskSchema, videoGenerationSchema, videoTaskSchema } from "./runtime";
 
 const configSchema = z.strictObject({
   allowImage: z.boolean().default(true),
   allowVideo: z.boolean().default(true),
   allowAudio: z.boolean().default(true),
 });
+
+async function videoOperationId(toolCallId: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`mediaGeneration:generateVideo:${toolCallId}`))).slice(0, 16);
+  digest[6] = (digest[6]! & 0x0f) | 0x80;
+  digest[8] = (digest[8]! & 0x3f) | 0x80;
+  const hex = Array.from(digest, value => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function mediaResult(result: GeneratedMedia[]) {
+  const text = result.map(asset => {
+    const url = asset.path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
+    const preview = asset.mediaType === "image" ? `![生成图片](<${url}>)` : `[${asset.mediaType === "audio" ? "播放生成音频" : "查看生成视频"}](<${url}>)`;
+    return `${preview}\n工作区文件：${asset.path}`;
+  }).join("\n\n");
+  return { content: [{ type: "text" as const, text }], details: result };
+}
 
 const plugin: ToolPlugin = {
   validateConfig: config => configSchema.parse(config),
@@ -31,22 +48,59 @@ const plugin: ToolPlugin = {
         return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
       },
     };
-    return [listTool, ...generationTools.map<ToolDefinition>(operation => ({
-      name: operation.name,
-      label: operation.label,
-      description: `${operation.description}providerId 和 modelId 必须来自 listMediaModels。引用素材的 path 及 outputDirectory 均为工作区相对路径；省略输出目录使用默认媒体目录。等待生成完成后返回已保存的文件路径，不返回 Base64。`,
-      promptSnippet: "生成媒体前先查询 listMediaModels，复用实际模型和工作区参考素材。",
-      parameters: z.toJSONSchema(operation.parameters, { io: "input", target: "draft-07" }),
+    const videoTaskTools: ToolDefinition[] = permissions.allowVideo ? [{
+      name: "getVideoTask",
+      label: "查询原视频任务",
+      description: "查询工作区中指定输出目录的本地视频任务记录。使用生成失败信息里的 outputDirectory，旧版默认目录可省略；节点目录为 assets/节点ID。返回 operationId、阶段、原任务编号和结果；running 仅表示本地是否正在等待，不表示远端已取消。此操作不会提交或补发生成。",
+      parameters: z.toJSONSchema(videoTaskSchema, { io: "input", target: "draft-07" }),
+      async execute(_id, params, signal) {
+        signal?.throwIfAborted();
+        const { outputDirectory } = videoTaskSchema.parse(params);
+        const task = await media.getVideoTask(outputDirectory);
+        signal?.throwIfAborted();
+        const result = { outputDirectory, task };
+        return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+      },
+    }, {
+      name: "resumeVideoTask",
+      label: "恢复原视频任务",
+      description: "按 getVideoTask 返回的 operationId 和 outputDirectory 恢复原参数下的查询或下载，不新建视频。原任务仍在本地等待时返回状态；已完成时直接返回已有结果。提交回执未知且没有任务编号时无法自动恢复，须在视频专栏核查；其他独立创作可以继续。",
+      parameters: z.toJSONSchema(resumeVideoTaskSchema, { io: "input", target: "draft-07" }),
       executionMode: "sequential",
       async execute(_id, params, signal) {
         signal?.throwIfAborted();
-        const result = await media[operation.name](operation.parameters.parse(params), signal);
-        const text = result.map(asset => {
-          const url = asset.path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
-          const preview = asset.mediaType === "image" ? `![生成图片](<${url}>)` : `[${asset.mediaType === "audio" ? "播放生成音频" : "查看生成视频"}](<${url}>)`;
-          return `${preview}\n工作区文件：${asset.path}`;
-        }).join("\n\n");
-        return { content: [{ type: "text", text }], details: result };
+        const request = resumeVideoTaskSchema.parse(params);
+        const task = await media.getVideoTask(request.outputDirectory);
+        signal?.throwIfAborted();
+        if (!task || task.operationId !== request.operationId) throw new Error("原视频任务不存在或已变化，请重新查询 getVideoTask");
+        if (task.result) return mediaResult(task.result);
+        if (task.running) {
+          const result = { status: "waiting", outputDirectory: request.outputDirectory, task };
+          return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+        }
+        if (task.phase === "submitting" && !task.taskId) throw new Error("原视频提交回执尚未确认且没有任务编号，请在视频专栏核查；不会自动补发，其他独立创作可以继续");
+        if (task.phase === "failed") throw new Error(task.error || "原视频任务已失败，无法恢复；如需重新生成请创建新任务");
+        return mediaResult(await media.resumeVideoTask(request, signal));
+      },
+    }] : [];
+    return [listTool, ...videoTaskTools, ...generationTools.map<ToolDefinition>(operation => ({
+      name: operation.name,
+      label: operation.label,
+      description: `${operation.description}providerId 和 modelId 必须来自 listMediaModels。引用素材的 path 及 outputDirectory 均为工作区相对路径；${operation.mediaType === "video" ? "省略输出目录会为本次视频任务隔离目录，旧任务不会阻塞新创作；中断后用 getVideoTask 查询、resumeVideoTask 恢复，不能反复提交同一生成。" : "省略输出目录使用默认媒体目录。"}等待生成完成后返回已保存的文件路径，不返回 Base64。`,
+      promptSnippet: "生成媒体前先查询 listMediaModels，复用实际模型和工作区参考素材。",
+      parameters: z.toJSONSchema(operation.parameters, { io: "input", target: "draft-07" }),
+      executionMode: "sequential",
+      async execute(id, params, signal) {
+        signal?.throwIfAborted();
+        const request = operation.parameters.parse(params);
+        if (operation.mediaType !== "video") return mediaResult(await media[operation.name](request, signal));
+        const operationId = "operationId" in request && request.operationId || await videoOperationId(id);
+        const outputDirectory = request.outputDirectory ?? `assets/generated/video${operationId.replaceAll("-", "")}`;
+        try {
+          return mediaResult(await media.generateVideo({ ...request, operationId, outputDirectory }, signal));
+        } catch (error) {
+          throw new Error(`${error instanceof Error ? error.message : String(error)}\n本次操作编号：${operationId}\noutputDirectory：${outputDirectory}\n先用 getVideoTask 查询此目录，有可恢复记录时使用 resumeVideoTask；勿重复提交本次生成。其他独立创作可以继续。`, { cause: error });
+        }
       },
     }))];
   },

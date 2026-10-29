@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { listMediaModels, generateMedia } from "@/utils/media/generation";
+import { listMediaModels, generateMedia, getVideoTask, getVideoTaskRequest } from "@/utils/media/generation";
 import { createWorkspaceFfmpeg } from "@/utils/ffmpeg";
 import { createBrowserContext } from "@/utils/browser";
 import { importImage } from "@/utils/workspace/chatImages";
@@ -71,6 +71,11 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
       generateImage: (request, signal) => generateMedia(cwd, "image", request, signal),
       generateVideo: (request, signal) => generateMedia(cwd, "video", request, signal),
       generateAudio: (request, signal) => generateMedia(cwd, "audio", request, signal),
+      getVideoTask: outputDirectory => getVideoTask(cwd, outputDirectory),
+      resumeVideoTask: async (request, signal) => {
+        const saved = await getVideoTaskRequest(cwd, request.outputDirectory, request.operationId);
+        return generateMedia(cwd, "video", saved, signal);
+      },
     } : undefined,
     sdk: {
       defineTool, createReadToolDefinition, createWriteToolDefinition, createEditToolDefinition, createLsToolDefinition,

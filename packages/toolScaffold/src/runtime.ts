@@ -171,6 +171,8 @@ export interface MediaContext {
   generateImage(request: MediaGenerationRequest, signal?: AbortSignal): Promise<GeneratedMedia[]>;
   generateVideo(request: MediaGenerationRequest, signal?: AbortSignal): Promise<GeneratedMedia[]>;
   generateAudio(request: MediaGenerationRequest, signal?: AbortSignal): Promise<GeneratedMedia[]>;
+  getVideoTask(outputDirectory: string): Promise<VideoTaskStatus | null>;
+  resumeVideoTask(request: { outputDirectory: string; operationId: string }, signal?: AbortSignal): Promise<GeneratedMedia[]>;
 }
 
 export interface QuestionField {

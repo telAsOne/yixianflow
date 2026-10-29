@@ -306,7 +306,7 @@ export async function runVideoTask(
 ) {
   const outputDirectory = input.outputDirectory ?? "assets/generated";
   const directory = await taskDirectory(cwd, outputDirectory);
-  if (active.has(directory)) invalid("此节点的原视频任务仍在运行，请等待或恢复查询，不能重复提交");
+  if (active.has(directory)) invalid("此输出目录的原视频任务仍在本地等待，请查询原任务；其他创作可使用新节点或独立输出目录继续");
   active.add(directory);
   try {
     await mkdir(directory, { recursive: true });
@@ -315,7 +315,7 @@ export async function runVideoTask(
     const request = videoGenerationSchema.parse({ ...input, outputDirectory, operationId });
     const recordPath = (await resolveWorkspacePath(cwd, relative(cwd, join(directory, `${operationId}.json`)))).path;
     let record = await readRecord(recordPath);
-    if (previous && previous.id !== operationId && !previous.result && previous.state.phase !== "failed") invalid("此节点存在未完成的视频任务，请先恢复原任务");
+    if (previous && previous.id !== operationId && !previous.result && previous.state.phase !== "failed") invalid("此输出目录保留有未完成的视频任务，可查询或恢复原任务；其他创作可使用新节点或独立输出目录继续");
     const identity = hash(canonical({ apiKey: String(config.apiKey ?? "").trim().replace(/^Bearer\s+/i, "").trim(), apiUrl: String(config.apiUrl ?? "").replace(/\/+$/, "") }));
     if (record) {
       if (record.id !== operationId || canonical(record.request) !== canonical(request)) invalid("同一操作不能修改生成参数，请先恢复原任务");

@@ -124,10 +124,10 @@
               v-if="!isZealmanU06"
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="deleting || uploading || uploadingReferences || promptOptimizing || taskChecking || (!generating && !pendingTask && (!generationPrompt || !selectedModel))"
-              :title="generating ? '停止本地等待' : pendingTask ? '恢复原视频任务' : '生成视频'"
-              :aria-label="generating ? '停止本地等待' : pendingTask ? '恢复原视频任务' : '生成视频'"
-              @click="generating ? stopGeneration() : startGeneration().catch((error) => showNodeError(error, '视频生成失败'))">{{ generating ? '停止等待' : pendingTask ? '恢复任务' : '生成' }}</el-button>
+              :disabled="deleting || uploading || uploadingReferences || promptOptimizing || taskChecking || (!generating && submissionUnconfirmed) || (!generating && !pendingTask && (!generationPrompt || !selectedModel))"
+              :title="generating ? '停止本地等待' : submissionUnconfirmed ? '提交状态待核查，可在新节点继续' : pendingTask ? '恢复原视频任务' : '生成视频'"
+              :aria-label="generating ? '停止本地等待' : submissionUnconfirmed ? '提交状态待核查' : pendingTask ? '恢复原视频任务' : '生成视频'"
+              @click="generating ? stopGeneration() : startGeneration().catch((error) => showNodeError(error, '视频生成失败'))">{{ generating ? '停止等待' : submissionUnconfirmed ? '待核查' : pendingTask ? '恢复任务' : '生成' }}</el-button>
             <template v-else>
               <el-button v-if="generating || activeQueueId" @click="stopGeneration">停止等待</el-button>
               <el-button v-else-if="pendingTask || data.zealmanQueue.length" :disabled="taskChecking || deleting" @click="continueZealmanQueue().catch(error => showNodeError(error, '恢复队列失败'))">{{ pendingTask ? '恢复任务' : '继续队列' }}</el-button>
@@ -147,12 +147,18 @@
           <div v-if="videoTask?.taskId">任务编号：{{ videoTask.taskId }}</div>
           <div v-if="videoTask && !videoTask.taskId">本地操作编号：{{ videoTask.operationId }}</div>
           <div v-if="pendingTask && !generating">
-            {{ videoTask?.providerId === 'vidGate' && videoTask.phase === 'submitting' && !videoTask.taskId
-              ? '提交结果尚未确认，请到 VidGate 核查任务记录；此操作不会补发生成。'
-              : '原任务已保存，点击“恢复任务”按原参数恢复；不会新建视频。' }}
+            {{ submissionUnconfirmed
+              ? '提交结果尚未确认，请到视频专栏核查；原任务会保留，可在新节点继续创作。'
+              : '原任务已保存，点击“恢复任务”按原参数恢复；也可在新节点继续其他创作。' }}
           </div>
           <div v-if="videoTask?.error || taskStatusError" class="taskError">{{ taskStatusError || videoTask?.error }}</div>
         </div>
+        <el-button
+          v-if="duplicateCanvasNode && (generating || pendingTask || taskStatusError)"
+          :loading="creatingGeneration"
+          :disabled="deleting || uploadingReferences || promptOptimizing"
+          title="复制配置和参考连线到新节点，保留原任务；点击生成后才会提交新任务"
+          @click="createNewGeneration().catch(error => showNodeError(error, '创建新节点失败'))">在新节点继续</el-button>
       </el-card>
     </template>
   </nodeSkeleton>
@@ -162,7 +168,7 @@
 
 <script setup lang="ts">
 import { validateReferenceSelection } from "@toonflow/node-shared/mediaLimits";
-import { computed, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
+import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem, ElInput } from "element-plus";
 import { IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle, type VideoTaskStatus, type NodeInputValue } from "@toonflow/nodes-scaffold/runtime";
@@ -198,6 +204,8 @@ const vLoading = ElLoading.directive;
 const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview } = useNode({
   label: "视频生成",
 });
+const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
+const creatingGeneration = ref(false);
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string }[]; h3Prompt: H3PromptState });
 const rememberPreferences = useGenerationPreferences("video", () => data.value);
@@ -239,6 +247,7 @@ const videoTask = ref<VideoTaskStatus | null>(null);
 const taskChecking = ref(true);
 const taskStatusError = ref("");
 const pendingTask = computed(() => !!videoTask.value && !["completed", "failed"].includes(videoTask.value.phase));
+const submissionUnconfirmed = computed(() => videoTask.value?.phase === "submitting" && !videoTask.value.taskId && !videoTask.value.running);
 const taskPhaseLabel = computed(() => videoTask.value ? ({ prepared: "准备提交", submitting: "确认提交回执", queued: "排队中", in_progress: "生成中", downloading: "保存原片中", completed: "原片已保存", failed: "原任务失败" })[videoTask.value.phase] : "");
 let taskTimer: ReturnType<typeof setTimeout> | undefined;
 let taskWorkspaceDirectory = "";
@@ -492,12 +501,15 @@ onMounted(async () => {
   try {
     await loadModels();
     await refreshVideoTask();
-    if (pendingTask.value && videoTask.value?.taskId) {
+    if (pendingTask.value && videoTask.value && (videoTask.value.running || videoTask.value.taskId)) {
       resumeWhenReady = true;
       if (videoTask.value.running) pollVideoTask();
       else await resumeGeneration();
     }
-  } catch (error) { showNodeError(error, "视频任务读取失败"); }
+  } catch (error) {
+    taskStatusError.value = error instanceof Error ? error.message : "视频任务读取失败";
+    showNodeError(error, "视频任务读取失败");
+  }
   finally { taskChecking.value = false; }
 });
 onScopeDispose(() => {
@@ -689,6 +701,7 @@ async function resumeGeneration() {
   const task = videoTask.value;
   if (!task) throw new Error("没有可恢复的视频任务");
   if (task.running) { resumeWhenReady = true; pollVideoTask(); return { status: "generating" }; }
+  if (submissionUnconfirmed.value) throw new Error("提交结果尚未确认且没有任务编号，请到视频专栏核查；可在新节点继续，原任务会保留");
   resumeWhenReady = false;
   const directory = taskWorkspaceDirectory || files.getWorkspaceDirectory();
   const controller = new AbortController();
@@ -715,6 +728,24 @@ function stopGeneration() {
   queuePaused = true;
   resumeWhenReady = false;
   generationController?.abort();
+}
+
+async function createNewGeneration() {
+  if (!duplicateCanvasNode) throw new Error("当前画布不支持创建副本");
+  if (disposed || deleting.value) throw new Error("节点已关闭或正在删除");
+  if (creatingGeneration.value || uploadingReferences.value || promptOptimizing.value) throw new Error("节点正在处理，请稍后创建");
+  creatingGeneration.value = true;
+  try {
+    const nodeId = await duplicateCanvasNode(id, {
+      outputs: {},
+      generationTiming: undefined,
+      appliedVideoTaskId: undefined,
+      zealmanQueue: [],
+    });
+    return { status: "ready", nodeId, message: "已保留原节点和任务，新节点可编辑并生成；尚未提交新的视频生成" };
+  } finally {
+    creatingGeneration.value = false;
+  }
 }
 
 nodeEvent.on("save", (reason) => {
@@ -851,11 +882,20 @@ nodeTools.register({
 
 nodeTools.register({
   name: "generateVideo",
-  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 停止生成",
+  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 仅停止本地等待，不能保证取消远端任务或费用。有旧任务时恢复原任务；如用户要继续其他创作，可用 createNewGeneration 在新节点继续",
   parameters: z.strictObject({}),
   execute(_args, { signal }) {
     signal?.throwIfAborted();
     return startGeneration();
+  },
+});
+if (duplicateCanvasNode) nodeTools.register({
+  name: "createNewGeneration",
+  description: "复制此视频节点的提示词、配置和输入参考连线到新节点，清空新节点的历史输出与任务状态。保留原节点和原任务，不提交视频生成；用户要继续其他创作而旧任务未完成时可用，然后在返回的新节点上编辑和生成",
+  parameters: z.strictObject({}),
+  execute(_args, { signal }) {
+    signal?.throwIfAborted();
+    return createNewGeneration();
   },
 });
 </script>
