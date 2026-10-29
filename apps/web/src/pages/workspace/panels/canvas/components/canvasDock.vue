@@ -1,9 +1,11 @@
 <template>
   <nav class="canvasDock" aria-label="创作工具" @dblclick.stop @contextmenu.stop.prevent>
     <div v-if="nodeOptions.length" class="dockGroup">
+      <span class="dockCaption">添加节点</span>
       <el-tooltip v-for="node in nodeOptions" :key="node.type" :content="`${node.label}（点击后选择位置，或拖入画布）`" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
         <el-button class="dockButton" text :disabled="disabled" :aria-label="node.label" :aria-pressed="placingType === node.type" draggable="true" @click="release($event); emit('addNode', node.type)" @dragstart="emit('dragNode', $event, node.type)">
           <component :is="node.icon" :size="18" aria-hidden="true" />
+          <span class="dockLabel">{{ node.label }}</span>
         </el-button>
       </el-tooltip>
     </div>
@@ -12,11 +14,13 @@
       <el-tooltip content="上传" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
         <el-button class="dockButton" text :disabled="disabled" aria-label="上传" @click="release($event); emit('upload')">
           <icon-upload :size="18" aria-hidden="true" />
+          <span class="dockLabel">上传素材</span>
         </el-button>
       </el-tooltip>
       <el-tooltip :content="assetsVisible ? '关闭素材库' : '打开素材库'" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
         <el-button class="dockButton" text :disabled="disabled" :aria-pressed="assetsVisible" aria-label="素材库" @click="assetsVisible = !assetsVisible">
           <icon-folders :size="18" aria-hidden="true" />
+          <span class="dockLabel">素材库</span>
         </el-button>
       </el-tooltip>
       <el-popover v-if="starters.length" v-model:visible="startersVisible" trigger="click" placement="right-start" :width="260" :showArrow="false" :offset="10">
@@ -25,6 +29,7 @@
             <el-tooltip content="快速开始" placement="right" :showArrow="false" :hideAfter="0" :enterable="false" :disabled="startersVisible">
               <el-button class="dockButton" text :disabled="disabled" aria-label="快速开始" :aria-expanded="startersVisible">
                 <icon-template :size="18" aria-hidden="true" />
+                <span class="dockLabel">快速开始</span>
               </el-button>
             </el-tooltip>
           </span>
@@ -66,9 +71,10 @@ function release(event: MouseEvent) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  width: 132px;
   max-height: calc(100% - 24px);
-  padding: 4px;
+  padding: 8px;
   overflow-y: auto;
   box-sizing: border-box;
   border: 1px solid var(--el-border-color-light);
@@ -76,33 +82,43 @@ function release(event: MouseEvent) {
   background: var(--el-bg-color-overlay);
   box-shadow: var(--floatingShadow);
   transform: translateY(-50%);
-  scrollbar-width: none;
+  scrollbar-width: thin;
 
   .dockGroup {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
     gap: 2px;
+    width: 100%;
+
+    .dockCaption { padding: 4px 8px 8px; color: var(--el-text-color-secondary); font-size: 10px; }
   }
 
   .dockTrigger {
     display: inline-flex;
+    width: 100%;
   }
 
   .dockDivider {
     flex-shrink: 0;
-    width: 18px;
+    width: calc(100% - 16px);
     height: 1px;
     background: var(--el-border-color);
   }
 
   .dockButton {
-    width: 36px;
-    height: 36px;
+    justify-content: flex-start;
+    width: 100%;
+    height: 34px;
     margin: 0;
-    padding: 0;
+    padding: 0 8px;
     border-radius: var(--ui-radius);
     color: var(--el-text-color-regular);
     cursor: pointer;
+
+    :deep(> span) { display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; }
+    svg { flex-shrink: 0; }
+    .dockLabel { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 
     &:hover:not(.is-disabled) {
       background: var(--el-fill-color-light);
@@ -121,11 +137,21 @@ function release(event: MouseEvent) {
     }
   }
 
+  @container (max-width: 700px) {
+    width: 44px;
+    padding: 4px;
+
+    .dockGroup .dockCaption, .dockButton .dockLabel { display: none; }
+    .dockButton { justify-content: center; height: 36px; padding: 0; }
+    .dockButton :deep(> span) { justify-content: center; }
+  }
+
   @media (max-width: 480px) {
     left: 8px;
+    width: 40px;
+    padding: 4px;
 
     .dockButton {
-      width: 32px;
       height: 32px;
     }
   }

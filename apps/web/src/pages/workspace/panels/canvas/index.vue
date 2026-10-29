@@ -262,7 +262,8 @@ provide("nodeSlotDock", { top: nodeDockTop, bottom: nodeDockBottom });
 provide("canvasFocusInsets", () => {
   const canvas = flow.vueFlowRef.value?.getBoundingClientRect();
   // 左侧创作栏与右下角导航浮在画布上，聚焦时让出其占位。
-  const left = 64;
+  const dock = canvasElement.value?.querySelector(".canvasDock")?.getBoundingClientRect();
+  const left = canvas && dock ? Math.max(0, dock.right - canvas.left) + 12 : 64;
   const bottom = 64;
   const inspectorInset = workspaceLayout.compact.value && inspectorShown.value ? Math.min(workspaceLayout.inspectorWidth.value, workspaceLayout.inspectorMaxWidth.value) : 0;
   const panel = document.getElementById("agentPanel")?.getClientRects()[0];
@@ -1065,8 +1066,11 @@ const defaultEdgeOptions = markRaw({
   .assetPanel {
     position: absolute;
     top: 12px;
-    left: 64px;
+    left: 156px;
     z-index: 6;
+
+    @container (max-width: 700px) { left: 64px; }
+    @media (max-width: 480px) { left: 56px; }
   }
 }
 .canvasMenuHost {

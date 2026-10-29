@@ -4,6 +4,7 @@
       v-show="visible"
       id="agentPanel"
       class="floatingAgent"
+      :inert="props.inert"
       :class="{ docked, dragging: interaction?.mode === 'move' }"
       :style="panelStyle"
       aria-label="AI 对话"
@@ -51,7 +52,7 @@ import type { AgentLayout } from "../useWorkspaceView";
 
 const visible = defineModel<boolean>({ default: false });
 const layout = defineModel<AgentLayout>("layout", { required: true });
-const props = defineProps<{ topOffset: number; maxDockedWidth: number }>();
+const props = defineProps<{ topOffset: number; maxDockedWidth: number; inert?: boolean }>();
 const docked = toRef(layout.value, "docked");
 const viewport = reactive({ width: window.innerWidth, height: window.innerHeight });
 const gap = computed(() => Math.min(15, viewport.width / 2, viewport.height / 2));

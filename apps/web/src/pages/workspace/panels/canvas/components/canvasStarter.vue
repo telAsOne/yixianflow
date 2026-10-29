@@ -1,24 +1,28 @@
 <template>
   <div class="canvasStarter">
     <section class="starterCard" aria-labelledby="canvasStarterTitle" @dblclick.stop @contextmenu.stop>
-      <h2 id="canvasStarterTitle">开始创作</h2>
-      <p class="starterHint">双击空白处添加节点，或把图片、视频、音频、文本拖进画布。</p>
+      <div class="starterHeading">
+        <span class="starterMark"><icon-layout-dashboard :size="24" /></span>
+        <div><h2 id="canvasStarterTitle">你的灵感，从这张画布开始</h2><p class="starterHint">选一个起点，自动搭建并连接节点，再填入你的创作内容。</p></div>
+      </div>
       <div v-if="starters.length" class="starterList">
-        <button v-for="starter in starters" :key="starter.id" class="starterItem" type="button" :disabled="disabled" @click="emit('start', starter.id)">
+        <button v-for="starter in starters" :key="starter.id" class="starterItem" :data-starter="starter.id" type="button" :disabled="disabled" @click="emit('start', starter.id)">
           <span class="starterFlow" aria-hidden="true">
             <template v-for="(node, index) in starter.nodes" :key="index">
               <icon-arrow-narrow-right v-if="index" class="flowArrow" :size="14" />
-              <component :is="nodeIcon(node.type)" :size="16" />
+              <span class="flowNode"><component :is="nodeIcon(node.type)" :size="19" /><span :title="translate(node.label)">{{ translate(node.label) }}</span></span>
             </template>
           </span>
-          <strong>{{ translate(starter.title) }}</strong>
+          <span class="starterTitle"><strong>{{ translate(starter.title) }}</strong><icon-arrow-up-right :size="16" /></span>
           <span class="starterDescription">{{ translate(starter.description) }}</span>
+          <span class="starterMeta">{{ starter.nodes.length }} 个节点 · 点击搭建</span>
         </button>
       </div>
       <div class="starterActions">
-        <el-button text :icon="IconUpload" :disabled="disabled" @click="emit('upload')">上传</el-button>
+        <el-button :icon="IconUpload" :disabled="disabled" @click="emit('upload')">上传素材</el-button>
         <el-button text :icon="IconSparkles" :disabled="disabled" @click="emit('askAgent')">让 AI 助手搭建</el-button>
       </div>
+      <p class="canvasHint">也可以双击添加节点，或直接拖入图片、视频、音频和文本。</p>
     </section>
   </div>
 </template>
@@ -44,11 +48,11 @@ function nodeIcon(type: string) {
   z-index: 4;
   display: grid;
   place-items: center;
-  padding: 24px 24px 24px 72px;
+  padding: 24px 24px 24px 168px;
   pointer-events: none;
 
   .starterCard {
-    width: min(560px, 100%);
+    width: min(720px, 100%);
     padding: 24px;
     box-sizing: border-box;
     border: 1px solid var(--el-border-color-light);
@@ -57,9 +61,17 @@ function nodeIcon(type: string) {
     box-shadow: var(--floatingShadow);
     pointer-events: auto;
 
+    .starterHeading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .starterMark { display: grid; flex-shrink: 0; place-items: center; width: 48px; height: 48px; border: 1px solid var(--el-border-color-light); border-radius: var(--ui-radius-large); background: var(--el-fill-color-extra-light); color: var(--el-text-color-regular); }
+    }
+
     h2 {
       margin: 0;
-      font-size: 18px;
+      font-size: 20px;
       font-weight: 600;
       letter-spacing: -0.01em;
     }
@@ -73,28 +85,33 @@ function nodeIcon(type: string) {
 
     .starterList {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 8px;
-      margin-top: 18px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 24px;
 
       .starterItem {
         display: flex;
         flex-direction: column;
         align-items: flex-start;
-        gap: 4px;
-        padding: 12px;
+        gap: 8px;
+        min-width: 0;
+        padding: 16px 12px;
         border: 1px solid var(--el-border-color-light);
         border-radius: var(--ui-radius-large);
-        background: transparent;
+        background: var(--el-fill-color-extra-light);
         color: var(--el-text-color-primary);
         font: inherit;
         text-align: start;
         cursor: pointer;
         transition: border-color 0.15s, background-color 0.15s;
+        --flowAccent: #8c6cb0;
+
+        &[data-starter="imageToVideo"] { --flowAccent: #36867b; }
+        &[data-starter="scriptToShot"] { --flowAccent: #b27e3d; }
 
         &:hover:not(:disabled) {
-          border-color: var(--el-border-color-darker);
-          background: var(--el-fill-color-extra-light);
+          border-color: var(--flowAccent);
+          background: var(--el-bg-color);
         }
 
         &:focus-visible {
@@ -112,33 +129,58 @@ function nodeIcon(type: string) {
           display: flex;
           direction: ltr;
           align-items: center;
-          gap: 4px;
-          margin-bottom: 4px;
-          color: var(--el-text-color-regular);
+          justify-content: center;
+          gap: 5px;
+          width: 100%;
+          min-height: 74px;
+          margin-bottom: 8px;
+          color: var(--flowAccent);
+
+          .flowNode {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+
+            > svg { flex-shrink: 0; box-sizing: content-box; padding: 9px; border: 1px solid color-mix(in srgb, var(--flowAccent) 20%, var(--el-border-color-light)); border-radius: var(--ui-radius); background: color-mix(in srgb, var(--flowAccent) 6%, var(--el-bg-color)); }
+            > span { max-width: 60px; overflow: hidden; color: var(--el-text-color-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+          }
 
           .flowArrow {
+            flex-shrink: 0;
+            margin-top: -18px;
             color: var(--el-text-color-placeholder);
           }
         }
 
-        strong {
-          font-size: 14px;
-          font-weight: 600;
+        .starterTitle {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 4px;
+          width: 100%;
+
+          strong { font-size: 14px; font-weight: 600; }
+          > svg { flex-shrink: 0; color: var(--el-text-color-secondary); }
         }
 
         .starterDescription {
           color: var(--el-text-color-secondary);
           font-size: 12px;
           line-height: 1.5;
+          flex: 1;
         }
+
+        .starterMeta { margin-top: 6px; color: var(--el-text-color-secondary); font-size: 10px; }
       }
     }
 
     .starterActions {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
-      margin: 14px 0 -8px -8px;
+      gap: 8px;
+      margin-top: 20px;
 
       .el-button {
         margin: 0;
@@ -149,14 +191,40 @@ function nodeIcon(type: string) {
         }
       }
     }
+
+    .canvasHint { margin: 16px 0 0; color: var(--el-text-color-secondary); font-size: 11px; line-height: 1.7; }
+  }
+
+  @container (max-width: 700px) {
+    padding-inline-start: 76px;
+
+    .starterCard { padding: 18px; }
+    .starterCard .starterHeading .starterMark { display: none; }
+    .starterCard h2 { font-size: 18px; }
+    .starterCard .starterList { grid-template-columns: 1fr; gap: 8px; margin-top: 16px; }
+    .starterCard .starterList .starterItem { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 10px 12px; }
+    .starterCard .starterList .starterItem .starterFlow { display: none; }
+    .starterCard .starterList .starterItem .starterTitle { grid-column: 1; }
+    .starterCard .starterList .starterItem .starterTitle > svg { display: none; }
+    .starterCard .starterList .starterItem .starterMeta { grid-column: 2; grid-row: 1 / 3; align-self: center; margin: 0; }
+    .starterCard .starterList .starterItem .starterDescription { grid-column: 1; }
   }
 
   @media (max-width: 480px) {
     padding: 16px 16px 16px 56px;
 
     .starterCard {
-      padding: 18px;
+      padding: 16px;
     }
+  }
+
+  @media (max-height: 650px) {
+    align-items: start;
+    overflow-y: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .starterCard .starterList .starterItem { transition: none; }
   }
 }
 </style>
