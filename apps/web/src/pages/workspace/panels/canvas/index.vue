@@ -9,10 +9,11 @@
     @gesturestart.capture="zoomCanvas"
     @gesturechange.capture="zoomCanvas"
     @gestureend.capture="zoomCanvas"
-    @pointerdown.capture="cancelCanvasZoom"
+    @pointerdown.capture="startCanvasPointer"
+    @mousedown.capture="panCanvas"
     @auxclick.capture="preventMiddleClick"
-    @pointermove="pointerPosition = { x: $event.clientX, y: $event.clientY }"
-    @pointerleave="pointerPosition = undefined"
+    @pointermove.capture="updateCanvasPointer"
+    @pointerleave="pointerPosition = undefined; placementPoint = undefined"
     @dragover="dragFilesOver"
     @drop="dropFiles">
     <vue-flow
@@ -112,9 +113,21 @@
         :disabled="!canvasId || !project?.directory" />
       </teleport>
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" :nodeTypes="availableNodes" :focusNodes="navigation.focusNodes" />
+      <teleport :to="flow.viewportRef.value ?? 'body'" :disabled="!flow.viewportRef.value">
+      <div v-if="placingNode" class="nodePlacement" @pointerdown.stop @mousedown="$event.button === 0 && !handMode && $event.stopPropagation()" @click.stop="placeNode" @dblclick.stop @contextmenu.stop.prevent="cancelNodePlacement">
+        <div class="nodePlacementHint nodrag nopan" role="status" @click.stop>
+          <span>点击画布放置{{ placingNode.label }} · Enter 居中 · Esc 或右键取消</span>
+          <el-button text aria-label="取消放置节点" @click="cancelNodePlacement"><icon-x :size="16" /></el-button>
+        </div>
+        <div v-if="placementPoint && !handMode" class="nodePlacementPreview" :style="{ transform: `translate(${placementPoint.x + 16}px, ${placementPoint.y + 16}px)` }" aria-hidden="true">
+          <component :is="placingNode.icon" :size="18" />
+          <span>{{ placingNode.label }}</span>
+        </div>
+      </div>
+      </teleport>
     </vue-flow>
     <canvasStarter
-      v-if="canvasReady && !canvasReloading && !flow.getNodes.value.length"
+      v-if="canvasReady && !canvasReloading && !flow.getNodes.value.length && !placingNode"
       :nodeOptions="nodeCreation.nodeOptions.value"
       :starters="nodeCreation.starters.value"
       :disabled="!canCreate"
@@ -126,8 +139,9 @@
       :nodeOptions="nodeCreation.nodeOptions.value"
       :starters="nodeCreation.starters.value"
       :disabled="!canCreate"
-      @addNode="createNode"
-      @dragNode="nodeCreation.startNodeDrag"
+      :placingType="placingType"
+      @addNode="selectNodePlacement"
+      @dragNode="startNodeDrag"
       @upload="uploadAtCenter"
       @start="createFromStarter" />
     <div class="assetPanel">
@@ -248,7 +262,8 @@ provide("nodeSlotDock", { top: nodeDockTop, bottom: nodeDockBottom });
 provide("canvasFocusInsets", () => {
   const canvas = flow.vueFlowRef.value?.getBoundingClientRect();
   // 左侧创作栏与右下角导航浮在画布上，聚焦时让出其占位。
-  const left = 64;
+  const dock = canvasElement.value?.querySelector(".canvasDock")?.getBoundingClientRect();
+  const left = canvas && dock ? Math.max(0, dock.right - canvas.left) + 12 : 64;
   const bottom = 64;
   const inspectorInset = workspaceLayout.compact.value && inspectorShown.value ? Math.min(workspaceLayout.inspectorWidth.value, workspaceLayout.inspectorMaxWidth.value) : 0;
   const panel = document.getElementById("agentPanel")?.getClientRects()[0];
@@ -271,6 +286,9 @@ const zoomKeyPressed = ref(false);
 const panKeyPressed = ref(false);
 const selectedTool = ref<"move" | "hand">("move");
 const handMode = computed(() => props.active && !props.settingsVisible && (selectedTool.value === "hand" || panKeyPressed.value));
+const placingType = ref("");
+const placementPoint = ref<XYPosition>();
+const creatingNode = ref(false);
 let pointerPosition: XYPosition | undefined;
 const pressedCodes = new Set<string>();
 let gestureScale: number | undefined;
@@ -369,10 +387,12 @@ function getCanvasContext() {
   return canvasId.value ? createCanvasContext(canvasId.value, canvasController.signal, workspaceController.signal) : undefined;
 }
 const canvasReady = computed(() => !!canvasId.value && !nodeListLoading.value && nodeLoads.size === 0);
-const canCreate = computed(() => props.active && !props.settingsVisible && canvasReady.value && !!project.value?.directory && !workspaceRefreshing.value);
+const canCreate = computed(() => props.active && !props.settingsVisible && canvasReady.value && !!project.value?.directory && !workspaceRefreshing.value && !creatingNode.value);
 const nodeCreation = useNodeCreation(flow, {
   availableNodes, ensureNodeType, batchHistory: canvasHistory.batch, focusNodes: navigation.focusNodes, signal: () => canvasController.signal,
 });
+const placingNode = computed(() => nodeCreation.nodeOptions.value.find(node => node.type === placingType.value));
+watch([canCreate, canvasId, canvasReloading], cancelNodePlacement, { flush: "sync" });
 const { copySelectedNodes, pasteNodeAtCenter, pasteClipboardNode } = useCanvasClipboard(flow, {
   active: () => props.active, settingsVisible: () => props.settingsVisible, canvasId, directory: () => project.value?.directory,
   canvasElement, pointer: () => pointerPosition, signal: () => canvasController.signal, availableNodes, batchHistory: canvasHistory.batch,
@@ -390,7 +410,7 @@ watch([() => props.active, () => flow.getSelectedNodes.value.length, () => flow.
   if (active && !selecting) workspaceLayout.inspectorAvailable.value = ready && count > 0;
 }, { immediate: true });
 function showInspector() {
-  if (props.active && flow.getSelectedNodes.value.length) workspaceLayout.inspectorVisible.value = true;
+  if (props.active && !creatingNode.value && flow.getSelectedNodes.value.length) workspaceLayout.inspectorVisible.value = true;
 }
 flow.onNodeClick(showInspector);
 flow.onSelectionEnd(showInspector);
@@ -446,7 +466,7 @@ function showEdgeDisconnect({ event, edge }: EdgeMouseEvent) {
 function dragFilesOver(event: DragEvent) {
   if (!props.active || props.settingsVisible || !canvasId.value || !project.value?.directory) return;
   if (!nodeCreation.isNodeDrag(event) && !isCanvasFileDrag(event)) return;
-  if (!(event.target instanceof Element) || !event.target.closest(".vue-flow__pane")) return;
+  if (!(event.target instanceof Element) || !event.target.closest(".vue-flow__pane, .nodePlacement")) return;
   event.preventDefault();
   event.dataTransfer!.dropEffect = "copy";
   return true;
@@ -455,11 +475,12 @@ function dragFilesOver(event: DragEvent) {
 async function dropFiles(event: DragEvent) {
   const directory = project.value?.directory;
   if (!directory || !dragFilesOver(event)) return;
-  if (nodeCreation.isNodeDrag(event)) return createNode(event);
+  cancelNodePlacement();
   try {
-    await canvasHistory.batch(() => dropCanvasFiles(event, { directory, availableNodes: availableNodes.value, signal: canvasController.signal, flow }));
+    if (nodeCreation.isNodeDrag(event)) await nodeCreation.dropNode(event);
+    else await canvasHistory.batch(() => dropCanvasFiles(event, { directory, availableNodes: availableNodes.value, signal: canvasController.signal, flow }));
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "文件导入失败");
+    if (!canvasController.signal.aborted) ElMessage.error(error instanceof Error ? error.message : "画布内容添加失败");
   }
 }
 
@@ -482,17 +503,45 @@ function selectFiles(position: { x: number; y: number }) {
   input.click();
 }
 
-async function createNode(source: string | DragEvent) {
+function cancelNodePlacement() {
+  placingType.value = "";
+  placementPoint.value = undefined;
+}
+
+function selectNodePlacement(type: string) {
   if (!canCreate.value) return;
+  placingType.value = placingType.value === type ? "" : type;
+  placementPoint.value = undefined;
+  selectedTool.value = "move";
+  assetsVisible.value = false;
+  if (placingType.value) workspaceLayout.inspectorVisible.value = false;
+  cancelCanvasZoom();
+}
+
+function startNodeDrag(event: DragEvent, type: string) {
+  if (!canCreate.value) return;
+  cancelNodePlacement();
+  nodeCreation.startNodeDrag(event, type);
+}
+
+async function placeNode(event: MouseEvent) {
+  if (!canCreate.value || !placingNode.value || handMode.value || event.ctrlKey || event.button !== 0) return;
+  const type = placingNode.value.type;
+  const position = flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
+  cancelNodePlacement();
+  creatingNode.value = true;
   try {
-    await (typeof source === "string" ? nodeCreation.addNode(source) : nodeCreation.dropNode(source));
+    await nodeCreation.addNode(type, position);
   } catch (error) {
     if (!canvasController.signal.aborted) ElMessage.error(error instanceof Error ? error.message : "节点插件加载失败");
+  } finally {
+    creatingNode.value = false;
   }
 }
 
 async function createFromStarter(id: string) {
   if (!canCreate.value) return;
+  cancelNodePlacement();
   try {
     await nodeCreation.addStarter(id);
   } catch (error) {
@@ -501,6 +550,7 @@ async function createFromStarter(id: string) {
 }
 
 function uploadAtCenter() {
+  cancelNodePlacement();
   const position = nodeCreation.viewportCenter();
   if (canCreate.value && position) selectFiles(position);
 }
@@ -675,7 +725,7 @@ onScopeDispose(cancelCanvasZoom);
 function zoomCanvas(event: WheelEvent | (Event & { scale: number }), fromMap = false) {
   if (event.type === "gestureend") gestureScale = undefined;
   if (!props.active || props.settingsVisible || document.fullscreenElement || flow.userSelectionActive.value) return;
-  if (!fromMap && (!(event.target instanceof Element) || !event.target.closest(".vue-flow__pane, .vue-flow__node, .vue-flow__edge, .vue-flow__nodesselection"))) return;
+  if (!fromMap && (!(event.target instanceof Element) || !event.target.closest(".vue-flow__pane, .vue-flow__node, .vue-flow__edge, .vue-flow__nodesselection, .nodePlacement"))) return;
   let delta: number;
   let point = pointerPosition;
   if ("scale" in event) {
@@ -722,28 +772,80 @@ function preventMiddleClick(event: MouseEvent) {
   if (event.button === 1) event.preventDefault();
 }
 
-function updateCanvasKeys(event: KeyboardEvent) {
-  if (event.type === "keydown") {
-    pressedCodes.add(event.code);
-  } else pressedCodes.delete(event.code);
-  if (!props.active || props.settingsVisible) return resetCanvasKeys();
+function updateCanvasModifiers(event: KeyboardEvent | MouseEvent) {
   const target = event.target;
   const shortcuts = generalSettings.value.canvasShortcuts;
   const inCanvas =
     target instanceof Element &&
     !target.closest("[role='dialog'], #agentPanel") &&
     (target === document.body || target === document.documentElement || canvasElement.value?.contains(target));
-  zoomKeyPressed.value = !event.isComposing && shortcutPressed(event, shortcuts.zoom, pressedCodes);
+  const composing = "isComposing" in event && event.isComposing;
+  zoomKeyPressed.value = props.active && !props.settingsVisible && !composing && shortcutPressed(event, shortcuts.zoom, pressedCodes);
   const editing =
     !(target instanceof Element) ||
     !!target.closest("input, textarea, select, button, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider']");
+  panKeyPressed.value = props.active && !props.settingsVisible && !!inCanvas && !composing
+    && (shortcutPressed(event, "Ctrl", pressedCodes) || !editing && shortcutPressed(event, shortcuts.pan, pressedCodes));
+  return { inCanvas, editing };
+}
+
+function updateCanvasPointer(event: PointerEvent) {
+  pointerPosition = { x: event.clientX, y: event.clientY };
+  if (!event.buttons) updateCanvasModifiers(event);
+  const bounds = placingNode.value && flow.vueFlowRef.value?.getBoundingClientRect();
+  placementPoint.value = bounds && event.target instanceof Element && event.target.closest(".nodePlacement")
+    ? { x: event.clientX - bounds.left, y: event.clientY - bounds.top } : undefined;
+}
+
+function startCanvasPointer(event: PointerEvent) {
+  cancelCanvasZoom();
+  updateCanvasModifiers(event);
+  // 先阻止框选；后续 mousedown 交给 Vue Flow 的抓手，避免抢占同一次拖动。
+  if (handMode.value && event.button === 0 && event.target instanceof Element
+    && event.target.closest(".vue-flow__pane, .vue-flow__node, .vue-flow__edge, .vue-flow__nodesselection, .nodePlacement")) event.stopPropagation();
+}
+
+function panCanvas(event: MouseEvent) {
+  updateCanvasModifiers(event);
+  if (!handMode.value || event.button !== 0 || flow.userSelectionActive.value || flow.connectionStartHandle.value
+    || !(event.target instanceof Element)
+    || !event.target.closest(".vue-flow__pane, .vue-flow__node, .vue-flow__edge, .vue-flow__nodesselection, .nodePlacement")) return;
+  const zoom = flow.d3Zoom.value;
+  const selection = flow.d3Selection.value;
+  const element = selection?.node();
+  const startPan = selection?.on("mousedown.zoom");
+  if (!zoom || !selection || !element || !startPan) return;
+  event.preventDefault();
+  // 抓手优先于节点的 nopan 和 stop 修饰符，仍由画布库处理整次拖动及结束事件。
+  const filter = zoom.filter();
+  zoom.filter(() => true);
+  try { startPan.call(element, event, selection.datum()); }
+  finally { zoom.filter(filter); }
+}
+
+function updateCanvasKeys(event: KeyboardEvent) {
+  if (event.type === "keydown") {
+    pressedCodes.add(event.code);
+  } else pressedCodes.delete(event.code);
+  if (!props.active || props.settingsVisible) return resetCanvasKeys();
+  const { inCanvas, editing } = updateCanvasModifiers(event);
+  const target = event.target;
+  const shortcuts = generalSettings.value.canvasShortcuts;
   const navigationAction = target instanceof Element && target.closest("button") && target.closest(".canvasControlStack, .canvasMap")
     ? (["search", "fitView", "focusSelection", "returnView", "toggleMap"] as const).find(action => shortcutMatches(event, shortcuts[action]))
     : undefined;
-  const controlPanPressed = shortcutPressed(event, "Ctrl", pressedCodes)
-    && [...pressedCodes].every(code => code === "ControlLeft" || code === "ControlRight");
-  panKeyPressed.value = !!inCanvas && !editing && !event.isComposing
-    && (controlPanPressed || shortcutPressed(event, shortcuts.pan, pressedCodes));
+  if (event.type === "keydown" && inCanvas && placingNode.value && event.key === "Escape") {
+    event.preventDefault();
+    cancelNodePlacement();
+    return;
+  }
+  if (event.type === "keydown" && inCanvas && placingNode.value && event.key === "Enter" && !event.isComposing
+    && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    const bounds = flow.vueFlowRef.value?.getBoundingClientRect();
+    if (bounds) void placeNode(new MouseEvent("click", { clientX: bounds.left + bounds.width / 2, clientY: bounds.top + bounds.height / 2 }));
+    return;
+  }
   if (target instanceof Element && target.closest(".mapViewport") && !event.ctrlKey && !event.metaKey && !event.altKey
     && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(event.key)) {
     cancelCanvasZoom();
@@ -786,7 +888,10 @@ function updateCanvasKeys(event: KeyboardEvent) {
   else if (action === "group" || action === "mergeGroup" || action === "ungroup") {
     void selectionToolbarRef.value?.operate(action);
   } else if (action === "addNode") addNodeAtPointer();
-  else if (action === "moveTool" || action === "handTool") selectedTool.value = action === "handTool" ? "hand" : "move";
+  else if (action === "moveTool" || action === "handTool") {
+    cancelNodePlacement();
+    selectedTool.value = action === "handTool" ? "hand" : "move";
+  }
   else if (action === "arrange") void canvasControlsRef.value?.arrangeNodes();
   else if (action === "search") nodeSearchRef.value?.open();
   else if (action === "fitView") void navigation.showAll();
@@ -804,7 +909,7 @@ function resetCanvasKeys() {
   panKeyPressed.value = false;
 }
 
-watch([() => props.settingsVisible, () => generalSettings.value.canvasShortcuts], resetCanvasKeys, { deep: true, flush: "sync" });
+watch([() => props.active, () => props.settingsVisible, () => generalSettings.value.canvasShortcuts], resetCanvasKeys, { deep: true, flush: "sync" });
 
 onMounted(() => {
   // 在捕获阶段同步修饰键，避免节点编辑器截断 keydown/keyup 后缩放状态丢失或卡住。
@@ -868,6 +973,53 @@ const defaultEdgeOptions = markRaw({
     cursor: grab;
   }
 
+  .nodePlacement {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    cursor: crosshair;
+
+    .nodePlacementHint {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100% - 96px);
+      padding: 6px 8px 6px 14px;
+      border: 1px solid var(--el-border-color-light);
+      border-radius: var(--ui-radius-large);
+      background: var(--el-bg-color-overlay);
+      box-shadow: var(--floatingShadow);
+      color: var(--el-text-color-regular);
+      font-size: 13px;
+      transform: translateX(-50%);
+      cursor: default;
+
+      .el-button { flex-shrink: 0; width: 28px; height: 28px; padding: 0; }
+    }
+
+    .nodePlacementPreview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border: 1px dashed var(--el-color-primary);
+      border-radius: var(--ui-radius-large);
+      background: var(--el-bg-color-overlay);
+      color: var(--el-color-primary);
+      box-shadow: var(--floatingShadow);
+      pointer-events: none;
+    }
+  }
+
+  &.handMode .nodePlacement { cursor: grab; }
+
   &.edgesHidden :deep(.vue-flow__edges:not(:has(.edgeNodeActive))) {
     display: none;
   }
@@ -914,8 +1066,11 @@ const defaultEdgeOptions = markRaw({
   .assetPanel {
     position: absolute;
     top: 12px;
-    left: 64px;
+    left: 156px;
     z-index: 6;
+
+    @container (max-width: 700px) { left: 64px; }
+    @media (max-width: 480px) { left: 56px; }
   }
 }
 .canvasMenuHost {

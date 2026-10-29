@@ -54,10 +54,12 @@
             aria-controls="agentPanel"
             @click="agentVisible = !agentVisible">
             <icon-sparkles :size="18" aria-hidden="true" />
+            <span class="buttonLabel">AI 助手</span>
           </el-button>
         </el-tooltip>
         <el-button v-if="activePanel === 'canvas'" class="agentButton" :type="inspectorShown ? 'primary' : 'default'" :disabled="!inspectorAvailable" :aria-expanded="inspectorShown" aria-label="显示或收起节点面板" :title="inspectorAvailable ? '节点面板' : '选择节点后查看操作'" @click="inspectorVisible = !inspectorVisible">
           <icon-layout-sidebar-right :size="18" aria-hidden="true" />
+          <span class="buttonLabel">节点设置</span>
         </el-button>
       </div>
     </header>
@@ -384,7 +386,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
       padding: 3px;
       border: 1px solid var(--el-border-color-light);
       border-radius: var(--ui-radius-large);
-      box-shadow: var(--floatingShadow);
       font-size: 13px;
 
       :deep(.el-segmented__item),
@@ -403,12 +404,11 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
     }
 
     .agentButton {
-      width: 38px;
+      gap: 6px;
       height: 38px;
       margin: 0;
-      padding: 0;
-      border-radius: var(--ui-radius-large);
-      box-shadow: var(--floatingShadow);
+      padding: 0 12px;
+      border-radius: var(--ui-radius);
       transition: transform 160ms ease, background-color 160ms ease;
 
       &:active {
@@ -419,6 +419,8 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
         outline: 2px solid var(--el-color-primary);
         outline-offset: 2px;
       }
+
+      .buttonLabel { font-size: 12px; }
 
       @media (prefers-reduced-motion: reduce) {
         transition: none;
@@ -435,6 +437,9 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
         clip-path: inset(50%);
         white-space: nowrap;
       }
+
+      .agentButton { width: 38px; padding: 0; }
+      .agentButton .buttonLabel { display: none; }
     }
 
     @media (max-width: 760px) {
