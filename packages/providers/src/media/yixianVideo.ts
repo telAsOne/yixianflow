@@ -214,11 +214,11 @@ export default {
       await task.update({ taskId: value.id, phase: "queued", error: undefined });
     }
     const taskUrl = `${base}/v1/videos/${encodeURIComponent(task.state.taskId!)}`;
-    const deadline = Date.now() + 30 * 60 * 1000;
+    const deadline = Date.now() + 60 * 60 * 1000;
     let failures = 0;
     while (task.state.phase !== "downloading") {
       this.signal?.throwIfAborted();
-      if (Date.now() >= deadline) throw new Error("逸仙本地等待已满 30 分钟，请恢复原任务继续查询");
+      if (Date.now() >= deadline) throw new Error("逸仙本地等待已满 60 分钟，请恢复原任务继续查询");
       let result: Awaited<ReturnType<typeof apiRequest>>;
       try { result = await apiRequest(this, taskUrl, headers); }
       catch (error) {

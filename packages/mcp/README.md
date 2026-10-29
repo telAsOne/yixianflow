@@ -78,7 +78,7 @@ stdio 配置绑定所选数据目录内的实际端口，不会自动跟随某�
 }
 ```
 
-Node.js 需要 20 或更新版本，也支持 Bun。源码开发可使用 `bun packages/mcp/src/stdio.ts`。stdio 的 stdout 只传输 MCP 消息，错误写入 stderr；桥接工具列表与调用，以及资源列表、读取和模板列表，保留取消信号。每次工具调用最长等待 30 分钟，异步生成节点按节点契约返回启动结果。
+Node.js 需要 20 或更新版本，也支持 Bun。源码开发可使用 `bun packages/mcp/src/stdio.ts`。stdio 的 stdout 只传输 MCP 消息，错误写入 stderr；桥接工具列表与调用，以及资源列表、读取和模板列表，保留取消信号。每次工具调用最长等待 60 分钟，异步生成节点按节点契约返回启动结果。
 
 ## Skill
 
