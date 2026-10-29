@@ -99,14 +99,13 @@ export function useNodeCreation(flow: ReturnType<typeof useVueFlow>, options: {
     }
   }
 
-  async function addNode(type: string, position?: XYPosition) {
+  async function addNode(type: string, position: XYPosition) {
     const option = nodeOptions.value.find(node => node.type === type);
-    const center = position ?? viewportCenter();
-    if (!option || !center) return;
+    if (!option) return;
     const signal = options.signal();
     await options.ensureNodeType(type);
     signal.throwIfAborted();
-    const target = snap({ x: center.x - nodeOffset.x, y: center.y - nodeOffset.y });
+    const target = snap({ x: position.x - nodeOffset.x, y: position.y - nodeOffset.y });
     const id = crypto.randomUUID();
     await options.batchHistory(async () => {
       flow.addNodes({ id, type, position: target, data: { label: option.label } });
@@ -114,21 +113,7 @@ export function useNodeCreation(flow: ReturnType<typeof useVueFlow>, options: {
       const created = flow.findNode(id);
       if (!created) return;
       select([created]);
-      if (position) return;
-      await waitForNodes([id], signal);
-      // 点击新建按实际尺寸沿当前行避让；拖放仍使用用户指定的落点。
-      const neighbors = flow.getNodes.value.filter(node => node.id !== id && !node.hidden
-        && node.computedPosition.y < target.y + created.dimensions.height + 32
-        && node.computedPosition.y + node.dimensions.height + 32 > target.y)
-        .sort((left, right) => left.computedPosition.x - right.computedPosition.x);
-      for (const node of neighbors) {
-        const right = node.computedPosition.x + node.dimensions.width + 32;
-        if (target.x < right && target.x + created.dimensions.width + 32 > node.computedPosition.x)
-          target.x = flow.snapToGrid.value ? Math.ceil(right / flow.snapGrid.value[0]) * flow.snapGrid.value[0] : right;
-      }
-      created.position = snap(target);
     });
-    if (!position) await options.focusNodes([id]);
   }
 
   async function addStarter(id: string) {

@@ -123,17 +123,6 @@
         @keydown.enter.stop.prevent="editLabel">
         {{ label }}
       </span>
-      <div v-if="!showSideActions" class="nodeActions nodrag nopan" @pointerdown.stop @mousedown.stop @dblclick.stop>
-        <el-button
-          :icon="IconRefresh"
-          :loading="loading || reloading"
-          :disabled="loading || !reloadRemoteNode"
-          text
-          title="刷新节点"
-          aria-label="刷新节点"
-          @click.stop="reloadNode" />
-        <el-button :icon="IconX" text title="移除节点" aria-label="移除节点" @click.stop="deleteNode" :loading="deleting" />
-      </div>
     </div>
     <div class="cardContainer">
       <el-card
@@ -155,9 +144,10 @@
         </div>
       </el-card>
       <div v-if="showSideActions" class="sideToolbar nodrag nopan nowheel" role="group" aria-label="节点快捷操作" @pointerdown.stop="activateSideActions" @focusin="activateSideActions" @mousedown.stop @click.stop @dblclick.stop @keydown.stop @contextmenu.stop>
-        <div class="mediaActions">
+        <div v-if="$slots.sideActions || downloadUrl !== undefined" class="mediaActions">
           <slot name="sideActions" />
           <el-button
+            v-if="downloadUrl !== undefined"
             :tag="downloadUrl ? 'a' : 'button'"
             :href="downloadUrl || undefined"
             :download="downloadName"
@@ -170,7 +160,7 @@
             aria-label="下载"
             @downloadstate="downloading = $event.detail"
             @click.stop />
-          <el-button v-if="fullscreenVisible" :icon="IconMaximize" :disabled="!downloadUrl" text :title="fullscreenLabel" :aria-label="fullscreenLabel" @click.stop="emit('fullscreen')" />
+          <el-button v-if="fullscreenVisible && downloadUrl !== undefined" :icon="IconMaximize" :disabled="!downloadUrl" text :title="fullscreenLabel" :aria-label="fullscreenLabel" @click.stop="emit('fullscreen')" />
         </div>
         <div class="managementActions">
           <el-button :icon="IconRefresh" :loading="loading || reloading" :disabled="loading || deleting || !reloadRemoteNode" text title="刷新节点" aria-label="刷新节点" @click.stop="reloadNode" />
@@ -214,7 +204,6 @@ import { Handle, Position, getTransformForBounds, pointToRendererPoint, useNode,
 import {
   IconRefresh,
   IconPencil,
-  IconX,
   IconTrash,
   IconCopy,
   IconCopyPlus,
@@ -255,7 +244,6 @@ const props = withDefaults(
       downloadName?: string;
       fullscreenVisible?: boolean;
       fullscreenLabel?: string;
-      sideActions?: boolean;
     }
   >(),
   {
@@ -282,7 +270,7 @@ watch(() => props.overviewSrc, () => { overviewError.value = false; });
 const { id: nodeId, node } = useNode();
 const documentContext = inject<NodeDocumentContext | undefined>("nodeDocument", undefined);
 const documentTarget = computed(() => documentContext?.targets.get(nodeId));
-const showSideActions = computed(() => props.sideActions && !documentTarget.value);
+const showSideActions = computed(() => !documentTarget.value);
 const slotDock = inject<{ top: Ref<HTMLElement | undefined>; bottom: Ref<HTMLElement | undefined> } | undefined>("nodeSlotDock", undefined);
 // 宿主提供停靠区时，选中节点的上下插槽移入停靠区；未选中但主动显示的插槽仍浮在节点旁。
 const docked = computed(() => !documentTarget.value && !!node.selected && !!slotDock?.top.value && !!slotDock.bottom.value);
@@ -700,11 +688,6 @@ watch(
     opacity: 1;
   }
 
-  &:hover .titleBar .nodeActions,
-  &:focus-within .titleBar .nodeActions {
-    visibility: visible;
-  }
-
   .floatingSlot {
     position: absolute;
     left: 50%;
@@ -755,23 +738,6 @@ watch(
       font: inherit;
       line-height: inherit;
     }
-
-    .nodeActions {
-      position: absolute;
-      left: 100%;
-      top: 0;
-      visibility: hidden;
-      display: flex;
-      flex-shrink: 0;
-      gap: 2px;
-
-      .el-button {
-        width: 24px;
-        height: 24px;
-        margin: 0;
-        padding: 0;
-      }
-    }
   }
 
   .cardContainer {
@@ -793,7 +759,7 @@ watch(
       cursor: default;
 
       .mediaActions, .managementActions { display: flex; flex-direction: column; gap: 4px; }
-      .managementActions { padding-top: 5px; border-top: 1px solid var(--el-border-color-lighter); }
+      .mediaActions + .managementActions { padding-top: 5px; border-top: 1px solid var(--el-border-color-lighter); }
       :deep(.el-button) {
         width: 32px;
         min-width: 32px;

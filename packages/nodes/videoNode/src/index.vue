@@ -1,7 +1,6 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    sideActions
     :topVisible="node.selected"
     topWidth="max-content"
     :downloadUrl="exporting ? '' : previewUrl"

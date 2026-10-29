@@ -1,8 +1,8 @@
 <template>
   <nav class="canvasDock" aria-label="创作工具" @dblclick.stop @contextmenu.stop.prevent>
     <div v-if="nodeOptions.length" class="dockGroup">
-      <el-tooltip v-for="node in nodeOptions" :key="node.type" :content="node.label" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
-        <el-button class="dockButton" text :disabled="disabled" :aria-label="node.label" draggable="true" @click="release($event); emit('addNode', node.type)" @dragstart="emit('dragNode', $event, node.type)">
+      <el-tooltip v-for="node in nodeOptions" :key="node.type" :content="`${node.label}（点击后选择位置，或拖入画布）`" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
+        <el-button class="dockButton" text :disabled="disabled" :aria-label="node.label" :aria-pressed="placingType === node.type" draggable="true" @click="release($event); emit('addNode', node.type)" @dragstart="emit('dragNode', $event, node.type)">
           <component :is="node.icon" :size="18" aria-hidden="true" />
         </el-button>
       </el-tooltip>
@@ -46,7 +46,7 @@ import { translate } from "@toonflow/i18n/vue";
 import type { useNodeCreation } from "../useNodeCreation";
 
 type NodeCreation = ReturnType<typeof useNodeCreation>;
-defineProps<{ nodeOptions: NodeCreation["nodeOptions"]["value"]; starters: NodeCreation["starters"]["value"]; disabled?: boolean }>();
+defineProps<{ nodeOptions: NodeCreation["nodeOptions"]["value"]; starters: NodeCreation["starters"]["value"]; disabled?: boolean; placingType?: string }>();
 const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });
 const emit = defineEmits<{ addNode: [type: string]; dragNode: [event: DragEvent, type: string]; upload: []; start: [id: string] }>();
 const startersVisible = ref(false);
