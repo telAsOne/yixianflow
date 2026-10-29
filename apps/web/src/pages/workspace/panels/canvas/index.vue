@@ -375,6 +375,7 @@ const createCanvasContext = useCanvasTools({
   availableNodes,
   ensureNodeType,
   flushSave: flushCanvasSave,
+  batchHistory: canvasHistory.batch,
   arrangeCanvas: signal => {
     if (!canvasControlsRef.value) throw new Error("画布尚未就绪");
     return canvasControlsRef.value.requestArrange(signal);

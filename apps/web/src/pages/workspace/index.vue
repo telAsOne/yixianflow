@@ -113,7 +113,7 @@ const inspectorShown = computed(() => activePanel.value === "canvas" && inspecto
 const agentMaxWidth = computed(() => compact.value ? Math.min(520, viewportWidth.value) : Math.min(520, viewportWidth.value - 320
   - (inspectorShown.value ? Math.min(inspectorWidth.value, viewportWidth.value - 640) : 0)));
 const agentWidth = computed(() => agentVisible.value && agentLayout.value.docked ? Math.max(0, Math.min(agentLayout.value.width, agentMaxWidth.value)) : 0);
-const inspectorMaxWidth = computed(() => compact.value ? Math.min(600, viewportWidth.value) : Math.min(600, viewportWidth.value - (agentVisible.value ? agentWidth.value : 0) - 320));
+const inspectorMaxWidth = computed(() => compact.value ? Math.min(600, viewportWidth.value) : Math.min(600, viewportWidth.value - 320));
 provide(workspaceLayoutKey, { menuTarget, compact, inspectorAvailable, inspectorVisible, inspectorWidth, inspectorMaxWidth });
 watch(inspectorShown, visible => { if (visible && compact.value) agentVisible.value = false; }, { immediate: true });
 watch(agentVisible, visible => { if (visible && compact.value) inspectorVisible.value = false; });
@@ -342,7 +342,7 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 
   .canvasPanel {
     position: absolute;
-    inset: var(--workspaceHeaderHeight) 0 0 var(--agentWidth);
+    inset: var(--workspaceHeaderHeight) 0 0;
     width: auto;
     height: auto;
 
