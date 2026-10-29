@@ -60,7 +60,7 @@ const hasGroup = computed(() => flow.getSelectedNodes.value.some(node => node.ty
 const visible = computed(() => !props.disabled && !flow.userSelectionActive.value
   && (flow.getSelectedNodes.value.length > 1 || hasGroup.value));
 
-async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withEdges = true, positions?: Map<string, XYPosition>) {
+async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withEdges = true, positions?: Map<string, XYPosition>, dataPatch?: Record<string, unknown>) {
   const nodes = getSelectionTree(selection, flow.getNodes.value);
   const roots = getSelectionRoots(nodes, flow.getNodes.value);
   const rootsIds = new Set(roots.map(node => node.id));
@@ -80,7 +80,7 @@ async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withE
     copy.parentNode = ids.get(saved.parentNode ?? "") ?? saved.parentNode;
     copy.position = positions ? { ...positions.get(node.id)! }
       : { x: saved.position.x + (rootsIds.has(node.id) ? bounds.width + 64 : 0), y: saved.position.y };
-    copy.data = { ...copy.data, label: `${copy.data?.label || "未命名节点"} - 副本` };
+    copy.data = { ...copy.data, label: `${copy.data?.label || "未命名节点"} - 副本`, ...dataPatch };
     return copy;
   }));
   signal.throwIfAborted();
@@ -195,6 +195,26 @@ async function selectNodes(ids: string[], signal: AbortSignal) {
   flow.updateNodeInternals(ids);
 }
 
+async function duplicateNode(nodeId: string, dataPatch?: Record<string, unknown>) {
+  if (busy.value || props.disabled) throw new Error("画布正在处理，请稍后创建节点");
+  const node = flow.findNode(nodeId);
+  if (!node) throw new Error("原节点不存在");
+  const signal = props.getSignal();
+  busy.value = true;
+  let copyId = "";
+  try {
+    await props.batchHistory(async () => {
+      signal.throwIfAborted();
+      const result = await duplicateNodes([node], signal, true, undefined, dataPatch);
+      copyId = result.ids.get(nodeId)!;
+      await selectNodes(result.rootIds, signal);
+    });
+    return copyId;
+  } finally {
+    busy.value = false;
+  }
+}
+
 function startDragCopy(selection: GraphNode[], withEdges: boolean) {
   const nodes = getSelectionTree(selection, flow.getNodes.value);
   if (busy.value || props.disabled || !nodes.length) return;
@@ -287,7 +307,7 @@ async function operate(command: "duplicate" | "group" | "ungroup" | "mergeGroup"
   }
 }
 
-defineExpose({ operate, startDragCopy, busy });
+defineExpose({ operate, duplicateNode, startDragCopy, busy });
 </script>
 
 <style scoped lang="scss">

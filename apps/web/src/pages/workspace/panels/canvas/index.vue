@@ -279,6 +279,10 @@ const nodeMenuRef = ref<InstanceType<typeof nodeMenu>>();
 const canvasMenuRef = ref<InstanceType<typeof canvasMenu>>();
 const canvasControlsRef = ref<InstanceType<typeof canvasControls>>();
 const selectionToolbarRef = ref<InstanceType<typeof selectionToolbar>>();
+provide("duplicateCanvasNode", (nodeId: string, dataPatch?: Record<string, unknown>) => {
+  if (!selectionToolbarRef.value) throw new Error("画布尚未就绪，请稍后创建节点");
+  return selectionToolbarRef.value.duplicateNode(nodeId, dataPatch);
+});
 const nodeSearchRef = ref<InstanceType<typeof nodeSearch>>();
 const edgeTypes = markRaw({ "simple-bezier": markRaw(viewportEdge) });
 const snapEnabled = ref(false);

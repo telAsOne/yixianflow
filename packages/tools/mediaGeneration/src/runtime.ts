@@ -28,6 +28,8 @@ const referenceMode = z.templateLiteral([z.enum(["image", "video", "audio"]), "R
   .refine(value => /Reference:(?:[1-9]\d?|1\d{2}|2[0-4]\d|25[0-6])$/.test(value), "参考数量必须在 1 到 256 之间");
 
 export const listMediaModelsSchema = z.strictObject({});
+export const videoTaskSchema = z.strictObject({ outputDirectory: relativePath.default("assets/generated") });
+export const resumeVideoTaskSchema = videoTaskSchema.extend({ operationId: z.uuid() });
 export const imageGenerationSchema = z.strictObject({
   ...sharedFields,
   prompt: z.string().min(1).max(100000).refine(value => !!value.trim(), "请输入生成提示词"),
