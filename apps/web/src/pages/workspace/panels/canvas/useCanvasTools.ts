@@ -1,7 +1,10 @@
 import { nextTick, watch, type Ref } from "vue";
 import { useVueFlow, type XYPosition } from "@vue-flow/core";
 import { useNodeEvent, useNodeToolsContext, validateConnection } from "@toonflow/nodes-scaffold/runtime";
+import { isNodeOutput } from "@toonflow/nodes-scaffold/values";
 import { canvasSchemas, getCanvasCallTimeout, type CanvasContext, type CanvasToolCall } from "@toonflow/tool-canvas/runtime";
+import useWorkspaceFiles from "@/lib/workspaceFiles";
+import { useWorkspaceStore } from "@/stores/workspace";
 import type { arrangeCanvas } from "./arrangeCanvas";
 import { canvasEdgeSummary, canvasNodeSummary, createCanvasQueries, isCanvasRead } from "./canvasQueries";
 
@@ -9,6 +12,7 @@ export function useCanvasTools(options: {
   availableNodes: Ref<{ type: string; label: string }[]>;
   ensureNodeType(type: string): Promise<void>;
   flushSave(): Promise<void>;
+  batchHistory(action: () => Promise<void>): Promise<void>;
   arrangeCanvas(signal: AbortSignal): ReturnType<typeof arrangeCanvas>;
   menu(): {
     getCanvases(): { id: string; name: string }[];
@@ -21,6 +25,7 @@ export function useCanvasTools(options: {
   resolveCanvasContext?(id: string): CanvasContext | undefined;
 }) {
   const flow = useVueFlow();
+  const workspaceStore = useWorkspaceStore();
   const getNodeTools = useNodeToolsContext();
   let nodeRevision = 0;
   let edgeRevision = 0;
@@ -150,6 +155,58 @@ export function useCanvasTools(options: {
         await nextTick();
         signal.throwIfAborted();
         return nodeInfo(id);
+      }
+      case "addMediaNodes": {
+        const args = canvasSchemas.addMediaNodes.parse(request.args);
+        if (args.canvasId !== canvasId) throw new Error("目标画布已变化，未添加媒体节点，请在原画布导入已有文件");
+        const directory = workspaceStore.project?.directory;
+        if (!directory) throw new Error("请先选择工作目录");
+        const files = useWorkspaceFiles(directory);
+        const paths = new Set(args.paths.map(path => path.replaceAll("\\", "/")));
+        const assets = await Promise.all([...paths].map(path => files.getMediaInfo(path)));
+        signal.throwIfAborted();
+        const types = new Set(assets.map(asset => {
+          if (!/^(image|video)\//.test(asset.mimeType)) throw new Error(`文件不是图片或视频：${asset.path}`);
+          return asset.mimeType.startsWith("image/") ? "remote-imageNode" : "remote-videoNode";
+        }));
+        for (const type of types) {
+          if (!options.availableNodes.value.some(node => node.type === type)) throw new Error("请先安装并启用对应的图片或视频基础节点");
+        }
+        await Promise.all([...types].map(type => options.ensureNodeType(type)));
+        signal.throwIfAborted();
+        const existing = new Map<string, string>();
+        for (const node of flow.getNodes.value) {
+          for (const output of Object.values(node.data.outputs ?? {})) {
+            if (!isNodeOutput(output) || output.dataType !== "IMAGE" && output.dataType !== "VIDEO") continue;
+            const path = output.value.url.replaceAll("\\", "/");
+            if (paths.has(path)) existing.set(path, node.id);
+          }
+        }
+        const { x, y, zoom } = flow.viewport.value;
+        const bounds = flow.vueFlowRef.value?.getBoundingClientRect();
+        if (!bounds) throw new Error("画布尚未就绪，请稍后导入已有文件");
+        const position = { x: (bounds.width / 2 - x) / zoom - 120, y: (bounds.height / 2 - y) / zoom - 80 };
+        const occupiedPositions = new Set(flow.getNodes.value.map(node => `${node.position.x}:${node.position.y}`));
+        const [gridX, gridY] = flow.snapToGrid.value ? flow.snapGrid.value : [40, 40];
+        const nodes = assets.filter(asset => !existing.has(asset.path)).map((asset, index) => {
+          const kind = asset.mimeType.startsWith("image/") ? "image" : "video";
+          const id = crypto.randomUUID();
+          existing.set(asset.path, id);
+          let target = nodePosition({ x: position.x + index * 360, y: position.y });
+          // ACT: 沿用素材导入的错位放置，只避开相同落点；无重叠排版交给现有画布整理。
+          while (occupiedPositions.has(`${target.x}:${target.y}`)) target = nodePosition({ x: target.x + Math.max(40, gridX), y: target.y + Math.max(40, gridY) });
+          occupiedPositions.add(`${target.x}:${target.y}`);
+          return { id, type: `remote-${kind}Node`, position: target,
+            data: { label: asset.path.split("/").at(-1)!, outputs: { [kind]: { dataType: kind === "image" ? "IMAGE" : "VIDEO", value: { url: asset.path, mimeType: asset.mimeType } } } } };
+        });
+        if (nodes.length) await options.batchHistory(async () => {
+          signal.throwIfAborted();
+          if (options.getCanvasBinding().id !== args.canvasId) throw new Error("目标画布已变化，未添加媒体节点，请在原画布导入已有文件");
+          flow.addNodes(nodes);
+          await nextTick();
+        });
+        signal.throwIfAborted();
+        return { canvasId, nodes: assets.map(asset => nodeInfo(existing.get(asset.path)!)), addedCount: nodes.length };
       }
       case "deleteNodes": {
         const { nodeIds } = canvasSchemas.deleteNodes.parse(request.args);

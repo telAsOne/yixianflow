@@ -16,7 +16,7 @@ deleteNodes、moveNodes、renameNodes、connectNodes、deleteEdges 均一次接�
 媒体节点返回 generating/running 只表示后台生成已启动。默认继续完成已授权且不依赖该结果的工作，然后简短告知生成中的节点并结束本轮，让用户在同一对话继续安排其他任务；即使存在状态工具，也不循环调用 getGenerationStatus、getCanvasNodes、getConfig 或读取文件等待生成完成。用户查询进度时按需查询一次；只有明确要求等待结果时才按实际工具能力等待。依赖未完成结果的后续工作记为待办，不能使用旧输出或重复提交生成；结果在原节点更新，不承诺自动唤醒对话或完成通知。`,
   configRules: [],
   components: Object.fromEntries([
-    "addNode", "moveNodes", "renameNodes", "nodeTools", "connectNodes",
+    "addNode", "addMediaNodes", "moveNodes", "renameNodes", "nodeTools", "connectNodes",
     "deleteEdges", "selectNodes", "arrangeCanvas", "fitCanvas",
   ].map(name => [name, "src/nodeFocusCard.vue"])),
 }, import.meta.url);

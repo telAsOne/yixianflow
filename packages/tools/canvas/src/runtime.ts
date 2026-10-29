@@ -54,6 +54,13 @@ export const canvasSchemas = {
   switchCanvas: z.strictObject({ canvasId: z.string().min(1).max(256) }),
   renameCanvas: z.strictObject({ canvasId: z.string().min(1).max(256).optional(), name: z.string().trim().min(1).max(120) }),
   addNode: z.strictObject({ type: z.string().min(1), position, label: z.string().trim().min(1).max(200).optional() }),
+  addMediaNodes: z.strictObject({
+    canvasId: nodeId,
+    paths: z.array(z.string().min(1).max(2048).refine(
+      path => !/^[\\/]|[:\u0000-\u001f]/.test(path) && path.split(/[\\/]/).every(part => part && part !== "." && part !== ".."),
+      "路径必须是工作区内的相对路径，不能包含空路径段或 ..",
+    )).min(1).max(64),
+  }),
   deleteNodes: z.strictObject({ nodeIds: z.array(nodeId).min(1).max(64) }),
   moveNodes: z.strictObject({ moves: z.array(z.strictObject({ nodeId, position })).min(1).max(64) }),
   renameNodes: z.strictObject({ renames: z.array(z.strictObject({ nodeId, label: z.string().trim().min(1).max(200) })).min(1).max(64) }),
@@ -87,6 +94,7 @@ export const canvasOperations = [
   { name: "switchCanvas", label: "切换画布", description: "先从 getCanvas({include:['canvases']}) 分页获取 canvasId，再切换激活画布。等待当前修改保存，返回新画布概览，本轮后续操作继续作用于新画布。", parameters: canvasSchemas.switchCanvas },
   { name: "renameCanvas", label: "重命名画布", description: "重命名当前工作区画布，同时修改对应 JSON 文件名。省略 canvasId 时重命名激活画布；name 不含 .json 扩展名。不会覆盖已有文件，返回操作后的激活画布概览。", parameters: canvasSchemas.renameCanvas },
   { name: "addNode", label: "新增节点", description: "在激活画布的画布坐标 position 新增节点，type 必须来自 getCanvas({include:['nodeTypes']}) 的 availableNodeTypes。返回新增节点信息；节点函数通过 getNodeTools 按需查询。", parameters: canvasSchemas.addNode },
+  { name: "addMediaNodes", label: "添加媒体节点", description: "将工作区内已有的图片、视频文件批量放入指定目标画布的素材节点，不触发生成。canvasId 必须匹配当前调用绑定的画布，paths 使用工作区相对路径，每批最多 64 个；文件和对应基础节点均须可用。已有相同文件输出时复用原节点，其余结果在视口附近创建节点；返回节点信息和新增数量。媒体生成工具已自动完成添加时不要重复创建节点。", parameters: canvasSchemas.addMediaNodes },
   { name: "deleteNodes", label: "删除节点", description: "从激活画布批量删除指定 nodeIds 的节点及其连接边；同一批次内的父子节点可以一起删除，任一节点校验失败则整体不执行。返回 removedEdgeCount、最多 100 项 removedEdgeIds 及 truncated；截断只影响删除回执，不代表仅删除了部分连线。", parameters: canvasSchemas.deleteNodes },
   { name: "moveNodes", label: "移动节点", description: "将激活画布指定节点批量移动到各自的画布坐标 position，一次可传入多个节点，任一项校验失败则整体不执行。", parameters: canvasSchemas.moveNodes },
   { name: "renameNodes", label: "重命名节点", description: "批量修改激活画布指定节点的显示名称，一次可传入多个节点，任一项校验失败则整体不执行。", parameters: canvasSchemas.renameNodes },
