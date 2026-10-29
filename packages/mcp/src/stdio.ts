@@ -58,7 +58,7 @@ async function main() {
       instructions: client.getInstructions(),
     });
     server.server.setRequestHandler("tools/list", (request, context) => client.listTools(request.params, { signal: context.mcpReq.signal, cacheMode: "refresh" }));
-    server.server.setRequestHandler("tools/call", (request, context) => client.callTool(request.params, { signal: context.mcpReq.signal, timeout: 30 * 60_000 }));
+    server.server.setRequestHandler("tools/call", (request, context) => client.callTool(request.params, { signal: context.mcpReq.signal, timeout: 60 * 60_000 }));
     if (resources) {
       server.server.setRequestHandler("resources/list", (request, context) => client.listResources(request.params, { signal: context.mcpReq.signal, cacheMode: "refresh" }));
       server.server.setRequestHandler("resources/read", (request, context) => client.readResource(request.params, { signal: context.mcpReq.signal, cacheMode: "refresh" }));
