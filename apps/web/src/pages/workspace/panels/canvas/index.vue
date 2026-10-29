@@ -10,6 +10,7 @@
     @gesturechange.capture="zoomCanvas"
     @gestureend.capture="zoomCanvas"
     @pointerdown.capture="cancelCanvasZoom"
+    @auxclick.capture="preventMiddleClick"
     @pointermove="pointerPosition = { x: $event.clientX, y: $event.clientY }"
     @pointerleave="pointerPosition = undefined"
     @dragover="dragFilesOver"
@@ -715,6 +716,10 @@ function zoomCanvas(event: WheelEvent | (Event & { scale: number }), fromMap = f
     zoomTime = performance.now();
     zoomFrame = requestAnimationFrame(flushCanvasZoom);
   }
+}
+
+function preventMiddleClick(event: MouseEvent) {
+  if (event.button === 1) event.preventDefault();
 }
 
 function updateCanvasKeys(event: KeyboardEvent) {

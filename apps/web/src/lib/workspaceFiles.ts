@@ -147,6 +147,18 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return data;
   }
 
+  async function exportZip(signal?: AbortSignal) {
+    try {
+      const { data } = await client.get<Blob>("/export", { params: { directory: getDirectory() }, responseType: "blob", signal });
+      return data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.data instanceof Blob && error.response.data.type.includes("json")) {
+        error.response.data = JSON.parse(await error.response.data.text());
+      }
+      throw error;
+    }
+  }
+
   async function importImage(url: string) {
     const { data } = await client.post<{ data: { path: string; mimeType: string } }>("/importImage", { directory: getDirectory(), url });
     return data.data;
@@ -263,6 +275,6 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
   }
 
   // ACT: 当前目录逐次读取；跨 await 或防抖的操作传入目录字符串，固定本次目标。
-  return { list, canvasEntries, read, importImage, acquireUrl, getMediaInfo, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir,
+  return { list, canvasEntries, read, exportZip, importImage, acquireUrl, getMediaInfo, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir,
     saveCanvasChanges, saveCanvasRecovery, getCanvasRecovery, removeCanvasRecovery, watchCanvases };
 }

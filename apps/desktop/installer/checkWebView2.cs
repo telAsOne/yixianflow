@@ -12,6 +12,11 @@ internal static class checkWebView2
     private static extern int getAvailableVersion(
         string browserExecutableFolder, out IntPtr versionInfo);
 
+    [DllImport("WebView2Loader.dll", EntryPoint = "CompareBrowserVersions",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    private static extern int compareVersions(string version1, string version2, out int result);
+
     private static int Main()
     {
         IntPtr versionInfo = IntPtr.Zero;
@@ -20,11 +25,13 @@ internal static class checkWebView2
             int result = getAvailableVersion(null, out versionInfo);
             string version = versionInfo == IntPtr.Zero
                 ? null : Marshal.PtrToStringUni(versionInfo);
-            Version installedVersion;
-            if (result >= 0 && Version.TryParse(version, out installedVersion)
-                && installedVersion > new Version(0, 0, 0, 0))
+            int available;
+            int comparison;
+            if (result >= 0 && !string.IsNullOrWhiteSpace(version)
+                && compareVersions(version, "0.0.0.0", out available) >= 0 && available > 0
+                && compareVersions(version, minimumVersion.ToString(), out comparison) >= 0)
             {
-                if (installedVersion < minimumVersion)
+                if (comparison < 0)
                 {
                     Console.WriteLine("WebView2 Runtime outdated: version=" + version
                         + "; required>=" + minimumVersion);
