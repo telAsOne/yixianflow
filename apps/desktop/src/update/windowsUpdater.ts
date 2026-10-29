@@ -330,6 +330,7 @@ export default function createWindowsUpdater(resourcesDirectory: string, lifecyc
     const helperPath = join(helperDirectory, `toonflowUpdate-${transactionId}.exe`);
     const handoffPath = join(extractionDirectory, "portableHandoff.txt");
     let approval: unknown;
+    let helperStarted = false;
     try {
       approval = lifecycle.requestQuitApproval();
       if (!approval) throw new Error(t`更新重启已取消`);
@@ -349,7 +350,16 @@ export default function createWindowsUpdater(resourcesDirectory: string, lifecyc
       const handoffStarted = performance.now();
       // ACT: 便携启动器在 SDK Job 外启动助手，使应用退出后仍可更换 runtime 和顶层 EXE。
       if (portable) writeAtomicSync(handoffPath, transactionId, { exclusive: true });
-      else await execFileAsync(helperPath, ["--spawn-update", planPath, "--quiet"], { windowsHide: true, timeout: 15000 });
+      else {
+        try {
+          await execFileAsync(helperPath, ["--spawn-update", planPath, "--quiet"], { windowsHide: true, timeout: 15000, encoding: "utf8" });
+        } catch (error) {
+          const stderr = error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string" ? error.stderr.trim() : "";
+          if (stderr) throw new Error(stderr, { cause: error });
+          throw error;
+        }
+      }
+      helperStarted = true;
       const deadline = Date.now() + 120000;
       let quitDeadline = 0;
       while (true) {
@@ -391,7 +401,8 @@ export default function createWindowsUpdater(resourcesDirectory: string, lifecyc
       busy = false;
       removeUpdateFile(planPath);
       if (portable && regularFile(handoffPath) && readFileSync(handoffPath, "utf8") === transactionId) removeUpdateFile(handoffPath);
-      if (approval) {
+      // ACT: 助手启动失败时保留已校验的更新包，便携模式仍按启动器交接结果处理。
+      if (approval && helperStarted) {
         removeUpdateFile(preparedPath);
         state.updateReady = false;
       }

@@ -296,7 +296,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const popup = document.createElement("div");
   popup.className = "textNodeMentions nodrag nopan nowheel";
   popup.style.zIndex = String(nextZIndex());
-  document.body.appendChild(popup);
+  (element.closest(".el-dialog") ?? document.body).appendChild(popup);
   const initialModel: AnyTagProps[][] = model.value.length ? model.value : text.value.split("\n").map(text => [{ type: "Write", text }]);
   const instance = new xSender(element, {
     autoFocus: false,
@@ -346,6 +346,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
     instance.updateConfig({ chatStyle: { minHeight: visible ? "100%" : "54px", maxHeight: visible ? "100%" : props.maxHeight ?? "180px" } });
     await nextTick();
     if (sender !== instance) return;
+    (element.closest(".el-dialog") ?? document.body).appendChild(popup);
     popup.style.zIndex = String(nextZIndex());
   });
   const editor = instance.chatElement.richText;

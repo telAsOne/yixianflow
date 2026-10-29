@@ -37,6 +37,7 @@ import {
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import { finishGroupDrag, getSelectionRoots, getSelectionTree } from "../selectionNodes";
 import { arrangeSelection, type ArrangeSelectionMode } from "../arrangeSelection";
+import { remapNodeReferences } from "../canvasFiles";
 
 const props = defineProps<{
   batchHistory: (action: () => Promise<void>) => Promise<void>;
@@ -73,6 +74,7 @@ async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withE
     signal.throwIfAborted();
     const saved = savedNodes.get(node.id)!;
     const copy = JSON.parse(JSON.stringify({ ...saved, data: { ...saved.data, ...patch } })) as Node;
+    remapNodeReferences(copy, ids);
     Reflect.deleteProperty(copy, "initialized");
     copy.id = ids.get(node.id)!;
     copy.parentNode = ids.get(saved.parentNode ?? "") ?? saved.parentNode;

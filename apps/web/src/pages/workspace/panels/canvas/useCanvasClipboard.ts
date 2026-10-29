@@ -8,6 +8,7 @@ import { getShortcutBindings, shortcutLabel } from "@/lib/canvasShortcuts";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { generalSettings } from "@/stores/settings";
 import { copyNodeToClipboard, copyNodesToClipboard, nodeClipboardCommand, readClipboardNodes } from "./nodeClipboard";
+import { remapNodeReferences } from "./canvasFiles";
 import { getClipboardMediaFiles, importCanvasFiles } from "./canvasDrop";
 import { getSelectionTree } from "./selectionNodes";
 
@@ -167,6 +168,7 @@ export function useCanvasClipboard(flow: ReturnType<typeof useVueFlow>, options:
           throw new Error("请先安装并启用对应的节点插件");
         }
         const ids = new Map(snapshot.nodes.map(node => [node.id, crypto.randomUUID()]));
+        for (const node of snapshot.nodes) remapNodeReferences(node, ids);
         const roots = snapshot.nodes.filter(node => !node.parentNode);
         const left = Math.min(...roots.map(node => node.position.x));
         const top = Math.min(...roots.map(node => node.position.y));

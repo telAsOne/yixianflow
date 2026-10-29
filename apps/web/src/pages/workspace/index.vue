@@ -25,7 +25,7 @@
         :saveNode="saveDocumentNode" />
     </keep-alive>
     <header ref="headerElement" class="workspaceChrome">
-      <workspaceMenu class="workspaceMenu" @openSettings="settingsVisible = true" />
+      <workspaceMenu class="workspaceMenu" :exporting="exporting" :exportDisabled="refreshing || !workspaceStore.project" @exportProject="exportProject" @openSettings="settingsVisible = true" />
       <div v-show="activePanel === 'canvas'" ref="menuTarget" class="canvasMenuTarget" :inert="refreshing" />
       <div class="workspaceActions">
         <el-segmented :modelValue="activePanel" class="panelSwitcher" :options="panelOptions" aria-label="切换面板" @change="switchPanel">
@@ -75,6 +75,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import settings from "@/components/settings/index.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { flushSettings } from "@/stores/settings";
+import useWorkspaceFiles from "@/lib/workspaceFiles";
+import saveFile from "@/lib/saveFile";
 import { registerWorkspaceControl, waitForControlValue } from "@/lib/mcpControl";
 import canvasPanel from "./panels/canvas/canvasHost.vue";
 import type { DocumentNodeOptions } from "./panels/canvas/canvasFiles";
@@ -124,6 +126,7 @@ onMounted(() => {
 });
 const settingsVisible = ref(false);
 const refreshing = ref(false);
+const exporting = ref(false);
 provide("workspaceRefreshing", refreshing);
 const canvasPanelRef = ref<InstanceType<typeof canvasPanel>>();
 const documentPanelCache = shallowRef<{ directory: string; instance: InstanceType<typeof documentPanel> }>();
@@ -143,6 +146,16 @@ provide("performWorkspaceFileAction", (directory: string, action: "copy" | "rena
 
 const controlLifetime = new AbortController();
 onScopeDispose(() => controlLifetime.abort(new Error("工作区已关闭")));
+const sideButtonEvents = ["mousedown", "mouseup", "auxclick"] as const;
+function preventSideButtonNavigation(event: MouseEvent) {
+  if (event.button === 3 || event.button === 4) event.preventDefault();
+}
+onMounted(() => {
+  for (const eventName of sideButtonEvents) window.addEventListener(eventName, preventSideButtonNavigation, true);
+});
+onScopeDispose(() => {
+  for (const eventName of sideButtonEvents) window.removeEventListener(eventName, preventSideButtonNavigation, true);
+});
 registerWorkspaceControl({
   getState: () => ({
     directory: workspaceStore.project?.directory ?? null,
@@ -170,7 +183,7 @@ registerWorkspaceControl({
     }
     if (["getDocument", "openDocument", "writeDocument"].includes(request.name)) {
       if (!(await switchPanel("document"))) throw new Error("文档面板无法打开");
-      const panel = await waitForControlValue(() => documentPanelRef.value, callSignal);
+      const panel = await waitForControlValue(() => documentPanelRef.value?.ready ? documentPanelRef.value : undefined, callSignal);
       checkDirectory();
       if (request.name === "openDocument") await panel.openDocument(request.args, callSignal);
       if (request.name === "writeDocument") await panel.writeDocument(request.args, callSignal);
@@ -192,6 +205,26 @@ async function flushSave() {
   await documentPanelRef.value?.flushSave();
   await canvasPanelRef.value?.flushSave();
   await flushSettings();
+}
+
+async function exportProject() {
+  const project = workspaceStore.project;
+  if (!project || exporting.value || refreshing.value) return;
+  const { directory, name } = project;
+  exporting.value = true;
+  try {
+    const saved = await saveFile(async () => {
+      controlLifetime.signal.throwIfAborted();
+      if (workspaceStore.project?.directory !== directory) throw new Error("工作区已切换，请重新导出");
+      await flushSave();
+      return useWorkspaceFiles(directory).exportZip(controlLifetime.signal);
+    }, `${name}.zip`);
+    if (saved) ElMessage.success("项目已导出");
+  } catch (error) {
+    if (!controlLifetime.signal.aborted) ElMessage.error(axios.isAxiosError<{ message?: string }>(error)
+      ? error.response?.data?.message || error.message
+      : error instanceof Error ? error.message : "项目导出失败");
+  } finally { exporting.value = false; }
 }
 
 async function refreshProject() {

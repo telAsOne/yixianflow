@@ -18,7 +18,7 @@ const inputSchema = z.object({
   resendFrom: z.string().min(1).max(128).optional(),
   clientFiles: z.strictObject({ runId: z.uuid(), directory: clientDirectorySchema }).optional(),
   canvas: z.strictObject({
-    id: z.string().min(1).max(256),
+    id: z.string().max(256),
     tools: z.array(z.strictObject({
       nodeId: z.string().min(1).max(256),
       name: z.string().max(101).regex(/^node:[a-z][a-zA-Z0-9]*$/),

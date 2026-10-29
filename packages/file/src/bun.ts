@@ -78,7 +78,9 @@ export async function write(destination: string | URL | ArrayBufferLike | NodeJS
   if (content instanceof Response || content instanceof Request || content instanceof ReadableStream) {
     throw new TypeError("流式写入请使用 @toonflow/file 的 createWriteStream 和 pipeline");
   }
-  const paths = [destination, content].flatMap((value, index) => {
+  // 固定数组成员，确保排队后写入的文件与本次收集的锁路径一致。
+  if (Array.isArray(content)) content = [...content];
+  const paths = [destination, ...(Array.isArray(content) ? content : [content])].flatMap((value, index) => {
     const path = index === 0 ? pathKey(value) : typeof value === "object" && value ? filePaths.get(value) : undefined;
     return path === undefined ? [] : [path];
   });

@@ -4,6 +4,9 @@
       <el-button class="toolButton" text aria-label="退出项目" title="退出项目" @click="exitVisible = true">
         <icon-x :size="17" aria-hidden="true" />
       </el-button>
+      <el-button class="toolButton" text :loading="exporting" :disabled="exportDisabled || exporting" aria-label="导出项目 ZIP" title="导出项目 ZIP" @click="emit('exportProject')">
+        <icon-download :size="17" aria-hidden="true" />
+      </el-button>
       <el-button class="toolButton" text :aria-label="hasDesktopUpdate ? '设置，有新版本可用' : '设置'" title="设置" @click="emit('openSettings')">
         <el-badge isDot :hidden="!hasDesktopUpdate">
           <icon-settings :size="17" aria-hidden="true" />
@@ -23,10 +26,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import { IconX, IconSettings } from "@tabler/icons-vue";
+import { IconX, IconSettings, IconDownload } from "@tabler/icons-vue";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 
-const emit = defineEmits<{ openSettings: [] }>();
+defineProps<{ exporting: boolean; exportDisabled: boolean }>();
+const emit = defineEmits<{ openSettings: []; exportProject: [] }>();
 const router = useRouter();
 const exitVisible = ref(false);
 const leaving = ref(false);
