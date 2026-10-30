@@ -60,6 +60,7 @@ const inputSchema = z.object({
 
 export default Router().post("/", validateFields(inputSchema.shape), async (req, res) => {
   const input = inputSchema.parse(req.body, validationOptions());
+  await u.account.refreshConfig(false);
   const configured = u.ai.getConfiguredModel(input.providerId, input.modelId);
   const controller = new AbortController();
   let heartbeat: ReturnType<typeof setInterval> | undefined;

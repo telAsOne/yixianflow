@@ -54,7 +54,7 @@ export function getConfiguredModel(providerId: string, modelId: string) {
   if (!parsed.success) throw Object.assign(new Error("请先在设置中配置模型供应商"), { status: 400 });
   const provider: z.infer<typeof providerSchema> = { ...parsed.data, apiKey: account.key, apiUrl: account.baseUrl + "/v1", protocol: "openai-completions" };
   const model = provider.models.find(item => item.id === modelId);
-  if (!model) throw Object.assign(new Error("所选模型不存在，请重新选择"), { status: 400 });
+  if (!model) throw Object.assign(new Error("所选模型不存在，请重新选择"), { status: 400, code: "toonflow.model_unavailable" });
   const baseUrl = new URL(provider.apiUrl);
   if (baseUrl.pathname === "/") baseUrl.pathname = "/v1";
   const limits = getModelLimits(providerId, model);

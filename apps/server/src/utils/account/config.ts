@@ -9,6 +9,9 @@ let pending: Promise<void> | undefined;
 let pendingAccount: ReturnType<typeof getAccount>;
 let configError = "";
 let timer: ReturnType<typeof setInterval> | undefined;
+let refreshedAccount: ReturnType<typeof getAccount>;
+let refreshedAt = 0;
+const refreshInterval = 60_000;
 
 export function getConfigState() {
   const saved = conf.get("settings.yixianConfig") as { baseUrl?: string; userId?: number; config?: unknown } | undefined;
@@ -20,14 +23,16 @@ export function getConfigState() {
     revision: parsed?.success ? parsed.data.revision : undefined, configError: getAccount() ? translateMessage(configError) : "" };
 }
 
-export async function refreshConfig(): Promise<void> {
+export async function refreshConfig(force = true): Promise<void> {
   if (pending) {
     if (pendingAccount === getAccount()) return pending;
     await pending.catch(() => {});
-    return refreshConfig();
+    return refreshConfig(force);
   }
   const account = getAccount();
   if (!account) return;
+  const refreshStartedAt = Date.now();
+  if (!force && refreshedAccount === account && refreshStartedAt - refreshedAt < refreshInterval) return;
   pendingAccount = account;
   pending = (async () => {
     try {
@@ -66,12 +71,14 @@ export async function refreshConfig(): Promise<void> {
       if (getAccount() === account) configError = error instanceof Error ? error.message : "刷新模型失败";
       throw error;
     }
-  })().finally(() => { pending = undefined; });
+  })().then(() => {
+    if (getAccount() === account) { refreshedAccount = account; refreshedAt = refreshStartedAt; }
+  }).finally(() => { pending = undefined; });
   return pending;
 }
 
 export async function initializeConfig() {
   await refreshConfig().catch(() => {});
-  timer ??= setInterval(() => { void refreshConfig().catch(() => {}); }, 10 * 60_000);
+  timer ??= setInterval(() => { void refreshConfig(false).catch(() => {}); }, refreshInterval);
   timer.unref();
 }
