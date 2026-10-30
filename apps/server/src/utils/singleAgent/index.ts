@@ -206,8 +206,8 @@ export async function run(options: {
         finally { finishAction(active); }
       },
     }));
-    const thinkingLevel = options.thinkingLevel ?? "off";
-    const { runtime, provider } = await createAgentModel(options.providerId, options.modelId, thinkingLevel);
+    const { runtime, provider, defaultThinkingLevel } = await createAgentModel(options.providerId, options.modelId, options.thinkingLevel);
+    const thinkingLevel = options.thinkingLevel ?? defaultThinkingLevel;
     active.controller.signal.throwIfAborted();
     const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
     const agentDir = join(state.cwd, ".agent");

@@ -275,7 +275,7 @@ const pendingMessage = props.initialSession?.parentFile ? undefined : workspaceS
 const selectedModel = ref(pendingMessage?.model ?? (props.initialSession?.providerId && props.initialSession.modelId
   ? JSON.stringify([props.initialSession.providerId, props.initialSession.modelId]) : ""));
 const contextMenuVisible = ref(false);
-const reasoningEffort = ref(pendingMessage?.reasoningEffort ?? (props.initialSession?.thinkingLevel === "off" ? "" : props.initialSession?.thinkingLevel ?? ""));
+const reasoningEffort = ref(pendingMessage?.reasoningEffort ?? props.initialSession?.thinkingLevel ?? "");
 const selectedModelChoice = computed(() => modelChoices.value.find(item => item.value === selectedModel.value));
 const contextWindow = computed(() => contextUsage.value?.contextWindow ?? selectedModelChoice.value?.contextWindow ?? 262144);
 const contextPercent = computed(() => (contextUsage.value?.tokens ?? 0) / contextWindow.value * 100);

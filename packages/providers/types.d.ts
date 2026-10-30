@@ -16,11 +16,14 @@ interface ProviderModel {
   label: string;
   type: ModelType;
   think?: boolean;
+  defaultThinkingLevel?: "off" | "low" | "medium" | "high";
   mode?: (ImageMode | VideoMode)[];
   associationSkills?: string;
   audio?: "optional" | boolean;
   imageSizes?: string[];
   imageRatios?: string[];
+  defaultImageSize?: string;
+  defaultImageRatio?: string;
   videoRatios?: string[];
   /** 图片和首尾帧须使用公网链接，本地图片由宿主上传。 */
   referenceImageInput?: "url";

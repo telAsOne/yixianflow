@@ -59,6 +59,7 @@ const props = withDefaults(defineProps<{ active?: boolean; disabled?: boolean }>
 const visible = ref(false);
 const reasoningOptions = [
   { label: "默认", value: "" },
+  { label: "关闭", value: "off" },
   { label: "低", value: "low" },
   { label: "中", value: "medium" },
   { label: "高", value: "high" },

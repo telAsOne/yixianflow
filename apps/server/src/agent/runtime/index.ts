@@ -54,7 +54,7 @@ export async function run(
     cwd,
     providerId,
     modelId,
-    thinkingLevel = "off",
+    thinkingLevel,
     sessionFile,
     resendFrom,
     canvas,
@@ -110,7 +110,8 @@ export async function run(
     send({ type: "accepted" });
     return;
   }
-  const { provider, runtime } = await createAgentModel(providerId, modelId, thinkingLevel);
+  const { provider, runtime, defaultThinkingLevel } = await createAgentModel(providerId, modelId, thinkingLevel);
+  thinkingLevel ??= defaultThinkingLevel;
   if (sessionPath) {
     const file = await stat(sessionPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") throw Object.assign(new Error("会话不存在，请重新打开对话"), { status: 404 });

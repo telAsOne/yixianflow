@@ -63,6 +63,8 @@ export async function listMediaModels(): Promise<MediaModel[]> {
       ...(model.type === "image" ? {
         imageSizes: imageOptions(Array.isArray(model.imageSizes) ? model.imageSizes : builtIn?.imageSizes, /^[^\u0000-\u001f\u007f]+$/),
         imageRatios: imageOptions(Array.isArray(model.imageRatios) ? model.imageRatios : builtIn?.imageRatios, /^[1-9]\d{0,3}:[1-9]\d{0,3}$/),
+        defaultImageSize: model.imageSizes?.includes(model.defaultImageSize ?? "") ? model.defaultImageSize : undefined,
+        defaultImageRatio: model.imageRatios?.includes(model.defaultImageRatio ?? "") ? model.defaultImageRatio : undefined,
       } : {}),
     } as MediaModel];
   }));

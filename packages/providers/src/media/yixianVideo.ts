@@ -113,8 +113,10 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
   if (!request.prompt.trim()) throw new Error("请输入生成提示词");
   if (!modes.some(mode => mode === "text" && images.length === 0 || mode === "singleImage" && images.length === 1
     || mode === "multiReference" && images.length >= Math.max(1, model.minReferenceImages ?? 0))) throw new Error("参考图片不符合模型声明的生成模式");
-  if (request.size !== undefined && !model.imageSizes?.includes(request.size)) throw new Error("图片尺寸不在模型声明的范围内");
-  if (request.ratio !== undefined && !model.imageRatios?.includes(request.ratio)) throw new Error("画面比例不在模型声明的范围内");
+  const size = request.size ?? model.defaultImageSize;
+  const ratio = request.ratio ?? model.defaultImageRatio;
+  if (size !== undefined && !model.imageSizes?.includes(size)) throw new Error("图片尺寸不在模型声明的范围内");
+  if (ratio !== undefined && !model.imageRatios?.includes(ratio)) throw new Error("画面比例不在模型声明的范围内");
   const n = request.n ?? 1;
   if (!Number.isSafeInteger(n) || n < 1) throw new Error("图片数量无效");
   if (/^(gemini-|nano-banana)/i.test(request.model)) {
@@ -129,7 +131,7 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
     const response = await this.tool.fetch(`${this.config.apiUrl}/v1/chat/completions`, {
       method: "POST", headers: { Authorization: `Bearer ${this.config.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: request.model, messages: [{ role: "user", content }],
-        extra_body: { google: { image_config: { image_size: request.size || model.imageSizes?.[0], aspect_ratio: request.ratio || model.imageRatios?.[0] } } } }),
+        extra_body: { google: { image_config: { image_size: size ?? model.imageSizes?.[0], aspect_ratio: ratio ?? model.imageRatios?.[0] } } } }),
       signal: AbortSignal.timeout(300000), redirect: "error",
     });
     const result = JSON.parse((await readBytes(response, 150 * 1024 * 1024)).toString("utf8")) as { choices?: { message?: { content?: string } }[]; error?: unknown };
@@ -139,7 +141,7 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
     if (!matches.length) throw new Error("Gemini 未返回图片，请检查提示词或平台生成记录后再重试");
     return matches.map(match => ({ type: "base64", data: match[2]!, mimeType: match[1]!, mediaType: "image" }));
   }
-  const fields = { model: request.model, prompt: request.prompt, n, ...(request.size ? { size: request.size } : {}), ...(request.ratio ? { aspect_ratio: request.ratio } : {}) };
+  const fields = { model: request.model, prompt: request.prompt, n, ...(size ? { size } : {}), ...(ratio ? { aspect_ratio: ratio } : {}) };
   const headers: Record<string, string> = { Authorization: `Bearer ${this.config.apiKey}` };
   let body: RequestInit["body"];
   if (images.length) {
