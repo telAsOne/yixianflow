@@ -18,6 +18,7 @@ export const providerSchema = z.object({
   protocol: z.enum(["openai-completions", "openai-responses", "anthropic-messages"]),
   models: z.array(z.object({
     id: z.string(), label: z.string(), think: z.boolean().optional(),
+    defaultThinkingLevel: z.enum(["off", "low", "medium", "high"]).optional(),
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
   })),
@@ -136,7 +137,7 @@ export function streamAi(
   const { provider, model: configuredModel, baseUrl } = configured;
   const model: Model<typeof provider.protocol> = {
     id: configuredModel.id, name: configuredModel.label, provider: "toonflow", api: provider.protocol, baseUrl,
-    reasoning: configuredModel.think === true, input: ["text", "image"],
+    reasoning: configuredModel.think === true && configuredModel.defaultThinkingLevel !== "off", input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: configuredModel.contextWindow,
     maxTokens: configuredModel.maxOutputTokens,
@@ -147,6 +148,7 @@ export function streamAi(
   });
   return stream(model, context, {
     apiKey: provider.apiKey,
+    reasoning: configuredModel.defaultThinkingLevel === "off" ? undefined : configuredModel.defaultThinkingLevel,
     signal,
     onPayload: references.length ? (payload) => {
       const body = payload as Record<string, unknown>;

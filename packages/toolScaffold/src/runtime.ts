@@ -82,6 +82,8 @@ export interface MediaModel {
   mode?: unknown;
   imageSizes?: string[];
   imageRatios?: string[];
+  defaultImageSize?: string;
+  defaultImageRatio?: string;
   videoRatios?: string[];
   referenceImageInput?: "url";
   referenceAudioInput?: "url";

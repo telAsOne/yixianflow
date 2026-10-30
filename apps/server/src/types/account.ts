@@ -14,6 +14,8 @@ export type UploadLimits = z.infer<typeof uploadLimitsSchema>;
 export const modelSchema = z.object({
   id: z.string().min(1).max(200), label: z.string().min(1).max(200),
   contextWindow: z.number().int().positive().optional(), maxOutputTokens: z.number().int().positive().optional(), think: z.boolean().optional(),
+  defaultThinkingLevel: z.enum(["off", "low", "medium", "high"]).optional(),
+  defaultImageSize: z.string().min(1).max(64).optional(), defaultImageRatio: z.string().min(1).max(64).optional(),
   mode: z.array(z.union([z.enum(["text", "singleImage", "multiReference", "startEndRequired", "endFrameOptional", "startFrameOptional"]),
     z.array(z.string().regex(/^(image|video|audio)Reference:\d+$/))])).optional(),
   imageSizes: z.array(z.string().min(1)).optional(), imageRatios: z.array(z.string().min(1)).optional(),

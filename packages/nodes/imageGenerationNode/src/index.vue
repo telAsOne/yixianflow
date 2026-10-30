@@ -173,7 +173,7 @@ data.value.inpaintPrompt ??= "";
 data.value.inpaintPromptModel ??= [];
 data.value.model ??= "";
 data.value.size ??= "";
-data.value.ratio ??= "16:9";
+data.value.ratio ??= "";
 const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
 const { models, modelsLoading, modelGroups, loadModels } = useMediaModels("image", data, () => generating.value || deleting.value, ai.getMediaModels);
 const { uploading, replaceOutput } = useOutputReplace("image", files, () => generating.value || deleting.value || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy,
@@ -217,10 +217,13 @@ watch(
   (choice) => {
     if (!choice) return;
     // ACT: 现有分辨率使用 K 单位；出现其他单位时再统一换算，未知名称排在数值选项之后。
-    if (!sizeOptions.value.includes(data.value.size)) data.value.size = sizeOptions.value.toSorted((left, right) =>
-      (Number.parseFloat(left) || Infinity) - (Number.parseFloat(right) || Infinity)
-    )[0]!;
-    if (!ratioOptions.value.includes(data.value.ratio)) data.value.ratio = ratioOptions.value.includes("16:9") ? "16:9" : ratioOptions.value[0]!;
+    if (!sizeOptions.value.includes(data.value.size)) data.value.size = choice.defaultImageSize && sizeOptions.value.includes(choice.defaultImageSize)
+      ? choice.defaultImageSize
+      : sizeOptions.value.toSorted((left, right) => (Number.parseFloat(left) || Infinity) - (Number.parseFloat(right) || Infinity))[0]!;
+    if (!ratioOptions.value.includes(data.value.ratio)) {
+      if (choice.defaultImageRatio && ratioOptions.value.includes(choice.defaultImageRatio)) data.value.ratio = choice.defaultImageRatio;
+      else data.value.ratio = ratioOptions.value.includes("16:9") ? "16:9" : ratioOptions.value[0]!;
+    }
   },
   { flush: "sync" }
 );
