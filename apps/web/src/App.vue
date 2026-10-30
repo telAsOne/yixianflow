@@ -160,9 +160,25 @@ watchEffect(() => {
 
 function requestSignIn() { accountView.value = undefined; signInVisible.value = true; }
 window.addEventListener("toonflow:sign-in", requestSignIn);
-const accountTimer = setInterval(() => { void refreshAccount().catch(error => console.warn("刷新账户失败", error)); }, 10 * 60_000);
-void refreshAccount().catch(error => console.warn("读取账户失败", error));
-onBeforeUnmount(() => { clearInterval(accountTimer); window.removeEventListener("toonflow:sign-in", requestSignIn); });
+let accountRefresh: Promise<unknown> | undefined;
+function syncAccount() {
+  if (document.hidden || !navigator.onLine || accountRefresh) return;
+  accountRefresh = refreshAccount().catch(error => console.warn("刷新账户失败", error)).finally(() => { accountRefresh = undefined; });
+}
+const accountTimer = setInterval(syncAccount, 60_000);
+window.addEventListener("focus", syncAccount);
+window.addEventListener("online", syncAccount);
+window.addEventListener("toonflow:models-changed", syncAccount);
+document.addEventListener("visibilitychange", syncAccount);
+syncAccount();
+onBeforeUnmount(() => {
+  clearInterval(accountTimer);
+  window.removeEventListener("toonflow:sign-in", requestSignIn);
+  window.removeEventListener("focus", syncAccount);
+  window.removeEventListener("online", syncAccount);
+  window.removeEventListener("toonflow:models-changed", syncAccount);
+  document.removeEventListener("visibilitychange", syncAccount);
+});
 </script>
 
 <style lang="scss">

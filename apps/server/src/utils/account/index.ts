@@ -118,6 +118,7 @@ export async function platformFetch(input: Parameters<typeof fetch>[0], init?: R
     if (code === "toonflow.model_unavailable" && url.pathname !== "/v1/toonflow/config") {
       const { refreshConfig } = await import("./config");
       await refreshConfig().catch(() => {});
+      throw Object.assign(new Error("模型不可用，请选择其他模型"), { status: response.status, code });
     }
   }
   return response;
@@ -135,9 +136,12 @@ export async function accountFetch(path: string, init?: RequestInit) {
 
 export async function getView(): Promise<AccountView> {
   if (pending && pending.expiresAt <= Date.now()) { pending = undefined; loginStatus = "expired"; message = "登录已超时，请重新登录"; }
-  const { getConfigState } = await import("./config");
+  const { getConfigState, refreshConfig } = await import("./config");
   const account = getAccount();
-  const info = account ? accountInfoSchema.parse(await accountFetch("/v1/toonflow/me")) : undefined;
+  const [info] = account ? await Promise.all([
+    accountFetch("/v1/toonflow/me").then(value => accountInfoSchema.parse(value)),
+    refreshConfig(false).catch(() => {}),
+  ]) : [];
   if (info && getAccount() !== account) return getView();
   if (info && info.user.id !== account!.user.id) throw new Error("平台返回的账户不匹配，请重新登录");
   return { authenticated: !!account, loginStatus, message: translateMessage(message), account: info, ...getConfigState() };

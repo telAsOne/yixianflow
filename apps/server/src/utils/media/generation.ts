@@ -12,7 +12,7 @@ export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
 import { file } from "@toonflow/file/bun";
-import { requireAccount, getAccount, getConfigState } from "@/utils/account";
+import { requireAccount, getAccount, getConfigState, refreshConfig } from "@/utils/account";
 import { detectMimeType } from "@/utils/media/mimeType";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
 
@@ -187,10 +187,13 @@ async function generateMediaResult(
 ): Promise<GeneratedMedia[]> {
   signal?.throwIfAborted();
   if (!request.prompt.trim()) invalid("请输入生成提示词");
+  const restoring = videoTask?.requestSaved === true || imageTask?.requestSaved === true;
+  if (!restoring) await refreshConfig(false);
+  signal?.throwIfAborted();
   const outputDirectory = request.outputDirectory ?? "assets/generated";
   const providerInfo = await getMediaProvider(request.providerId);
   const model = providerInfo.models.find(model => model.id === request.modelId && model.type === mediaType);
-  if (!model) invalid("所选媒体模型不存在或类型不匹配，请重新选择");
+  if (!model) throw Object.assign(new Error("所选媒体模型不存在或类型不匹配，请重新选择"), { status: 400, code: "toonflow.model_unavailable" });
   const configurations = record(conf.get("settings", {}).mediaProviderConfigs);
   const provider = await loadMediaProviderSource(providerInfo.source, record(configurations[providerInfo.id]), signal, undefined, directory, videoTask, imageTask);
   const generate = mediaType === "image" ? provider.generateImage : mediaType === "video" ? provider.generateVideo : provider.generateAudio;
@@ -223,7 +226,6 @@ async function generateMediaResult(
       (saved, context) => generateMedia(directory, "image", saved, signal, undefined, context), provider.tool.errorMessage, signal);
   }
   // 恢复使用首次保存的原始请求，不重新读取可能已修改或删除的参考素材。
-  const restoring = videoTask?.requestSaved === true || imageTask?.requestSaved === true;
   let images: MediaInput[] | undefined;
   let audios: MediaInput[] | undefined;
   let videos: MediaInput[] | undefined;

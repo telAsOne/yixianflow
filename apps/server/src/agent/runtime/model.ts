@@ -1,8 +1,10 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { getConfiguredModel } from "@/utils/ai";
+import { refreshConfig } from "@/utils/account";
 
 export async function createAgentModel(providerId: string, modelId: string, thinkingLevel?: string) {
+  await refreshConfig(false);
   const configured = getConfiguredModel(providerId, modelId);
   const { provider, model, baseUrl } = configured;
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
