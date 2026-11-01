@@ -14,9 +14,9 @@
       <section v-for="group in mentionGroups" :key="group.label" class="referenceColumn" :aria-label="group.label">
         <h4>{{ group.label }} <span>{{ group.items.length }}</span></h4>
         <div class="referenceOptions" role="listbox" :aria-label="group.label">
-          <button v-for="item in group.items" :key="item.id" type="button" class="referenceOption" :class="{ active: activeMentionId === item.id }" :data-id="item.id" role="option" :aria-selected="activeMentionId === item.id" :title="`${item.name} · ${item.value}`" @mouseenter="activeMentionId = item.id" @click.stop="insertReference(item)">
+          <button v-for="item in group.items" :key="item.id" type="button" class="referenceOption" :class="{ active: activeMentionId === item.id }" :data-id="item.id" role="option" :aria-selected="activeMentionId === item.id" :title="item.hideValue ? item.name : `${item.name} · ${item.value}`" @mouseenter="activeMentionId = item.id" @click.stop="insertReference(item)">
             <img v-if="item.avatar" :src="String(item.avatar)" alt="" />
-            <span><strong>{{ item.name }}</strong><small>{{ item.value }}</small></span>
+            <span><strong>{{ item.name }}</strong><small v-if="!item.hideValue">{{ item.value }}</small></span>
           </button>
         </div>
       </section>
@@ -31,7 +31,7 @@ import { IconMaximize } from "@tabler/icons-vue";
 import xSender, { type AnyTagProps, type MentionItem } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-type PromptReference = MentionItem & { value: string; previewUrl?: string; category?: string; action?: boolean };
+type PromptReference = MentionItem & { value: string; previewUrl?: string; category?: string; action?: boolean; hideValue?: boolean };
 const props = defineProps<{ references: PromptReference[]; referenceGroups?: { label: string; categories: string[] }[]; expandable?: boolean; placeholder?: string; recognizeTokens?: boolean; preserveMissingReferences?: boolean; disabled?: boolean; maxHeight?: string }>();
 const emit = defineEmits<{ activateReference: [reference: PromptReference, occurrence: number]; insertReference: [reference: PromptReference, offset: number] }>();
 const model = defineModel<AnyTagProps[][]>({ required: true });
@@ -174,14 +174,15 @@ function referenceHtml(reference: PromptReference) {
 
 function normalizeModel(value: AnyTagProps[][]): AnyTagProps[][] {
   if (!value.length) return [[{ type: "Write", text: "" }]];
+  const textTags = (value: string): AnyTagProps[] => value.split(tokenPattern.value).map(text => {
+    const reference = props.references.find(item => !item.action && item.value === text);
+    return reference
+      ? { type: "Custom", html: `<span style="display: inline-block;">${referenceHtml(reference)}</span>` }
+      : { type: "Write", text };
+  });
   return value.map(line => {
     const tags = line.flatMap((tag): AnyTagProps[] => {
-      if (tag.type === "Write") return tag.text.split(tokenPattern.value).map(text => {
-        const reference = props.references.find(item => !item.action && item.value === text);
-        return reference
-          ? { type: "Custom", html: `<span style="display: inline-block;">${referenceHtml(reference)}</span>` }
-          : { type: "Write", text };
-      });
+      if (tag.type === "Write") return textTags(tag.text);
       if (tag.type !== "Custom") return [tag];
       const template = document.createElement("template");
       template.innerHTML = tag.html;
@@ -189,7 +190,7 @@ function normalizeModel(value: AnyTagProps[][]): AnyTagProps[][] {
       const id = element?.dataset.referenceId;
       if (!id) return [tag];
       const reference = props.references.find(item => item.id === id);
-      if (!reference) return props.preserveMissingReferences || element?.dataset.category ? [{ type: "Write", text: element?.dataset.value ?? "" }] : [];
+      if (!reference) return props.preserveMissingReferences || element?.dataset.category ? textTags(element?.dataset.value ?? "") : [];
       return [{ type: "Custom", html: `<span style="display: inline-block;">${referenceHtml(reference)}</span>` }];
     });
     const next: AnyTagProps[] = [{ type: "Write", text: "" }];
