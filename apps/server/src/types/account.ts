@@ -36,7 +36,10 @@ const textAndImageCategorySchema = createCategorySchema(modelSchema.extend({
   audio: modelSchema.shape.audio.nullable().transform(value => value ?? undefined),
 }));
 const videoCategorySchema = createCategorySchema(modelSchema.required({ audio: true }));
+export const cameraPresetSchema = z.object({ id: z.string().min(1).max(128), name: z.string().min(1).max(100), type: z.literal("system") });
+export type CameraPreset = z.infer<typeof cameraPresetSchema>;
 export const platformConfigSchema = z.object({ revision: z.string().min(1), min_client_version: z.string(),
+  cameraPresets: z.array(cameraPresetSchema).max(128).default([]),
   categories: z.object({ text: textAndImageCategorySchema, image: textAndImageCategorySchema, video: videoCategorySchema }), limits: uploadLimitsSchema });
 export const accountInfoSchema = z.object({ user: userSchema, balance: z.object({ quota: z.number(), display: z.string() }),
   storage: z.object({ used_bytes: z.number().nonnegative(), quota_bytes: z.number().nonnegative() }),
@@ -44,4 +47,4 @@ export const accountInfoSchema = z.object({ user: userSchema, balance: z.object(
 });
 export type AccountInfo = z.infer<typeof accountInfoSchema>;
 export type AccountView = { authenticated: boolean; loginStatus: "idle" | "waiting" | "cancelled" | "failed" | "expired";
-  message?: string; account?: AccountInfo; configError?: string; limits: UploadLimits; revision?: string };
+  message?: string; account?: AccountInfo; configError?: string; limits: UploadLimits; revision?: string; cameraPresets: CameraPreset[] };

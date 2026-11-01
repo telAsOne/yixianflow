@@ -20,7 +20,8 @@ export function getConfigState() {
   const imageBodyLimit = parsed?.success ? parsed.data.categories.image.requestBodyLimitMiB : undefined;
   return { limits,
     imageTotalMaxBytes: Math.min(limits.requestTotalMaxBytes, imageBodyLimit ? Math.max(0, imageBodyLimit - 1) * 1024 * 1024 : limits.requestTotalMaxBytes),
-    revision: parsed?.success ? parsed.data.revision : undefined, configError: getAccount() ? translateMessage(configError) : "" };
+    revision: parsed?.success ? parsed.data.revision : undefined, cameraPresets: parsed?.success ? parsed.data.cameraPresets : [],
+    configError: getAccount() ? translateMessage(configError) : "" };
 }
 
 export async function refreshConfig(force = true): Promise<void> {
