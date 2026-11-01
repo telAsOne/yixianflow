@@ -14,9 +14,9 @@
       <section v-for="group in mentionGroups" :key="group.label" class="referenceColumn" :aria-label="group.label">
         <h4>{{ group.label }} <span>{{ group.items.length }}</span></h4>
         <div class="referenceOptions" role="listbox" :aria-label="group.label">
-          <button v-for="item in group.items" :key="item.id" type="button" class="referenceOption" :class="{ active: activeMentionId === item.id }" :data-id="item.id" role="option" :aria-selected="activeMentionId === item.id" :title="`${item.name} · ${item.value}`" @mouseenter="activeMentionId = item.id" @click.stop="insertReference(item)">
+          <button v-for="item in group.items" :key="item.id" type="button" class="referenceOption" :class="{ active: activeMentionId === item.id }" :data-id="item.id" role="option" :aria-selected="activeMentionId === item.id" :title="item.hideValue ? item.name : `${item.name} · ${item.value}`" @mouseenter="activeMentionId = item.id" @click.stop="insertReference(item)">
             <img v-if="item.avatar" :src="String(item.avatar)" alt="" />
-            <span><strong>{{ item.name }}</strong><small>{{ item.value }}</small></span>
+            <span><strong>{{ item.name }}</strong><small v-if="!item.hideValue">{{ item.value }}</small></span>
           </button>
         </div>
       </section>
@@ -31,7 +31,7 @@ import { IconMaximize } from "@tabler/icons-vue";
 import xSender, { type AnyTagProps, type MentionItem } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-type PromptReference = MentionItem & { value: string; previewUrl?: string; category?: string; action?: boolean };
+type PromptReference = MentionItem & { value: string; previewUrl?: string; category?: string; action?: boolean; hideValue?: boolean };
 const props = defineProps<{ references: PromptReference[]; referenceGroups?: { label: string; categories: string[] }[]; expandable?: boolean; placeholder?: string; recognizeTokens?: boolean; preserveMissingReferences?: boolean; disabled?: boolean; maxHeight?: string }>();
 const emit = defineEmits<{ activateReference: [reference: PromptReference, occurrence: number]; insertReference: [reference: PromptReference, offset: number] }>();
 const model = defineModel<AnyTagProps[][]>({ required: true });

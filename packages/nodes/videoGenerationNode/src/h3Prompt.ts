@@ -11,7 +11,7 @@ export type H3PromptState = {
   model: string;
   editorMode: "tags" | "code";
 };
-export type H3Reference = { id: string; name: string; value: string; category: string; avatar?: string; previewUrl?: string; input?: NodeInputValue; voice?: ZealmanVoice; action?: boolean };
+export type H3Reference = { id: string; name: string; value: string; category: string; avatar?: string; previewUrl?: string; input?: NodeInputValue; voice?: ZealmanVoice; action?: boolean; hideValue?: boolean };
 export function h3ReferenceGroup(item: H3Reference) {
   const remote = item.input?.dataType === "IMAGE" && /^https?:\/\//i.test(item.input.value?.url ?? "");
   return `${item.category}:${item.id.startsWith("voice:") ? "voice" : remote ? "url" : "input"}`;
@@ -23,7 +23,7 @@ export const h3Sections = [
 export const h3Languages = [{ value: "Chinese", label: "中文" }, { value: "English", label: "英文" }, { value: "Japanese", label: "日文" }, { value: "Korean", label: "韩文" }];
 const h3TaskNames: Record<string, string> = { "keyframe completion": "首尾帧补全", "reference generation": "参考生成", "video editing": "视频编辑", "video continuation": "视频续写", "audio reuse": "音频复用", "audio reference": "音频参考" };
 const h3VoiceoverBindingPattern = /<Subject\s+\d+>(?:\s*(?:and|和|、)\s*<Subject\s+\d+>)*\s*\(S\d+(?:,\s*S\d+)*\)[^<>\n]*(?:voice[ -]?over|(?:inner|internal) monologue|旁白|内心独白|思维配音|闭口配音)[^<>\n]*<d>/gi;
-const h3TokenPattern = new RegExp(`<d>\\[[^\\]\\n]+\\]\\s*[\\s\\S]*?<\\/d>|<(?:Missing )?(?:Picture|Video|Audio|Subject)\\s+\\d+>|\\[Shot\\s+\\d+\\]|\\(S\\d+(?:,\\s*S\\d+)*\\)|<\\/?(?:scenetrans|cutoff)>|\\[(?:${Object.keys(h3TaskNames).join("|")})(?:\\s+\\+\\s+(?:${Object.keys(h3TaskNames).join("|")}))*\\]|^[ \\t]*(?:${h3Sections.map(item => item[0]).join("|")})[ \\t]*:`, "gim");
+const h3TokenPattern = new RegExp(`<d>\\[[^\\]\\n]+\\]\\s*[\\s\\S]*?<\\/d>|\\{\\{CameraPreset[ :]+[^{}]+?\\}\\}|<(?:Missing )?(?:Picture|Video|Audio|Subject)\\s+\\d+>|\\[Shot\\s+\\d+\\]|\\(S\\d+(?:,\\s*S\\d+)*\\)|<\\/?(?:scenetrans|cutoff)>|\\[(?:${Object.keys(h3TaskNames).join("|")})(?:\\s+\\+\\s+(?:${Object.keys(h3TaskNames).join("|")}))*\\]|^[ \\t]*(?:${h3Sections.map(item => item[0]).join("|")})[ \\t]*:`, "gim");
 
 export function h3PromptTokens(prompt: string) {
   return [...prompt.matchAll(h3TokenPattern)].map(match => {
@@ -38,6 +38,9 @@ export function h3PromptTokens(prompt: string) {
       const dialogue = /^<d>\[([^\]]+)\]\s*([\s\S]*?)<\/d>$/i.exec(value)!;
       category = "dialogue";
       name = `${h3Languages.find(item => item.value.toLowerCase() === dialogue[1].toLowerCase())?.label ?? dialogue[1]}对白：${dialogue[2].trim()}`;
+    } else if (/^\{\{CameraPreset[ :]/i.test(value)) {
+      category = "camera";
+      name = "运镜";
     } else if (/^\[Shot\s/i.test(value)) {
       category = "shot";
       name = `镜头${Number(value.match(/\d+/)![0])}`;
@@ -207,6 +210,9 @@ export function parseH3Optimization(result: string, original: string, references
   const originalLines = dialogueLines(original);
   const nextLines = dialogueLines(prompt);
   if (originalLines.length && (originalLines.length !== nextLines.length || originalLines.some((line, index) => line !== nextLines[index]))) throw new Error("优化结果改动了原有对白，已保留原提示词，请重试");
+  const originalCameras = h3PromptTokens(original).filter(token => token.category === "camera").map(token => token.value);
+  const nextCameras = h3PromptTokens(prompt).filter(token => token.category === "camera").map(token => token.value);
+  if (originalCameras.join("\n") !== nextCameras.join("\n")) throw new Error("优化结果改动了运镜标签，原提示词已保留，请重试");
   const originalDetail = h3SectionText(original, "detailed_description") || original;
   const originalShots = [...originalDetail.matchAll(/\[Shot\s+(\d+)\]/g)].map(match => match[1]);
   const nextShots = [...data.detailed_description.matchAll(/\[Shot\s+(\d+)\]/g)].map(match => match[1]);
