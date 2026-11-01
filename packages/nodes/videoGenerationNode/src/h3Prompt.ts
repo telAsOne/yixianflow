@@ -23,7 +23,10 @@ export const h3Sections = [
 export const h3Languages = [{ value: "Chinese", label: "中文" }, { value: "English", label: "英文" }, { value: "Japanese", label: "日文" }, { value: "Korean", label: "韩文" }];
 const h3TaskNames: Record<string, string> = { "keyframe completion": "首尾帧补全", "reference generation": "参考生成", "video editing": "视频编辑", "video continuation": "视频续写", "audio reuse": "音频复用", "audio reference": "音频参考" };
 const h3VoiceoverBindingPattern = /<Subject\s+\d+>(?:\s*(?:and|和|、)\s*<Subject\s+\d+>)*\s*\(S\d+(?:,\s*S\d+)*\)[^<>\n]*(?:voice[ -]?over|(?:inner|internal) monologue|旁白|内心独白|思维配音|闭口配音)[^<>\n]*<d>/gi;
-const h3TokenPattern = new RegExp(`<d>\\[[^\\]\\n]+\\]\\s*[\\s\\S]*?<\\/d>|\\{\\{CameraPreset[ :]+[^{}]+?\\}\\}|<(?:Missing )?(?:Picture|Video|Audio|Subject)\\s+\\d+>|\\[Shot\\s+\\d+\\]|\\(S\\d+(?:,\\s*S\\d+)*\\)|<\\/?(?:scenetrans|cutoff)>|\\[(?:${Object.keys(h3TaskNames).join("|")})(?:\\s+\\+\\s+(?:${Object.keys(h3TaskNames).join("|")}))*\\]|^[ \\t]*(?:${h3Sections.map(item => item[0]).join("|")})[ \\t]*:`, "gim");
+const h3CameraTagPattern = /\{\{CameraPreset [^\s{}]+\}\}/g;
+export const h3CameraTagLike = /\{\{\s*CameraPreset\b/i;
+export const h3DetailPattern = /(?:^|\n)[ \t]*detailed_description[ \t]*:[\s\S]*?(?=\n[ \t]*(?:overall_soundscape|non_diegetic_music)[ \t]*:|$)/;
+const h3TokenPattern = new RegExp(`<d>\\[[^\\]\\n]+\\]\\s*[\\s\\S]*?<\\/d>|\\{\\{CameraPreset [^\\s{}]+\\}\\}|<(?:Missing )?(?:Picture|Video|Audio|Subject)\\s+\\d+>|\\[Shot\\s+\\d+\\]|\\(S\\d+(?:,\\s*S\\d+)*\\)|<\\/?(?:scenetrans|cutoff)>|\\[(?:${Object.keys(h3TaskNames).join("|")})(?:\\s+\\+\\s+(?:${Object.keys(h3TaskNames).join("|")}))*\\]|^[ \\t]*(?:${h3Sections.map(item => item[0]).join("|")})[ \\t]*:`, "gim");
 
 export function h3PromptTokens(prompt: string) {
   return [...prompt.matchAll(h3TokenPattern)].map(match => {
@@ -38,7 +41,7 @@ export function h3PromptTokens(prompt: string) {
       const dialogue = /^<d>\[([^\]]+)\]\s*([\s\S]*?)<\/d>$/i.exec(value)!;
       category = "dialogue";
       name = `${h3Languages.find(item => item.value.toLowerCase() === dialogue[1].toLowerCase())?.label ?? dialogue[1]}对白：${dialogue[2].trim()}`;
-    } else if (/^\{\{CameraPreset[ :]/i.test(value)) {
+    } else if (/^\{\{CameraPreset /i.test(value)) {
       category = "camera";
       name = "运镜";
     } else if (/^\[Shot\s/i.test(value)) {
@@ -60,6 +63,42 @@ export function h3PromptTokens(prompt: string) {
     }
     return { index: match.index + match[0].length - value.length, value, category, name };
   });
+}
+export type H3CameraPreset = { id: string; name: string };
+const h3CameraPresetsSchema = z.array(z.object({ id: z.string(), name: z.string() }));
+let cameraPresetsRequest: Promise<H3CameraPreset[]> | undefined;
+let cameraPresetsExpiresAt = 0;
+
+// ACT: 画布上的节点共用 60 秒缓存，切换账户后最多沿用 60 秒旧列表；需要即时生效时改为随账户事件清空。
+export function loadCameraPresets() {
+  if (Date.now() >= cameraPresetsExpiresAt) cameraPresetsRequest = undefined;
+  if (!cameraPresetsRequest) {
+    cameraPresetsExpiresAt = Date.now() + 60000;
+    const request = fetch("/api/account/cameraPresets", { headers: { "X-Toonflow-Workspace": "1" }, cache: "no-store", signal: AbortSignal.timeout(30000) })
+      .catch(() => { throw new Error("读取运镜库失败，请检查网络后重试"); })
+      .then(async response => {
+        const body = await response.json().catch(() => undefined);
+        const presets = h3CameraPresetsSchema.safeParse(body?.data);
+        if (!response.ok || body?.code !== 200 || !presets.success) throw new Error(body?.message || "读取运镜库失败");
+        return presets.data;
+      }).catch(error => { if (cameraPresetsRequest === request) cameraPresetsRequest = undefined; throw error; });
+    cameraPresetsRequest = request;
+  }
+  return cameraPresetsRequest;
+}
+export function h3CameraTag(id: string) { return `{{CameraPreset ${id}}}`; }
+export function h3CameraInsertRange(prompt: string, selection?: { anchor: number; focus: number }) {
+  const detail = h3DetailPattern.exec(prompt);
+  const start = selection && Math.min(selection.anchor, selection.focus);
+  const end = selection && Math.max(selection.anchor, selection.focus);
+  if (start === undefined || end === undefined || (detail && (start < detail.index || end > detail.index + detail[0].length))) {
+    const at = detail ? detail.index + detail[0].trimEnd().length : prompt.length;
+    return { start: at, end: at };
+  }
+  // 光标落在对白或其他标签内部时移到标签之后，选区也不覆盖已有标签。
+  const inside = h3PromptTokens(prompt).find(token => token.index < end && token.index + token.value.length > start);
+  const at = inside && inside.index + inside.value.length;
+  return at === undefined ? { start, end } : { start: at, end: at };
 }
 const h3ResultSchema = z.strictObject({
   subject_definitions: z.array(z.string()), summary: z.string().min(1), retention_analysis: z.array(z.string()),
@@ -156,8 +195,13 @@ export function reconcileH3References(prompt: string, references: H3Reference[],
   return h3GenerationPrompt(text, references, state, true);
 }
 
-export function h3PromptIssues(prompt: string, references: H3Reference[], duration: number) {
+export function h3PromptIssues(prompt: string, references: H3Reference[], duration: number, cameraPresets?: H3CameraPreset[]) {
   const issues: string[] = [];
+  const cameraTags: string[] = prompt.match(h3CameraTagPattern) ?? [];
+  if (h3CameraTagLike.test(prompt.replace(h3CameraTagPattern, ""))) issues.push("运镜标签格式无效，请删除后从运镜库重新插入");
+  // ACT: 运镜库未读取成功时只查格式与位置，不因读取失败拦截生成，ID 有效性交给平台判断。
+  for (const tag of cameraTags) if (cameraPresets && !cameraPresets.some(preset => h3CameraTag(preset.id) === tag)) issues.push(`${tag} 不在运镜库中，请删除后重新选择`);
+  if ([...prompt.matchAll(/<d>[\s\S]*?<\/d>/g)].some(match => h3CameraTagLike.test(match[0]))) issues.push("运镜标签不能放在对白内");
   if (/<Missing (Picture|Video|Audio|Subject)\s+\d+>/.test(prompt)) issues.push("提示词中有已移除的素材或主体，请删除失效标签或重新插入引用");
   const available = new Set(references.map(item => item.value));
   for (const match of prompt.matchAll(/<(Picture|Video|Audio)\s+(\d+)>/g)) {
@@ -171,6 +215,7 @@ export function h3PromptIssues(prompt: string, references: H3Reference[], durati
   const boundSpeakers = new Set([...prompt.matchAll(/<Subject\s+\d+>\s*\((S\d+(?:,\s*S\d+)*)\)/g)].flatMap(match => match[1].match(/S\d+/g)!));
   if ([...(detail || prompt).matchAll(/(?:narrator|inner (?:male |female )?voice)\s*\((S\d+)\)/gi)].some(match => boundSpeakers.has(match[1]))) issues.push("旁白和内心独白不能复用已绑定人物的声音编号");
   if (detail && (prompt.match(/<d>/g)?.length ?? 0) !== (detail.match(/<d>/g)?.length ?? 0)) issues.push("完整对白须放在详细描述 detailed_description 段内");
+  if (detail && cameraTags.length !== (detail.match(h3CameraTagPattern)?.length ?? 0)) issues.push("运镜标签须放在详细描述 detailed_description 段内");
   const shots = [...detail.matchAll(/\[Shot\s+(\d+)\]/g)];
   if (shots.some((match, index) => Number(match[1]) !== index + 1)) issues.push("镜头编号须从 Shot 1 开始连续递增");
   let previous = 0;
@@ -210,20 +255,19 @@ export function parseH3Optimization(result: string, original: string, references
   const originalLines = dialogueLines(original);
   const nextLines = dialogueLines(prompt);
   if (originalLines.length && (originalLines.length !== nextLines.length || originalLines.some((line, index) => line !== nextLines[index]))) throw new Error("优化结果改动了原有对白，已保留原提示词，请重试");
-  const originalCameras = h3PromptTokens(original).filter(token => token.category === "camera").map(token => token.value);
-  const nextCameras = h3PromptTokens(prompt).filter(token => token.category === "camera").map(token => token.value);
-  if (originalCameras.join("\n") !== nextCameras.join("\n")) throw new Error("优化结果改动了运镜标签，原提示词已保留，请重试");
+  const sortedCameras = (text: string) => (text.match(h3CameraTagPattern) ?? []).toSorted().join("\n");
+  if (sortedCameras(original) !== sortedCameras(prompt)) throw new Error("优化结果改动了运镜标签，原提示词已保留，请重试");
   const originalDetail = h3SectionText(original, "detailed_description") || original;
   const originalShots = [...originalDetail.matchAll(/\[Shot\s+(\d+)\]/g)].map(match => match[1]);
   const nextShots = [...data.detailed_description.matchAll(/\[Shot\s+(\d+)\]/g)].map(match => match[1]);
   if (!nextShots.length) throw new Error("优化结果缺少分镜，原提示词已保留，请重试");
   if (originalShots.length && originalShots.join(",") !== nextShots.join(",")) throw new Error("优化结果改变了原有镜头序列，已保留原提示词，请重试");
-  for (const pattern of [/<Subject\s+\d+>\s*\(S\d+(?:,\s*S\d+)*\)/g, /<scenetrans>|<cutoff>/g]) {
+  for (const pattern of [/<Subject\s+\d+>\s*\(S\d+(?:,\s*S\d+)*\)/g, /<scenetrans>|<cutoff>/g, h3CameraTagPattern]) {
     const before: string[] = originalDetail.replace(h3VoiceoverBindingPattern, "").match(pattern) ?? [];
     const after: string[] = data.detailed_description.match(pattern) ?? [];
     // ACT: 已有结构按顺序保留；自然语言中的新增对白仍交给原文 Skill 处理。
     let offset = 0;
-    if (before.some(value => { const index = after.indexOf(value, offset); offset = index + 1; return index < 0; })) throw new Error("优化结果改动了主体、说话人或对白衔接标签，原提示词已保留，请重试");
+    if (before.some(value => { const index = after.indexOf(value, offset); offset = index + 1; return index < 0; })) throw new Error("优化结果改动了主体、说话人、运镜或对白衔接标签，原提示词已保留，请重试");
   }
   const taskPattern = /\[(?:reference generation|video editing|video continuation|audio reuse|audio reference)\]/g;
   const originalTasks = (h3SectionText(original, "summary") || original).match(taskPattern) ?? [];

@@ -33,7 +33,7 @@
           </div>
         </el-popover>
         <el-button size="small" :disabled="editingDisabled" @click="openDialogue()">插入对白</el-button>
-        <el-button size="small" :icon="IconVideo" :loading="cameraLoading" :disabled="editingDisabled" @mousedown.prevent @click="openCameraLibrary">运镜</el-button>
+        <el-button size="small" :icon="IconVideo" :disabled="editingDisabled" @mousedown.prevent @click="openCameraLibrary">运镜</el-button>
         <el-button size="small" :disabled="editingDisabled" @click="insertSkeleton">插入骨架</el-button>
       </div>
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
@@ -77,10 +77,10 @@
         <el-button text size="small" @click="helpVisible = true">对白写法</el-button>
       </div>
       <div v-if="issues.length" class="promptIssues" role="status"><p v-for="issue in issues" :key="issue">{{ issue }}</p></div>
-      <el-dialog v-model="cameraVisible" title="运镜库" width="min(640px, 92vw)" appendToBody>
+      <el-dialog v-model="cameraVisible" :title="cameraLoading ? '运镜库（读取中）' : '运镜库'" width="min(640px, 92vw)" appendToBody>
         <el-alert v-if="cameraError" :title="cameraError" type="error" :closable="false" />
         <div class="cameraLibrary">
-          <el-button v-for="preset in cameraPresets" :key="preset.id" :disabled="editingDisabled || cameraLoading" @click="insertCameraPreset(preset)">{{ preset.name }}</el-button>
+          <el-button v-for="preset in cameraPresets" :key="preset.id" :disabled="editingDisabled" @click="insertCameraPreset(preset)">{{ preset.name }}</el-button>
         </div>
       </el-dialog>
       <el-dialog v-model="dialogueVisible" title="插入对白" width="min(560px, 92vw)" appendToBody :closeOnClickModal="false">
@@ -121,7 +121,7 @@ import promptInput from "@toonflow/node-shared/promptInput";
 import h3ReferenceList from "./h3ReferenceList.vue";
 import h3CodeEditor from "./h3CodeEditor.vue";
 import h3PromptSkill from "../h3PromptSkill.txt?raw";
-import { h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, parseH3Optimization, type H3PromptState, type H3Reference } from "../h3Prompt";
+import { h3CameraInsertRange, h3CameraTag, h3DetailPattern, h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, loadCameraPresets, parseH3Optimization, type H3CameraPreset, type H3PromptState, type H3Reference } from "../h3Prompt";
 import type { ZealmanVoice } from "../zealmanOptions";
 
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
@@ -142,12 +142,12 @@ const expandedTarget = ref<HTMLElement>();
 const activeReferenceId = ref("");
 const models = ref<NodeAiModel[]>([]);
 const modelsLoading = ref(false);
-const cameraPresets = ref<{ id: string; name: string }[]>([]);
+const cameraPresets = ref<H3CameraPreset[]>();
 const cameraVisible = ref(false);
 const cameraLoading = ref(false);
 const cameraError = ref("");
 let cameraSelection: PromptSelection | undefined;
-let cameraController: AbortController | undefined;
+let cameraSelectionText = "";
 const optimizing = ref(false);
 const error = ref("");
 const skillVisible = ref(false);
@@ -172,7 +172,7 @@ const historyIndex = ref(0);
 let historyTimer: ReturnType<typeof setTimeout> | undefined;
 let replaying = false;
 const finalPrompt = computed(() => h3GenerationPrompt(prompt.value, props.references, state.value));
-const issues = computed(() => h3PromptIssues(finalPrompt.value, props.references, duration.value ?? 10));
+const issues = computed(() => h3PromptIssues(finalPrompt.value, props.references, duration.value ?? 10, cameraPresets.value));
 const dialogueVisible = ref(false);
 let editingDialogue: { start: number; end: number; original: string } | undefined;
 const dialogue = reactive({ subjects: [] as number[], speaker: 1, delivery: "says", language: "Chinese", text: "", sceneTransition: false, cutoff: false });
@@ -199,7 +199,7 @@ const referenceGroups = [
 const mentions = computed<H3Reference[]>((previous) => {
   const byId = new Map(props.references.map(item => [item.id, item]));
   const subjects = state.value.subjects.filter(subject => subject.references.some(id => byId.has(id))).toSorted((a, b) => a.id - b.id);
-  const values: H3Reference[] = [...props.references, ...cameraPresets.value.map(preset => ({ id: `camera:${preset.id}`, name: preset.name, value: `{{CameraPreset ${preset.id}}}`, category: "camera", hideValue: true })), ...subjects.map(subject => {
+  const values: H3Reference[] = [...props.references, ...(cameraPresets.value ?? []).map(preset => ({ id: `camera:${preset.id}`, name: preset.name, value: h3CameraTag(preset.id), category: "camera", hideValue: true })), ...subjects.map(subject => {
     const preview = subject.references.map(id => byId.get(id)).find(item => item?.avatar);
     return { id: `subject:${subject.id}`, name: subject.name, value: `<Subject ${subject.id}>`, category: "subject", avatar: preview?.avatar, previewUrl: preview?.previewUrl };
   })];
@@ -224,33 +224,25 @@ const mentions = computed<H3Reference[]>((previous) => {
   return previous?.length === values.length && values.every((item, index) => ["id", "name", "value", "avatar", "previewUrl", "category", "action", "hideValue"].every(key => item[key as keyof H3Reference] === previous[index][key as keyof H3Reference])) ? previous : values;
 });
 
-async function loadCameraPresets() {
-  if (cameraLoading.value) return;
+async function refreshCameraPresets() {
   cameraLoading.value = true;
   cameraError.value = "";
-  cameraPresets.value = [];
-  cameraController = new AbortController();
-  try {
-    const response = await fetch("/api/account/cameraPresets", { headers: { "X-Toonflow-Workspace": "1" }, cache: "no-store", signal: AbortSignal.any([cameraController.signal, AbortSignal.timeout(30000)]) });
-    const body = await response.json();
-    if (!response.ok || body.code !== 200) throw new Error(body.message || "读取运镜库失败");
-    cameraPresets.value = body.data;
-  } catch (cause) {
-    if (!cameraController.signal.aborted) cameraError.value = cause instanceof Error ? cause.message : "读取运镜库失败";
-  } finally { cameraLoading.value = false; }
+  try { cameraPresets.value = await loadCameraPresets(); }
+  catch (cause) { cameraError.value = cause instanceof Error ? cause.message : "读取运镜库失败"; }
+  finally { cameraLoading.value = false; }
 }
 function openCameraLibrary() {
   remember();
   cameraSelection = getSelection();
+  cameraSelectionText = prompt.value;
   cameraVisible.value = true;
-  void loadCameraPresets();
+  void refreshCameraPresets();
 }
-async function insertCameraPreset(preset: { id: string; name: string }) {
+async function insertCameraPreset(preset: H3CameraPreset) {
   if (editingDisabled.value) return;
-  const selection = cameraSelection ?? { anchor: prompt.value.length, focus: prompt.value.length };
-  const start = Math.min(selection.anchor, selection.focus);
-  const end = Math.max(selection.anchor, selection.focus);
-  const token = `{{CameraPreset ${preset.id}}}`;
+  // 弹窗打开期间提示词可能被引用同步改写，原选区失效后退回默认位置。
+  const { start, end } = h3CameraInsertRange(prompt.value, cameraSelectionText === prompt.value ? cameraSelection : undefined);
+  const token = h3CameraTag(preset.id);
   replacePrompt(`${prompt.value.slice(0, start)}${token}${prompt.value.slice(end)}`);
   cameraVisible.value = false;
   await nextTick();
@@ -439,7 +431,7 @@ async function applyDialogue() {
     replacePrompt(`${prompt.value.slice(0, start)}${text}${prompt.value.slice(end)}`);
   }
   else {
-    const detail = /(?:^|\n)[ \t]*detailed_description[ \t]*:[\s\S]*?(?=\n[ \t]*(?:overall_soundscape|non_diegetic_music)[ \t]*:|$)/.exec(prompt.value);
+    const detail = h3DetailPattern.exec(prompt.value);
     const caret = state.value.editorMode === "tags" ? editor.value?.getCaretOffset() : undefined;
     if (detail && (caret === undefined || caret < detail.index || caret >= detail.index + detail[0].length)) {
       const at = detail.index + detail[0].trimEnd().length;
@@ -500,6 +492,7 @@ async function optimize() {
       prompt: JSON.stringify({ request: original, durationSeconds: originalDuration, maxDurationSeconds: props.maxDuration,
         referenceLabels: references.map((item, index) => ({ attachment: `{{ref ${index + 1}}}`, h3Tag: item.value })),
         materials: inputReferences.map(item => ({ tag: item.value, name: item.name })), subjects: state.value.subjects,
+        cameraPresets: (cameraPresets.value ?? []).filter(preset => original.includes(h3CameraTag(preset.id))).map(preset => ({ tag: h3CameraTag(preset.id), name: preset.name })),
       }),
       references: aiReferences,
     });
@@ -530,8 +523,8 @@ watch(() => props.references.map(item => ({ id: item.id, value: item.value })), 
   }));
 }, { flush: "pre" });
 watch(() => state.value.editorMode, () => { remember(); syncCodeModel(); });
-onMounted(async () => { void loadCameraPresets(); await loadModels(); await nextTick(); const normalized = h3GenerationPrompt(prompt.value, props.references, state.value); if (normalized !== prompt.value) replacePrompt(normalized); });
-onScopeDispose(() => { clearTimeout(historyTimer); optimizationController?.abort(); cameraController?.abort(); emit("busy", false); });
+onMounted(async () => { void refreshCameraPresets(); await loadModels(); await nextTick(); const normalized = h3GenerationPrompt(prompt.value, props.references, state.value); if (normalized !== prompt.value) replacePrompt(normalized); });
+onScopeDispose(() => { clearTimeout(historyTimer); optimizationController?.abort(); emit("busy", false); });
 </script>
 
 <style scoped lang="scss">
