@@ -26,7 +26,7 @@
     <template #topRightActions>
       <el-button :icon="IconPencil" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="标记" aria-label="标记" @click.stop="startEditor('mark')" />
     </template>
-    <div v-loading="generating || uploading" class="imageContent nopan" :aria-busy="generating || uploading">
+    <div v-loading="taskRunning || uploading" class="imageContent nopan" :aria-busy="taskRunning || uploading">
       <imageEditor
         v-if="previewUrl"
         ref="editor"
@@ -103,7 +103,7 @@
               @click="generating ? stopGeneration() : startGeneration().catch((error) => showNodeError(error, '图片生成失败'))">{{ generating ? '停止等待' : pendingTask ? '恢复任务' : '生成' }}</el-button>
           </div>
         </div>
-        <generationTiming :timing="data.generationTiming" :running="generating || !!imageTask?.running" />
+        <generationTiming :timing="data.generationTiming" :running="taskRunning" />
         <div v-if="imageTask || taskStatusError" class="taskStatus" role="status" aria-live="polite">
           <div v-if="imageTask">{{ taskPhaseLabel }}</div>
           <div v-if="imageTask">操作编号：{{ imageTask.operationId }}</div>
@@ -200,6 +200,7 @@ const generationState = useNodeGeneration(outputs, stopGeneration, "已停止本
 const { generating } = generationState;
 let generation: Promise<void> | undefined;
 const imageTask = ref<ImageTaskStatus | null>(null);
+const taskRunning = computed(() => generating.value || !!imageTask.value?.running);
 const taskChecking = ref(true);
 const taskStatusError = ref("");
 const taskOutputDirectory = computed(() => `assets/${id}${data.value.inpaint ? "/inpaint" : ""}`);
@@ -246,7 +247,7 @@ const previewUrl = files.useFileUrl(
   (error) => showNodeError(error, "图片读取失败")
 );
 const thumbnailUrl = files.useFileUrl(outputFile, error => showNodeError(error, "图片预览读取失败"), true);
-watchEffect(() => { retainPreview.value = generating.value || uploading.value || previewVisible.value || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
+watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || previewVisible.value || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
 
 onMounted(async () => {
   try {
@@ -349,6 +350,7 @@ async function refreshImageTask() {
   imageTask.value = task;
   if (task) generationState.syncTask(task);
   taskStatusError.value = "";
+  if (task?.running && !generating.value) pollImageTask();
 }
 
 function pollImageTask() {

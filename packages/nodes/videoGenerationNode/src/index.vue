@@ -32,7 +32,7 @@
         </template>
       </el-dropdown>
     </template>
-    <div v-loading="generating || uploading" class="videoContent nopan" :aria-busy="generating || uploading">
+    <div v-loading="taskRunning || uploading" class="videoContent nopan" :aria-busy="taskRunning || uploading">
       <videoPlayer
         v-if="previewUrl"
         ref="player"
@@ -141,7 +141,7 @@
             <el-button v-if="item.input.operationId !== videoTask?.operationId && item.input.operationId !== activeQueueId" text size="small" @click="data.zealmanQueue = data.zealmanQueue.filter(entry => entry !== item)">移除</el-button>
           </div>
         </div>
-        <generationTiming :timing="data.generationTiming" :running="generating || !!videoTask?.running" />
+        <generationTiming :timing="data.generationTiming" :running="taskRunning" />
         <div v-if="videoTask || taskStatusError" class="taskStatus" role="status" aria-live="polite">
           <div v-if="videoTask">{{ taskPhaseLabel }}<span v-if="videoTask.phase === 'in_progress' && videoTask.progress !== undefined"> · {{ videoTask.progress }}%</span></div>
           <div v-if="videoTask?.taskId">任务编号：{{ videoTask.taskId }}</div>
@@ -244,6 +244,7 @@ const generationState = useNodeGeneration(outputs, stopGeneration, "已停止本
 const { generating } = generationState;
 let generation: Promise<void> | undefined;
 const videoTask = ref<VideoTaskStatus | null>(null);
+const taskRunning = computed(() => generating.value || !!videoTask.value?.running);
 const taskChecking = ref(true);
 const taskStatusError = ref("");
 const pendingTask = computed(() => !!videoTask.value && !["completed", "failed"].includes(videoTask.value.phase));
@@ -495,7 +496,7 @@ const previewUrl = files.useFileUrl(
 const posterUrl = files.useFileUrl(outputFile, error => showNodeError(error, "视频封面读取失败"), true);
 const mediaInfo = files.useMediaInfo(outputFile, error => showNodeError(error, "视频信息读取失败"));
 watchEffect(() => { if (mediaInfo.value?.width && mediaInfo.value.height) videoWidth.value = Math.max(180, 240 * mediaInfo.value.width / mediaInfo.value.height); });
-watchEffect(() => { retainPreview.value = generating.value || uploading.value || !!player.value?.playing || !!player.value?.fullscreen || !!actions.value?.visible || !!actions.value?.processing; });
+watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || !!player.value?.playing || !!player.value?.fullscreen || !!actions.value?.visible || !!actions.value?.processing; });
 
 onMounted(async () => {
   try {
@@ -672,6 +673,7 @@ async function refreshVideoTask() {
       data.value.appliedVideoTaskId = task.operationId;
     }
   }
+  if (task?.running && !generating.value) pollVideoTask();
 }
 
 function pollVideoTask() {
