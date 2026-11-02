@@ -16,7 +16,7 @@ const router = createRouter({
     },
     {
       path: "/home",
-      component: () => webMode.value ? import("@/pages/home/webProjects.vue") : import("@/pages/home/index.vue"),
+      component: () => import("@/pages/home/index.vue"),
     },
     {
       path: "/canvas",

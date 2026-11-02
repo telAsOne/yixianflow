@@ -6,6 +6,7 @@ export default Router().post("/", async (req, res) => {
   u.mcpControl.assertAppRequest(req);
   u.account.requireAccount();
   await u.account.refreshConfig();
-  res.set("Cache-Control", "no-store").json(success({ ...u.account.getConfigState(), customProviders: u.conf.get("settings.customProviders"),
-    defaultModels: u.conf.get("settings.defaultModels") }));
+  const settings = u.getSettings();
+  res.set("Cache-Control", "no-store").json(success({ ...u.account.getConfigState(), customProviders: settings.customProviders,
+    defaultModels: settings.defaultModels }));
 });

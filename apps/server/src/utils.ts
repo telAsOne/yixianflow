@@ -14,7 +14,7 @@ import * as mediaProvider from "@/utils/media/provider";
 import * as ffmpeg from "@/utils/ffmpeg";
 import * as whisper from "@/utils/whisper";
 import * as pluginInstall from "@/utils/plugins/install";
-import conf, { removeLegacySettings } from "@/utils/conf";
+import conf, { getSettings, getUserDataDirectory, removeLegacySettings } from "@/utils/conf";
 import * as ai from "@/utils/ai";
 import * as plugins from "@/utils/plugins/tools";
 import * as nodePlugins from "@/utils/plugins/nodes";
@@ -59,6 +59,8 @@ export default {
   whisper,
   pluginInstall,
   conf,
+  getSettings,
+  getUserDataDirectory,
   removeLegacySettings,
   ai,
   plugins,

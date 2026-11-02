@@ -42,6 +42,7 @@ export type CameraPreset = z.infer<typeof cameraPresetSchema>;
 export const platformConfigSchema = z.object({ revision: z.string().min(1), min_client_version: z.string(),
   cameraPresets: z.array(cameraPresetSchema).max(128).default([]),
   categories: z.object({ text: textAndImageCategorySchema, image: textAndImageCategorySchema, video: videoCategorySchema }), limits: uploadLimitsSchema });
+export type PlatformConfig = z.infer<typeof platformConfigSchema>;
 export const accountInfoSchema = z.object({ user: userSchema, balance: z.object({ quota: z.number(), display: z.string() }),
   storage: z.object({ used_bytes: z.number().nonnegative(), quota_bytes: z.number().nonnegative() }),
   topup_url: z.url({ protocol: /^https$/ }).refine(value => { const url = new URL(value); return !url.username && !url.password; }),

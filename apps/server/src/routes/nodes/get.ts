@@ -3,20 +3,18 @@ import { readdir } from "@toonflow/file";
 import { Router } from "express";
 import { success } from "@/lib/responseFormat";
 import { translateMessage } from "@/lib/i18n";
-import { isWebMode } from "@/lib/webContext";
 
 const router = Router();
 
 export default router.get("/", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  const canConfigure = u.workspace.isLocalWorkspaceRequest(req);
+  const canConfigure = u.workspace.canManagePlugins(req);
   const files = await readdir(u.nodePlugins.nodesDirectory, { withFileTypes: true }).catch((err: NodeJS.ErrnoException) => {
     if (err.code === "ENOENT") return [];
     throw err;
   });
   const nodes = await Promise.all(files
-    .filter((file) => file.isFile() && file.name !== "audioGenerationNode.umd.js" && /^[a-z][a-zA-Z0-9]*\.umd\.js$/.test(file.name)
-      && (!isWebMode() || ["textNode", "imageNode", "videoNode", "audioNode"].includes(file.name.slice(0, -7))))
+    .filter((file) => file.isFile() && file.name !== "audioGenerationNode.umd.js" && /^[a-z][a-zA-Z0-9]*\.umd\.js$/.test(file.name))
     .sort((left, right) => left.name.localeCompare(right.name))
     .map(async (file) => {
       const name = file.name.slice(0, -7);

@@ -9,7 +9,7 @@ import { calculateContextTokens, estimateTokens, getLastAssistantUsage, parseSes
 import type { AgentSession, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/agent/runtime/types";
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
-import conf from "@/utils/conf";
+import { getSettings } from "@/utils/conf";
 import { providerSchema, getModelLimits } from "@/utils/ai";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { answerQuestion } from "@/agent/bridge/question";
@@ -333,7 +333,7 @@ export async function getAgentSessionPage(cwd: string, path: string, before?: st
     return { ...session, messages: session.messages.slice(start, end), before: start ? session.messages[start]!.id : undefined };
   }
   const info = await stat(path);
-  const providers = conf.get("settings", {}).customProviders;
+  const providers = getSettings().customProviders;
   const modelSettings = Array.isArray(providers) ? providers.map(provider => ({ id: provider?.id, models: provider?.models })) : [];
   const revision = `${info.size}:${info.mtimeMs}:${info.ctimeMs}:${JSON.stringify(modelSettings)}`;
   const indexPath = cacheFile("sessionIndex", JSON.stringify(["sessionPages", path, 1]));
@@ -474,7 +474,7 @@ export async function getAgentSession(cwd: string, path: string) {
     lastReply?.type === "message" && lastReply.message.role === "assistant"
       ? { provider: lastReply.message.provider, modelId: lastReply.message.model }
       : context.model;
-  const providers = conf.get("settings", {}).customProviders;
+  const providers = getSettings().customProviders;
   const provider = providerSchema.safeParse(Array.isArray(providers) ? providers.find((item) => item?.id === model?.provider) : undefined);
   const configuredModel = provider.success ? provider.data.models.find((item) => item.id === model?.modelId) : undefined;
   const subAgents = new Map<string, AgentSubAgent>();

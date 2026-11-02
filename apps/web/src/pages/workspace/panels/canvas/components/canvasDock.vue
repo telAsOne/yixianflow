@@ -17,7 +17,7 @@
           <span class="dockLabel">上传素材</span>
         </el-button>
       </el-tooltip>
-      <el-tooltip v-if="!webMode" :content="assetsVisible ? '关闭素材库' : '打开素材库'" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
+      <el-tooltip :content="assetsVisible ? '关闭素材库' : '打开素材库'" placement="right" :showArrow="false" :hideAfter="0" :enterable="false">
         <el-button class="dockButton" text :disabled="disabled" :aria-pressed="assetsVisible" aria-label="素材库" @click="assetsVisible = !assetsVisible">
           <icon-folders :size="18" aria-hidden="true" />
           <span class="dockLabel">素材库</span>
@@ -49,7 +49,6 @@
 import { ref } from "vue";
 import { translate } from "@toonflow/i18n/vue";
 import type { useNodeCreation } from "../useNodeCreation";
-import { webMode } from "@/lib/webRuntime";
 
 type NodeCreation = ReturnType<typeof useNodeCreation>;
 defineProps<{ nodeOptions: NodeCreation["nodeOptions"]["value"]; starters: NodeCreation["starters"]["value"]; disabled?: boolean; placingType?: string }>();

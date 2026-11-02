@@ -45,7 +45,7 @@
           :saveError="canvasPanelRef?.saveError"
           @resolveSave="canvasPanelRef?.showSaveConflict()"
           @refresh="refreshProject" />
-        <el-tooltip v-if="!webMode" content="AI 助手" placement="bottom-end" :showArrow="false" :hideAfter="0">
+        <el-tooltip content="AI 助手" placement="bottom-end" :showArrow="false" :hideAfter="0">
           <el-button
             class="agentButton"
             :type="agentVisible ? 'primary' : 'default'"
@@ -63,15 +63,14 @@
         </el-button>
       </div>
     </header>
-    <floatingAgent v-if="!webMode && agentMounted" :key="workspaceStore.project?.directory" v-model="agentVisible" v-model:layout="agentLayout" :topOffset="headerHeight" :maxDockedWidth="agentMaxWidth" :inert="refreshing" />
-    <settings v-if="!webMode" v-model="settingsVisible" />
+    <floatingAgent v-if="agentMounted" :key="workspaceStore.project?.directory" v-model="agentVisible" v-model:layout="agentLayout" :topOffset="headerHeight" :maxDockedWidth="agentMaxWidth" :inert="refreshing" />
+    <settings v-model="settingsVisible" />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onMounted, onScopeDispose, provide, ref, shallowRef, toRefs, watch, type ComponentPublicInstance } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
-import { webMode } from "@/lib/webRuntime";
 import axios from "axios";
 import { IconLayoutDashboard, IconFileText, IconSparkles, IconLayoutSidebarRight } from "@tabler/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";

@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { AccountInfo } from "@/types/account";
 
 export type WebAccount = { key: string; baseUrl: string; user: { id: number; username: string; display_name: string; role?: number; status?: number } };
-export const webContext = new AsyncLocalStorage<{ sessionHash: string; account: WebAccount }>();
+export const webContext = new AsyncLocalStorage<{ sessionHash: string; account: WebAccount; settings: Record<string, unknown>; accountInfo: AccountInfo }>();
 
 export function isWebMode() {
   return process.env.TOONFLOW_WEB_MODE === "1";

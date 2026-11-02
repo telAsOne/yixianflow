@@ -20,7 +20,7 @@
       </div>
       <div class="starterActions">
         <el-button :icon="IconUpload" :disabled="disabled" @click="emit('upload')">上传素材</el-button>
-        <el-button v-if="!webMode" text :icon="IconSparkles" :disabled="disabled" @click="emit('askAgent')">让 AI 助手搭建</el-button>
+        <el-button text :icon="IconSparkles" :disabled="disabled" @click="emit('askAgent')">让 AI 助手搭建</el-button>
       </div>
       <p class="canvasHint">也可以双击添加节点，或直接拖入图片、视频、音频和文本。</p>
     </section>
@@ -31,7 +31,6 @@
 import { translate } from "@toonflow/i18n/vue";
 import { IconBox, IconSparkles, IconUpload } from "@tabler/icons-vue";
 import type { useNodeCreation } from "../useNodeCreation";
-import { webMode } from "@/lib/webRuntime";
 
 type NodeCreation = ReturnType<typeof useNodeCreation>;
 const props = defineProps<{ nodeOptions: NodeCreation["nodeOptions"]["value"]; starters: NodeCreation["starters"]["value"]; disabled?: boolean }>();

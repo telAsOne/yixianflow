@@ -3,13 +3,13 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { credentialSchema, getBaseUrl } from "@/utils/account";
 import { webContext, type WebAccount } from "@/lib/webContext";
-import { userSchema } from "@/types/account";
+import { accountInfoSchema, userSchema } from "@/types/account";
 import { decryptWebSecret, encryptWebSecret, getWebDatabase, getWebOrigin, getWebBasePath, hashWebToken } from "./store";
 
 const sessionCookie = "__Host-yixianflow";
 const loginCookie = "__Host-yixianflowLogin";
 const cookieOptions = { httpOnly: true, secure: true, sameSite: "lax", path: "/" } as const;
-const adminIdentitySchema = userSchema.extend({ role: z.number().int(), status: z.number().int() });
+const adminAccountSchema = accountInfoSchema.extend({ user: userSchema.extend({ role: z.number().int(), status: z.number().int() }) });
 
 async function requireWebAdmin(account: WebAccount, version: string) {
   const response = await fetch(`${account.baseUrl}/v1/toonflow/me`, { cache: "no-store", redirect: "error",
@@ -18,11 +18,12 @@ async function requireWebAdmin(account: WebAccount, version: string) {
     throw Object.assign(new Error("登录已失效，请重新登录"), { status: response.status });
   const body = await response.json() as { success?: boolean; data?: { user?: unknown } };
   if (!response.ok || body.success !== true) throw Object.assign(new Error("暂时无法确认管理员身份，请稍后重试"), { status: 503 });
-  const identity = adminIdentitySchema.parse(body.data?.user);
+  const info = adminAccountSchema.parse(body.data);
+  const identity = info.user;
   if (identity.id !== account.user.id) throw Object.assign(new Error("账户身份不匹配，请重新登录"), { status: 401 });
   if (identity.role < 10 || identity.status !== 1)
     throw Object.assign(new Error("当前画布仅向逸仙管理员开放"), { status: 403, code: "toonflow.admin_required" });
-  return identity;
+  return info;
 }
 
 function readCookie(req: Request, name: string) {
@@ -41,20 +42,22 @@ export async function readWebSession(req: Request) {
     WHERE hash = ${sessionHash} AND "expiresAt" > CURRENT_TIMESTAMP
       AND "seenAt" > CURRENT_TIMESTAMP - INTERVAL '30 minutes' RETURNING "userId"`;
   if (!session) return;
-  const [record] = await sql`SELECT credentials FROM yixianflow.users WHERE id = ${session.userId}`;
+  const [record] = await sql`SELECT credentials, settings FROM yixianflow.users WHERE id = ${session.userId}`;
   if (!record) return;
   const baseUrl = getBaseUrl();
   const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${session.userId}`)));
   if (account.baseUrl !== baseUrl || account.user.id !== session.userId) throw new Error("服务端账户凭据不匹配");
+  let accountInfo;
   try {
-    account.user = await requireWebAdmin(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0");
+    accountInfo = await requireWebAdmin(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0");
+    account.user = accountInfo.user;
   } catch (error) {
     const status = (error as { status?: number }).status;
     if (status !== 401 && status !== 403) throw error;
     await sql`DELETE FROM yixianflow.sessions WHERE hash = ${sessionHash}`;
     return;
   }
-  return { sessionHash, account };
+  return { sessionHash, account, settings: record.settings as Record<string, unknown>, accountInfo };
 }
 
 export async function startWebLogin(req: Request, res: Response, screen: "signin" | "signup") {
@@ -100,7 +103,7 @@ export async function completeWebLogin(req: Request, res: Response, state: strin
     throw Object.assign(new Error("当前画布仅向逸仙管理员开放"), { status: 403, code: body.error_code });
   if (!response.ok || body.success !== true) throw Object.assign(new Error("逸仙授权失败，请重新登录"), { status: 400 });
   const account = credentialSchema.parse({ ...body.data as object, baseUrl });
-  account.user = await requireWebAdmin(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0");
+  account.user = (await requireWebAdmin(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0")).user;
   const token = randomBytes(32).toString("base64url");
   const oldToken = readCookie(req, sessionCookie);
   await sql.begin(async transaction => {

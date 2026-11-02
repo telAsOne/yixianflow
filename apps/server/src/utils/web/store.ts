@@ -1,6 +1,6 @@
 import { SQL } from "bun";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { requireWebAccount } from "@/lib/webContext";
+import { requireWebAccount, webContext } from "@/lib/webContext";
 
 let database: SQL | undefined;
 let secret: Buffer;
@@ -83,5 +83,21 @@ export async function getWebSettings(): Promise<Record<string, unknown>> {
 
 export async function saveWebSettings(settings: Record<string, unknown>) {
   const sql = getWebDatabase();
-  await sql`UPDATE yixianflow.users SET settings = ${settings}::jsonb WHERE id = ${requireWebAccount().user.id}`;
+  const content = { ...settings };
+  for (const key of ["customProviders", "mediaProviderConfigs", "defaultModels", "yixianConfig"]) delete content[key];
+  const [user] = await sql`UPDATE yixianflow.users AS currentUser SET settings = ${content}::jsonb || COALESCE(
+    (SELECT jsonb_object_agg(key, value) FROM jsonb_each(currentUser.settings)
+      WHERE key IN ('customProviders', 'mediaProviderConfigs', 'defaultModels', 'yixianConfig')), '{}'::jsonb)
+    WHERE id = ${requireWebAccount().user.id} RETURNING settings`;
+  const context = webContext.getStore();
+  if (context) context.settings = user.settings;
+}
+
+export async function saveWebManagedSettings(settings: Record<string, unknown>) {
+  const sql = getWebDatabase();
+  // ACT: 模型目录同步只更新托管字段，保留其他请求刚保存的个人设置。
+  const [user] = await sql`UPDATE yixianflow.users SET settings = settings || ${settings}::jsonb
+    WHERE id = ${requireWebAccount().user.id} RETURNING settings`;
+  const context = webContext.getStore();
+  if (context) context.settings = user.settings;
 }

@@ -4,7 +4,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import type { Context, Model } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import conf from "@/utils/conf";
+import { getSettings } from "@/utils/conf";
 import { requireAccount, getAccount, getConfigState } from "@/utils/account";
 import { readReference } from "@/utils/media/generation";
 import modelContextLimits from "@/utils/ai/modelContextLimits";
@@ -49,7 +49,7 @@ export function getModelLimits(providerId: string, model: z.infer<typeof provide
 export function getConfiguredModel(providerId: string, modelId: string) {
   const account = requireAccount();
   if (providerId !== "yixian") throw Object.assign(new Error("模型不可用，请选择其他模型"), { status: 400 });
-  const providers = conf.get("settings", {}).customProviders;
+  const providers = getSettings().customProviders;
   const parsed = providerSchema.safeParse(Array.isArray(providers) ? providers.find(item => item?.id === providerId) : undefined);
   if (!parsed.success) throw Object.assign(new Error("请先在设置中配置模型供应商"), { status: 400 });
   const provider: z.infer<typeof providerSchema> = { ...parsed.data, apiKey: account.key, apiUrl: account.baseUrl + "/v1", protocol: "openai-completions" };
@@ -63,8 +63,8 @@ export function getConfiguredModel(providerId: string, modelId: string) {
 
 export function listAiModels() {
   if (!getAccount() || !getConfigState().revision) return [];
-  const defaultModel = (conf.get("settings.defaultModels.text") as { modelId: string } | null | undefined)?.modelId;
-  const providers = conf.get("settings", {}).customProviders;
+  const defaultModel = (getSettings().defaultModels as { text?: { modelId: string } } | undefined)?.text?.modelId;
+  const providers = getSettings().customProviders;
   if (!Array.isArray(providers)) return [];
   return providers.flatMap(item => {
     const parsed = providerSchema.extend({ id: z.string().min(1), label: z.string() }).safeParse(item);

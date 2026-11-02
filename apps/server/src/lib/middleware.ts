@@ -26,7 +26,7 @@ export function allowedHosts(hosts: string[]) {
 
 export function localOnly(message: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!u.workspace.isLocalWorkspaceRequest(req)) return void res.status(403).json(error(message, null, 403));
+    if (!u.workspace.canManagePlugins(req)) return void res.status(403).json(error(message, null, 403));
     next();
   };
 }

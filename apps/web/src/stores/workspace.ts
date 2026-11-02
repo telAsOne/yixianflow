@@ -16,12 +16,13 @@ export type Project = {
 export const useWorkspaceStore = defineStore("workspace", () => {
   const project = ref<Project | null>(null);
   const projectList = ref<Project[]>([]);
+  const hiddenProjectIds = ref<string[]>([]);
   const pendingAgentMessage = ref<{ directory: string; prompt: string; attachments?: AgentAttachment[]; model: string; reasoningEffort: string } | null>(null);
 
   async function loadProjects() {
     if (!webMode.value) return;
     const { data } = await api.get<{ data: Project[] }>("/api/projects/list");
-    projectList.value = data.data;
+    projectList.value = data.data.filter(item => !hiddenProjectIds.value.includes(item.directory));
     project.value = projectList.value.find(item => item.directory === project.value?.directory) ?? null;
   }
 
@@ -32,6 +33,11 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     signal?.throwIfAborted();
     if (data.code !== 200 || !data.data?.directory) throw new Error(data.message || "工作目录校验失败");
     const checkedDirectory = data.data.directory;
+    if (webMode.value) {
+      hiddenProjectIds.value = hiddenProjectIds.value.filter(id => id !== checkedDirectory);
+      await loadProjects();
+      signal?.throwIfAborted();
+    }
     pendingAgentMessage.value = null;
     const existing = projectList.value.find(project => project.directory === previousDirectory)
       ?? projectList.value.find(project => project.directory === checkedDirectory);
@@ -51,14 +57,15 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   }
 
   function removeProject(path: string) {
+    if (webMode.value && !hiddenProjectIds.value.includes(path)) hiddenProjectIds.value.push(path);
     projectList.value = projectList.value.filter(item => item.directory !== path);
     if (project.value?.directory === path) project.value = null;
   }
 
-  return { project, projectList, pendingAgentMessage, loadProjects, openProject, renameProject, removeProject };
+  return { project, projectList, hiddenProjectIds, pendingAgentMessage, loadProjects, openProject, renameProject, removeProject };
 }, {
   persist: {
     key: "toonflow.projectList",
-    pick: ["project", "projectList"],
+    pick: ["project", "projectList", "hiddenProjectIds"],
   },
 });

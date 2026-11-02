@@ -4,7 +4,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import conf from "@/utils/conf";
 import { getMobileLinkConfig, isMobileLinkRequest } from "@/utils/mobileLink";
 import { isLocalSocket, isLocalHost, isSameOrigin } from "@/lib/desktop";
-import { isWebMode } from "@/lib/webContext";
+import { isWebMode, webContext } from "@/lib/webContext";
 import { resolveWebProject } from "@/utils/web/projects";
 
 export function isLocalWorkspaceRequest(req: Request) {
@@ -12,6 +12,11 @@ export function isLocalWorkspaceRequest(req: Request) {
   if (isMobileLinkRequest(req)) return false;
   return isLocalSocket(req) && req.get("x-toonflow-local-client") !== "0" && isLocalHost(req)
     && isSameOrigin(req) && req.get("x-toonflow-workspace") === "1";
+}
+
+export function canManagePlugins(req: Request) {
+  if (isWebMode()) return (webContext.getStore()?.account.user.role ?? 0) >= 100;
+  return isLocalWorkspaceRequest(req);
 }
 
 export async function resolveWorkspace(req: Request, path: string) {

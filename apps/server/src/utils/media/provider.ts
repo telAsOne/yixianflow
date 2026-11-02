@@ -9,6 +9,8 @@ import { getApiKey, getBaseUrl, platformFetch } from "@/utils/account";
 import { parse, parseExpression } from "@babel/parser";
 import { z } from "zod";
 import conf from "@/utils/conf";
+import { isWebMode } from "@/lib/webContext";
+import { getManagedConfig, getManagedMediaModels } from "@/utils/account/config";
 import { modelSchema } from "@/types/account";
 import { convertAudio } from "@/utils/media/audioProcessor";
 import { createReferenceCache } from "@/utils/media/referenceCache";
@@ -289,7 +291,8 @@ export async function getMediaProvider(id: string) {
     if (error.code === "ENOENT") invalid("请先在媒体模型设置中添加供应商", 404);
     throw error;
   });
-  return { ...metadata(current.fileName, current.source), source: current.source };
+  const provider = { ...metadata(current.fileName, current.source), source: current.source };
+  return isWebMode() ? { ...provider, models: getManagedMediaModels(getManagedConfig()) } : provider;
 }
 
 export async function listMediaProviders() {
@@ -301,7 +304,8 @@ export async function listMediaProviders() {
       let current = { fileName: file.name, id: file.name.slice(0, -3), source: "", revision: "" };
       try {
         current = await readProvider(path, file.name);
-        return metadata(current.fileName, current.source);
+        const provider = metadata(current.fileName, current.source);
+        return isWebMode() ? { ...provider, models: getManagedMediaModels(getManagedConfig()) } : provider;
       } catch (error) {
         // ACT: 元数据损坏不影响其他供应商；仍保留原文版本，允许用户明确删除。
         const { source, ...file } = current;
@@ -357,6 +361,7 @@ export async function loadMediaProviderSource(source: string, config: Record<str
   const providerConfig = { ...Object.fromEntries(rules.map(rule => [rule.field, rule.value])), ...structuredClone(config), apiKey: getApiKey(), apiUrl: getBaseUrl() };
   const provider = {
     ...definition,
+    models: isWebMode() ? getManagedMediaModels(getManagedConfig()) : definition.models,
     config: providerConfig,
     signal,
     videoTask,

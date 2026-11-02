@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { t } from "@/lib/i18n";
 import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, CreateAgentSessionOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -10,7 +10,8 @@ import { getToolResultText } from "@/agent/runtime/sessions";
 import { createQuestionContext, answerQuestion } from "@/agent/bridge/question";
 import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { browserRuntime } from "@/utils/browser";
-import conf from "@/utils/conf";
+import { getUserDataDirectory } from "@/utils/conf";
+import { isWebMode, webContext } from "@/lib/webContext";
 import type { SingleAgentEvent, SingleAgentResult, SingleAgentStatus, SingleAgentToolDescriptor, SingleAgentToolReference, SingleAgentToolResult } from "./types";
 
 type ClientCall = {
@@ -33,6 +34,7 @@ type RunState = {
 };
 type SingleSession = {
   id: string;
+  ownerId?: number;
   cwd: string;
   workspaceAvailable: boolean;
   history: SessionManager;
@@ -59,6 +61,9 @@ setInterval(() => {
 function getSession(sessionId: string) {
   const session = sessions.get(sessionId);
   if (!session || session.closed) throw Object.assign(new Error("临时对话不存在或已关闭，请重新打开对话"), { status: 404 });
+  const ownerId = webContext.getStore()?.account.user.id;
+  if (isWebMode() && ownerId !== undefined && session.ownerId !== ownerId)
+    throw Object.assign(new Error("临时对话不存在或已关闭，请重新打开对话"), { status: 404 });
   session.lastUsedAt = Date.now();
   return session;
 }
@@ -120,9 +125,9 @@ export async function create(options: {
 }, signal?: AbortSignal) {
   signal?.throwIfAborted();
   const id = crypto.randomUUID();
-  const cwd = options.directory ?? join(dirname(conf.path), "singleAgent", id);
+  const cwd = options.directory ?? join(getUserDataDirectory(), "singleAgent", id);
   const session: SingleSession = {
-    id, cwd, workspaceAvailable: !!options.directory, history: SessionManager.inMemory(cwd),
+    id, ownerId: webContext.getStore()?.account.user.id, cwd, workspaceAvailable: !!options.directory, history: SessionManager.inMemory(cwd),
     systemPrompt: options.systemPrompt ?? "", tools: [], closed: false, lastUsedAt: Date.now(),
   };
   sessions.set(id, session);

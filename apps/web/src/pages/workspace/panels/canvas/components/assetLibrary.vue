@@ -90,6 +90,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import axios from "axios";
+import { assetFileUrl } from "@/lib/appPath";
 import { ElMessage, type InputInstance, type LoadFunction, type TreeNodeData } from "element-plus";
 import { IconDots, IconEye, IconFile, IconFolderFilled, IconFolderPlus, IconMusic, IconPhoto, IconSearch, IconVideo, IconX } from "@tabler/icons-vue";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
@@ -136,7 +137,7 @@ let loadRequest = 0;
 onBeforeUnmount(() => { loadRequest++; searchRequest++; clearTimeout(searchTimer); });
 
 function assetUrl(path: string) {
-  return `/api/assets/read?path=${encodeURIComponent(path)}`;
+  return assetFileUrl(path);
 }
 
 function mediaKind(entry: AssetEntry) {

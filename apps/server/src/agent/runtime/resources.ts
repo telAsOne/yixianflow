@@ -6,10 +6,10 @@ import { buildSystemPrompt } from "@/agent/runtime/prompt";
 import { loadAgentSkills } from "@/agent/skills";
 import { resolveWorkspacePath } from "@/utils/workspace/files";
 import { isMemoryEnabled, readDocument } from "@/utils/personalization";
-import conf from "@/utils/conf";
+import { getSettings } from "@/utils/conf";
 
 export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = SettingsManager.inMemory(), instructions = "") {
-  const savedPrompt = conf.get("settings", {}).agentSystemPrompt;
+  const savedPrompt = getSettings().agentSystemPrompt;
   const systemPrompt = typeof savedPrompt === "string" ? savedPrompt : undefined;
   const agentDir = join(cwd, ".agent");
   const { path: agentsPath } = await resolveWorkspacePath(cwd, "AGENTS.md");

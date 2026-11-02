@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { isWebMode, webContext } from "@/lib/webContext";
 import { readWebSession } from "@/utils/web/auth";
 import { getWebOrigin } from "@/utils/web/store";
+import { refreshConfig } from "@/utils/account";
 
 const publicRoutes = new Set(["GET /api/runtime", "GET /api/account/get", "GET /api/account/callback", "POST /api/account/start", "POST /api/account/logout", "GET /api/settings/get"]);
 const privateRoutes = new Set([
@@ -15,7 +16,13 @@ const privateRoutes = new Set([
   "GET /api/workspaces/files/media", "POST /api/workspaces/files/mediaAccess", "GET /api/workspaces/files/export",
   "GET /api/workspaces/canvas/events", "POST /api/workspaces/canvas/save", "GET /api/workspaces/canvas/recovery/get",
   "POST /api/workspaces/canvas/recovery/save", "DELETE /api/workspaces/canvas/recovery/remove",
+  "GET /api/account/cameraPresets", "POST /api/account/refreshModels", "POST /api/workspaces/selectDirectory", "GET /api/workspaces/list",
+  "POST /api/workspaces/files/importImage", "POST /api/workspaces/presence/update",
+  "GET /api/settings/systemPrompt", "GET /api/settings/personalization/get", "PUT /api/settings/personalization/save",
+  "GET /api/providers/media/list", "GET /api/ffmpeg/status", "POST /api/ffmpeg/execute", "GET /api/ffmpeg/progress",
 ]);
+const creativeRoutes = /^\/api\/(ai|agent|assets|singleAgent|whisper)(\/|$)/;
+const pluginRoutes = /^\/api\/(nodes|tools|ext|skills|agents)(\/|$)/;
 
 export default async function webRequest(req: Request, res: Response, next: NextFunction) {
   if (!isWebMode()) return next();
@@ -29,15 +36,20 @@ export default async function webRequest(req: Request, res: Response, next: Next
     throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
   const route = `${req.method} ${req.path}`;
   const session = await readWebSession(req);
-  const expectedUser = req.get("x-yixianflow-user");
+  const expectedUser = req.get("x-yixianflow-user") ?? (req.path === "/api/assets/read" && typeof req.query.userId === "string" ? req.query.userId : undefined);
   if (expectedUser && session && expectedUser !== String(session.account.user.id))
     throw Object.assign(new Error("账户已切换或登录已过期，请刷新页面后继续"), { status: 409 });
   if (!publicRoutes.has(route) && !session) throw Object.assign(new Error("请先登录逸仙账户"), { status: 401 });
-  const personalData = /^\/api\/(projects\/|settings\/|workspaces\/)/.test(req.path) && req.path !== "/api/workspaces/files/media";
+  const personalData = /^\/api\/(projects|settings|workspaces|ai|agent|assets|singleAgent|whisper)(\/|$)/.test(req.path) && req.path !== "/api/workspaces/files/media";
   if (session && personalData && !expectedUser) throw Object.assign(new Error("请刷新页面后继续访问个人项目"), { status: 409 });
-  // ACT: 第一阶段仅开放完成隔离的私有画布接口；后续逐项接入生成与个人资源。
-  if (!publicRoutes.has(route) && !privateRoutes.has(route))
-    throw Object.assign(new Error("当前网页版仅开放私有项目与画布编辑"), { status: 403 });
-  if (session) return webContext.run(session, next);
+  if (!publicRoutes.has(route) && !privateRoutes.has(route) && !creativeRoutes.test(req.path) && !pluginRoutes.test(req.path))
+    throw Object.assign(new Error("此能力需要桌面客户端或独立的服务配置"), { status: 403 });
+  if (session) return webContext.run(session, async () => {
+    if (pluginRoutes.test(req.path) && req.method !== "GET" && session.account.user.role! < 100)
+      throw Object.assign(new Error("仅超级管理员可以修改服务器插件"), { status: 403 });
+    // 模型同步失败由账户状态展示，保留项目编辑与原有已保存配置。
+    await refreshConfig(false).catch(() => {});
+    next();
+  });
   next();
 }

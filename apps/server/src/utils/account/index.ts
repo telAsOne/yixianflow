@@ -147,7 +147,7 @@ export async function getView(): Promise<AccountView> {
   if (isWebMode()) {
     const account = getAccount();
     const { getConfigState } = await import("./config");
-    return { authenticated: !!account, loginStatus: "idle", ...getConfigState() };
+    return { authenticated: !!account, loginStatus: "idle", account: webContext.getStore()?.accountInfo, ...getConfigState() };
   }
   if (pending && pending.expiresAt <= Date.now()) { pending = undefined; loginStatus = "expired"; message = "登录已超时，请重新登录"; }
   const { getConfigState, refreshConfig } = await import("./config");

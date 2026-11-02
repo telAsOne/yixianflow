@@ -18,7 +18,7 @@ export default router.put("/", validateFields({ settings: z.record(z.string(), z
   u.removeLegacySettings(settings);
   if (isWebMode()) {
     await u.webStore.saveWebSettings(settings);
-    return void res.json(success({ customProviders: [] }, "设置已保存"));
+    return void res.json(success({ customProviders: u.getSettings().customProviders ?? [] }, "设置已保存"));
   }
   const previousSettings = u.conf.get("settings", {});
   for (const key of ["customProviders", "mediaProviderConfigs", "defaultModels", "yixianConfig"]) {

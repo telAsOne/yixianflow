@@ -39,6 +39,7 @@
 import { defineAsyncComponent, shallowRef } from "vue";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { isMobile } from "@/lib/mobile";
+import { webMode } from "@/lib/webRuntime";
 import {
   IconPalette,
   IconSettings,
@@ -85,7 +86,7 @@ const settingsPanels = [
   },
   { id: "developer", label: "开发者选项", icon: IconCode, component: defineAsyncComponent(() => import("./panels/developer/index.vue")) },
   { id: "about", label: "关于", icon: IconInfoCircle, component: defineAsyncComponent(() => import("./panels/about.vue")) },
-];
+].filter(panel => !webMode.value || !["mcp", "deviceLink"].includes(panel.id));
 const activePanel = shallowRef(settingsPanels[0]!);
 const visible = defineModel<boolean>({ default: false });
 </script>
