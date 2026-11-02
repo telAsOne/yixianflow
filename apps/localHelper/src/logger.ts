@@ -102,6 +102,11 @@ function maintainLogs() {
   maintenance = (async () => {
     const now = Date.now();
     const today = dayName(new Date(now));
+    // 先等待本进程的旧日写入结束并切换文件，再读取旧日快照。
+    if (activeFile && activeFile.day !== today) {
+      await queue;
+      await logEvent("info", "logDayChanged", { day: today });
+    }
     for (const item of await readdir(logDirectory, { withFileTypes: true })) {
       const match = /^(\d{4}-\d{2}-\d{2})(?:_[a-zA-Z0-9_-]+)?(?:\.zip(?:\.\d+\.part)?)?$/.exec(item.name);
       if (!match || item.isSymbolicLink()) continue;
@@ -115,12 +120,12 @@ function maintainLogs() {
       if (!item.isDirectory() || item.name !== day || day >= today) continue;
       const files: LogFile[] = [];
       for (const entry of await readdir(path, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(".log")) continue;
+        if (!entry.isFile() || !/\.log(?:\.part)?$/.test(entry.name)) continue;
         const target = join(path, entry.name);
         const info = await lstat(target);
         if (!info.isFile() || info.isSymbolicLink()) continue;
         if (expired(day, now)) await removeFile(target);
-        else files.push({ path: target, name: entry.name, size: info.size, mtimeMs: info.mtimeMs });
+        else if (entry.name.endsWith(".log")) files.push({ path: target, name: entry.name, size: info.size, mtimeMs: info.mtimeMs });
       }
       // ACT: 沿用现有 ZIP32 依赖，按 512 MiB 原始日志分卷，避免单个日归档超过 ZIP32 上限。
       for (let offset = 0; offset < files.length;) {
@@ -158,7 +163,7 @@ export async function initializeLogs(name: "worker" | "tray" = "worker") {
   try { await mkdir(logDirectory, { recursive: true }); initialized = true; }
   catch (error) { reportFailure(error); }
   if (initialized && name === "worker") {
-    await maintainLogs();
+    void maintainLogs();
     maintenanceTimer = setInterval(() => { void maintainLogs(); }, 60000);
     maintenanceTimer.unref();
   }
@@ -180,7 +185,7 @@ export function logEvent(level: "info" | "warn" | "error", event: string, fields
     if (!activeFile || activeFile.day !== day || activeFile.size + bytes > maxLogBytes) {
       const directory = join(logDirectory, day);
       await mkdir(directory, { recursive: true });
-      const path = join(directory, `${timestamp(now)}_${component}_${process.pid}_${++sequence}.log`);
+      const path = join(directory, `${timestamp(now)}_${component}_${process.pid}_${++sequence}.log${component === "tray" ? ".part" : ""}`);
       const handle = await open(path, "wx", 0o600);
       await handle.close();
       activeFile = { path, day, size: 0 };
@@ -211,4 +216,14 @@ export async function flushLogs() {
   if (maintenanceTimer) clearInterval(maintenanceTimer);
   await maintenance;
   await queue;
+  if (component === "tray" && activeFile?.path.endsWith(".part")) {
+    // 原生诊断子进程独立写入；只有写完的 .log 才对后台归档可见。
+    try {
+      const handle = await open(activeFile.path, "r+");
+      try { await handle.sync(); } finally { await handle.close(); }
+      await link(activeFile.path, activeFile.path.slice(0, -5));
+      await removeFile(activeFile.path);
+      activeFile = undefined;
+    } catch (error) { reportFailure(error); }
+  }
 }
