@@ -26,7 +26,7 @@
               <component
                 :is="activePanel.component"
                 v-bind="
-                  ['pluginMarket', 'languageModel', 'mediaModel', 'account', 'personalization', 'deviceLink'].includes(activePanel.id) ? { visible } : {}
+                  ['pluginMarket', 'languageModel', 'mediaModel', 'account', 'personalization', 'deviceLink', 'localHelper'].includes(activePanel.id) ? { visible } : {}
                 " />
             </keep-alive>
           </transition>
@@ -73,6 +73,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/pluginMarket/index.vue")),
   },
   { id: "mcp", label: "MCP", icon: IconPlugConnected, groupLabel: "通讯", component: defineAsyncComponent(() => import("./panels/mcp/index.vue")) },
+  ...(webMode.value ? [{ id: "localHelper", label: "本地助手", icon: IconDevices, component: defineAsyncComponent(() => import("./panels/localHelper.vue")) }] : []),
   ...(!isMobile
     ? [{ id: "deviceLink", label: "设备互联", icon: IconDevices, component: defineAsyncComponent(() => import("./panels/deviceLink.vue")) }]
     : []),

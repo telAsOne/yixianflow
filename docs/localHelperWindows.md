@@ -1,0 +1,47 @@
+# UnionFlfow Windows 本地助手
+
+适用于 Windows 10 / 11 x64，当前版本 0.1.0。
+
+## 使用
+
+1. 将压缩包完整解压到固定目录，运行 `unionFlfowHelper.exe`。保留同目录的 `localWorker.exe`、`tools/` 和许可证目录。不需要安装 Bun、Node.js 或 Python。
+2. 在 Windows 系统托盘中找到 UnionFlfow 图标，打开“状态与配对码”，复制 12 位配对码。配对码 10 分钟内有效，未绑定时会自动刷新。
+3. 在 `https://yixian.lol/flow/` 登录，打开“设置 → 本地助手”，输入配对码，然后在本机弹窗确认连接。
+4. 选择本机，向画布 AI 助手提出本地任务，例如读取指定文件、处理本地视频、执行指定命令或安装指定工具。AI 使用 `localComputer` 工具操作选定的电脑。
+
+## 权限与运行
+
+- 操作权限与当前 Windows 用户相同，可访问其有权访问的本机磁盘；不自动提权，不通过本机网络端口开放控制接口。
+- 连接时会在本机确认文件读取权限。读取的内容及命令输出会经平台用于 AI 对话。
+- 写入、覆盖、移动、删除、PowerShell 命令和软件安装默认逐次在本机确认；150 秒未确认视为拒绝。覆盖文件需先读取最新版本。内置文件读取每次最多 64 KiB，目录每页 200 项。
+- “本次运行自动执行写入和命令”需从托盘显式开启，退出助手后失效。暂停会停止接收，并终止正在运行的本机进程树；退出也会终止子进程。
+- 解除绑定立即撤销设备权限。沿用现有 AI 对话的取消语义：关闭网页、对话连接中断或主动停止会取消本机调用。取消、重启、断网及回报失败不会自动重跑原命令；网络恢复只重传已保存的结果。
+- 每台设备串行执行，队列上限 20 项。命令默认 60 秒，安装默认 20 分钟，可按调用设置至多 20 分钟。命令输出有大小限制，超出时返回截断标记。
+- FFmpeg 与 ffprobe 6.1.1 随包提供，只加入助手子进程的 PATH，不修改系统 PATH。AI 可以通过本机命令调用；已有画布媒体节点仍使用原有执行路径。
+- 软件安装通过 Windows `winget` 按精确包 ID 安装，使用当前用户范围。缺少 winget 时请通过 Microsoft Store 更新“应用安装程序”。其他已安装工具可通过 PowerShell 调用。
+- 托盘可设置开机启动。请先将解压目录放在固定位置，移动目录后重新设置开机启动。
+- 设备凭据、待回传结果与操作摘要保存在 `%LOCALAPPDATA%\UnionFlfow\localHelper`；操作摘要不记录完整文件内容、命令正文或凭据。
+- 此版本没有屏幕截图、鼠标点击和键盘代输工具；可通过文件、PowerShell 与程序调用完成本机操作。系统及应用的权限要求仍由 Windows 决定。
+
+## 开发与发布
+
+使用根 `package.json` 指定的 Bun 1.3.14，在 Windows x64 执行：
+
+```powershell
+bun run --cwd apps/localHelper typecheck
+bun apps/localHelper/scripts/build.ts F:/workspace/yixianflow/build/localHelper
+```
+
+目标目录必须不存在。构建生成 `unionFlfowHelper.zip`、下载摘要与包含程序摘要的 `manifest.json`。媒体工具安装复用 `@toonflow/ffmpeg` 的固定版本及 SHA-256 校验。
+
+服务器使用现有网页版 PostgreSQL 存储设备及任务，启动时建表。把压缩包放到服务数据目录的 `downloads/unionFlfowHelper.zip`，或将 `TOONFLOW_LOCAL_HELPER_PACKAGE` 设置为压缩包绝对路径；前端从受登录保护的 `/api/localHelper/download` 下载。`/flow/` 子路径由现有代理保持，设备接口使用独立 Bearer 凭据。
+
+本地助手通过 HTTPS 主动轮询平台；无需开放本机防火墙端口。设备绑定归属账户，网页会话单独选择设备。每次工具调用固定设备与网页登录会话，退出登录、撤销设备或取消调用后停止授权。已领取任务不会自动重新入队，意外中断时需用户核对实际状态再发起新操作。
+
+FFmpeg 许可证和上游构建说明在 `licenses/`。对应上游版本、构建配置及源代码入口：
+
+- https://github.com/eugeneware/ffmpeg-static/releases/tag/b6.1.1
+- https://www.gyan.dev/ffmpeg/builds/
+- https://ffmpeg.org/download.html
+
+Bun 与项目许可证亦在 `licenses/`，Windows 原生托盘使用系统 .NET Framework 和 Windows Forms。

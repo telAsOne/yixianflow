@@ -27,6 +27,15 @@
         "electrobun": "2.0.1",
       },
     },
+    "apps/localHelper": {
+      "name": "@toonflow/local-helper",
+      "version": "0.1.0",
+      "dependencies": {
+        "@toonflow/ffmpeg": "workspace:*",
+        "@toonflow/file": "workspace:*",
+        "zod": "^4.6.2",
+      },
+    },
     "apps/mobile": {
       "name": "@toonflow/mobile",
       "dependencies": {
@@ -49,6 +58,7 @@
         "@toonflow/ffmpeg": "workspace:*",
         "@toonflow/file": "workspace:*",
         "@toonflow/i18n": "workspace:*",
+        "@toonflow/local-helper": "workspace:*",
         "@toonflow/mcp": "workspace:*",
         "@toonflow/node-shared": "workspace:*",
         "@toonflow/providers": "workspace:*",
@@ -110,6 +120,7 @@
         "@toonflow/assets": "workspace:*",
         "@toonflow/ext-scaffold": "workspace:*",
         "@toonflow/i18n": "workspace:*",
+        "@toonflow/local-helper": "workspace:*",
         "@toonflow/model-icons": "workspace:*",
         "@toonflow/node-shared": "workspace:*",
         "@toonflow/nodes-scaffold": "workspace:*",
@@ -1363,6 +1374,8 @@
     "@toonflow/file": ["@toonflow/file@workspace:packages/file"],
 
     "@toonflow/i18n": ["@toonflow/i18n@workspace:packages/i18n"],
+
+    "@toonflow/local-helper": ["@toonflow/local-helper@workspace:apps/localHelper"],
 
     "@toonflow/mcp": ["@toonflow/mcp@workspace:packages/mcp"],
 

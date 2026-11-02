@@ -73,6 +73,21 @@ export async function initializeWebStore() {
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "lastOpenedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`;
   await sql`CREATE INDEX IF NOT EXISTS "projectsOwner" ON yixianflow.projects ("ownerId", "lastOpenedAt" DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.localDevices (
+    id UUID PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "pairHash" TEXT UNIQUE, "pairExpiresAt" TIMESTAMPTZ,
+    name TEXT NOT NULL, "ownerId" INTEGER REFERENCES yixianflow.users(id), "ownerName" TEXT,
+    "lastSeenAt" TIMESTAMPTZ, approved BOOLEAN NOT NULL DEFAULT false, paused BOOLEAN NOT NULL DEFAULT false,
+    "autoExecute" BOOLEAN NOT NULL DEFAULT false, version TEXT NOT NULL DEFAULT '', revoked BOOLEAN NOT NULL DEFAULT false
+  )`;
+  await sql`ALTER TABLE yixianflow.sessions ADD COLUMN IF NOT EXISTS "localDeviceId" UUID REFERENCES yixianflow.localDevices(id) ON DELETE SET NULL`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.localCalls (
+    id UUID PRIMARY KEY, "deviceId" UUID NOT NULL REFERENCES yixianflow.localDevices(id),
+    "ownerId" INTEGER NOT NULL REFERENCES yixianflow.users(id), "sessionHash" TEXT NOT NULL,
+    request JSONB NOT NULL, status TEXT NOT NULL DEFAULT 'queued', nonce TEXT, result JSONB, error TEXT,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "claimedAt" TIMESTAMPTZ,
+    "expiresAt" TIMESTAMPTZ NOT NULL, "finishedAt" TIMESTAMPTZ
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS "localCallsDevice" ON yixianflow.localCalls ("deviceId", status, "createdAt")`;
 }
 
 export async function getWebSettings(): Promise<Record<string, unknown>> {

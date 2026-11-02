@@ -37,8 +37,10 @@ import * as mentionFiles from "@/agent/mentionFiles";
 import * as webAuth from "@/utils/web/auth";
 import * as webStore from "@/utils/web/store";
 import * as webProjects from "@/utils/web/projects";
+import * as localHelper from "@/utils/localHelper";
 
 export default {
+  localHelper,
   webAuth,
   webStore,
   webProjects,
