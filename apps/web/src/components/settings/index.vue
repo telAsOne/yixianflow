@@ -16,7 +16,10 @@
         </template>
       </aside>
       <section class="content" :aria-label="activePanel.label" tabindex="0">
-        <h2 class="panelTitle">{{ activePanel.label }}</h2>
+        <h2 class="panelTitle">
+          <template v-if="activePanel.id === 'account'"><a class="accountLink" href="https://yixian.lol/" target="_blank" rel="noopener noreferrer">UnionAigc</a> 账户</template>
+          <template v-else>{{ activePanel.label }}</template>
+        </h2>
         <div class="panelContent">
           <transition name="el-fade-in" mode="out-in">
             <keep-alive include="personalization">
@@ -61,7 +64,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/languageModel/index.vue")),
   },
   { id: "mediaModel", label: "媒体模型", icon: IconPhotoVideo, component: defineAsyncComponent(() => import("./panels/mediaModel/index.vue")) },
-  { id: "account", label: "逸仙账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
+  { id: "account", label: "UnionAigc 账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
   {
     id: "pluginMarket",
     label: "插件市场",
@@ -203,6 +206,12 @@ const visible = defineModel<boolean>({ default: false });
       font-size: 20px;
       font-weight: 600;
       letter-spacing: -0.01em;
+
+      .accountLink {
+        color: var(--el-color-primary);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
     }
 
     .panelContent {

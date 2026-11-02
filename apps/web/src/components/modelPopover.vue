@@ -20,7 +20,7 @@
       </template>
       <el-form class="modelOptions" labelPosition="top">
         <el-form-item label="模型">
-          <el-select v-model="selectedModel" filterable :disabled="disabled" :teleported="false" placeholder="选择模型" aria-label="选择模型" noDataText="请登录逸仙账户并刷新模型" @change="reasoningEffort = ''">
+          <el-select v-model="selectedModel" filterable :disabled="disabled" :teleported="false" placeholder="选择模型" aria-label="选择模型" noDataText="请登录 UnionAigc 账户并刷新模型" @change="reasoningEffort = ''">
             <template #prefix><modelIcon v-if="selectedModelChoice" :model="selectedModelChoice.modelId" :size="18" /></template>
             <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
               <el-option v-for="model in provider.models" :key="model.id" :label="model.label" :value="JSON.stringify([provider.id, model.id])">
@@ -36,7 +36,7 @@
           <el-segmented v-model="reasoningEffort" :options="reasoningOptions" :disabled="disabled || !selectedModelChoice?.think" block aria-label="推理等级" />
         </el-form-item>
         <div v-if="!modelChoices.length || accountView?.configError" class="modelHelp" role="status">
-          <span>{{ accountView?.configError || (accountView?.authenticated ? '暂无可用模型，请刷新模型列表' : '登录逸仙账户后自动加载可用模型') }}</span>
+          <span>{{ accountView?.configError || (accountView?.authenticated ? '暂无可用模型，请刷新模型列表' : '登录 UnionAigc 账户后自动加载可用模型') }}</span>
           <el-button text type="primary" :loading="refreshingModels" :disabled="disabled" @click="syncModels">{{ accountView?.authenticated ? '刷新模型' : '登录 / 注册' }}</el-button>
         </div>
       </el-form>
