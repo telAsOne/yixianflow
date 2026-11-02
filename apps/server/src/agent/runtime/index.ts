@@ -351,13 +351,14 @@ export async function run(
         });
       }
       if (event.type === "message_end" && event.message.role === "assistant") {
+        const interrupted = event.message.stopReason === "error" || event.message.stopReason === "aborted";
         event.message.content.forEach((part, index) => {
           const blockId = `${messageIndex}:${index}`;
           if (part.type === "text" || part.type === "thinking") {
             send({ type: part.type, blockId, content: part.type === "text" ? part.text : part.thinking, done: true });
           } else if (part.type === "toolCall") {
             toolBlocks.set(part.id, blockId);
-            send({ type: "tool", blockId, tool: { id: part.id, name: part.name, args: part.arguments, status: "running" } });
+            send({ type: "tool", blockId, tool: { id: part.id, name: part.name, args: part.arguments, status: interrupted ? "interrupted" : "running" } });
           }
         });
         if (firstTokenAt !== undefined && event.message.usage.output > 0) {
