@@ -11,7 +11,7 @@
       </div>
     </div>
 
-    <el-card v-if="isMobile || !isRemoteConnection" class="infoCard updateCard" shadow="never">
+    <el-card v-if="!isMobile && !isRemoteConnection" class="infoCard updateCard" shadow="never">
       <div class="cardHeader">
         <div class="updateCopy">
           <div class="cardLabel">
@@ -20,17 +20,11 @@
           </div>
         </div>
         <div class="updateActions">
-          <el-button v-if="isMobile" tag="a" size="small" type="primary" plain href="https://github.com/telAsOne/yixianflow/releases/latest" target="_blank" rel="noopener noreferrer">
-            前往 GitHub 更新
-          </el-button>
-          <template v-else>
-            <el-tag size="small" type="info">GitHub · UnionFlfow</el-tag>
-            <el-badge isDot :hidden="!hasDesktopUpdate">
-              <el-button size="small" type="primary" plain :loading="checking" @click="openUpdate">
-                {{ snapshot?.installFailure ? "查看更新失败原因" : snapshot?.updateReady ? "更新已就绪" : snapshot?.updating || action === "download" ? "查看更新进度" : "检查更新" }}
-              </el-button>
-            </el-badge>
-          </template>
+          <el-badge isDot :hidden="!hasDesktopUpdate">
+            <el-button size="small" type="primary" plain :loading="checking" @click="openUpdate">
+              {{ snapshot?.installFailure ? "查看更新失败原因" : snapshot?.updateReady ? "更新已就绪" : snapshot?.updating || action === "download" ? "查看更新进度" : "检查更新" }}
+            </el-button>
+          </el-badge>
         </div>
       </div>
       <div v-if="!isMobile && snapshot?.hash" class="buildInfo">
@@ -40,20 +34,10 @@
       <div v-if="!isMobile && snapshot?.installFailure" class="installFailureNotice" role="alert">
         <strong>上次更新未成功</strong>
         <p>{{ snapshot.installFailure.message }}</p>
-        <p v-if="snapshot.portable">请从定制版 GitHub 发布页下载完整便携包，保留 data、profile 和项目目录后替换程序文件。</p>
-        <p v-else>请前往 GitHub 最新发布页，选择适合当前系统的完整安装包，关闭客户端后重新安装。</p>
+        <p v-if="snapshot.portable">请从定制版发布页下载完整便携包，保留 data、profile 和项目目录后替换程序文件。</p>
+        <p v-else>请前往最新发布页，选择适合当前系统的完整安装包，关闭客户端后重新安装。</p>
         <el-button tag="a" type="primary" size="small" :href="snapshot.installFailure.downloadUrl" target="_blank" rel="noopener noreferrer">前往下载页</el-button>
       </div>
-    </el-card>
-
-    <el-card class="infoCard repositoryCard" shadow="never">
-      <a class="repositoryLink" :href="repositoryUrl" target="_blank" rel="noopener noreferrer" aria-label="GitHub 仓库：telAsOne/yixianflow">
-        <icon-brand-github class="repositoryIcon" :size="22" aria-hidden="true" />
-        <div class="repositoryInfo">
-          <span class="repositoryTitle">GitHub 仓库</span>
-        </div>
-        <icon-external-link class="externalIcon" :size="16" aria-hidden="true" />
-      </a>
     </el-card>
 
     <el-card class="infoCard repositoryCard" shadow="never">
@@ -64,32 +48,6 @@
         </div>
         <icon-external-link class="externalIcon" :size="16" aria-hidden="true" />
       </a>
-    </el-card>
-
-    <el-card class="infoCard" shadow="never">
-      <div class="cardHeader">
-        <div class="cardLabel">
-          <icon-brand-wechat :size="20" aria-hidden="true" />
-          <span>微信交流群</span>
-        </div>
-        <el-popover trigger="click" placement="top" title="微信扫码加入交流群" :width="196">
-          <template #reference>
-            <el-button size="small" :icon="IconQrcode">展示二维码</el-button>
-          </template>
-          <tdesignProvider><q-r-code
-            :value="communityUrl"
-            :size="168"
-            type="svg"
-            color="#000000"
-            bgColor="#ffffff"
-            borderless
-            role="img"
-            aria-label="Toonflow 交流群二维码" /></tdesignProvider>
-          <div class="tips">
-            Toonflow 是为爱发电的开源项目。欢迎文明交流、友善反馈；回复可能需要一些时间，请避免责问或命令式沟通，感谢你的理解与尊重。
-          </div>
-        </el-popover>
-      </div>
     </el-card>
 
     <el-dialog v-model="resultVisible" title="版本更新" width="min(480px, 92vw)" alignCenter appendToBody>
@@ -156,24 +114,19 @@
 </template>
 
 <script setup lang="ts">
-import tdesignProvider from "@/components/tdesignProvider.vue";
 import { translate, t } from "@toonflow/i18n/vue";
 
 import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import axios from "axios";
 import { isMobile, isRemoteConnection } from "@/lib/mobile";
-import { QRCode } from "tdesign-vue-next";
 import {
   IconRefresh,
-  IconBrandGithub,
   IconExternalLink,
   IconAlertCircle,
   IconArrowUpCircle,
   IconCircleCheck,
   IconArrowRight,
   IconWorld,
-  IconBrandWechat,
-  IconQrcode,
 } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/unionIcon.svg";
 import {
@@ -185,8 +138,6 @@ import {
   runDesktopUpdate,
 } from "@/stores/desktopUpdate";
 
-const repositoryUrl = "https://github.com/telAsOne/yixianflow";
-const communityUrl = "https://work.weixin.qq.com/u/vc36adcc89845edcbe?v=5.0.3.63936&bb=85b8d228e8";
 const isDesktop = new URLSearchParams(window.location.search).get("desktop") === "1";
 const clientBuild = ref<{ version: string; channel: string }>();
 const currentVersion = computed(() => isDesktop && isRemoteConnection
@@ -431,13 +382,6 @@ async function runUpdate(nextAction: "read" | "check" | "download" | "apply") {
     }
   }
 
-}
-
-.tips {
-  margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.7;
 }
 
 .updateResult {

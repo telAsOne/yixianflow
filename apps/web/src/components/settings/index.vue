@@ -7,12 +7,10 @@
           <button
             class="settingsItem"
             type="button"
-            :aria-label="item.id === 'about' && hasDesktopUpdate ? `${item.label}，有新版本可用` : item.label"
+            :aria-label="item.label"
             :aria-pressed="activePanel.id === item.id"
             @click="activePanel = item">
-            <el-badge class="panelIcon" isDot :hidden="item.id !== 'about' || !hasDesktopUpdate">
-              <component :is="item.icon" :size="18" aria-hidden="true" />
-            </el-badge>
+            <component :is="item.icon" class="panelIcon" :size="18" aria-hidden="true" />
             <span>{{ item.label }}</span>
           </button>
         </template>
@@ -37,7 +35,6 @@
 
 <script setup lang="ts">
 import { defineAsyncComponent, shallowRef } from "vue";
-import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { isMobile } from "@/lib/mobile";
 import { webMode } from "@/lib/webRuntime";
 import {
@@ -45,7 +42,6 @@ import {
   IconSettings,
   IconPhotoVideo,
   IconBuildingStore,
-  IconInfoCircle,
   IconCode,
   IconPlugConnected,
   IconUserCog,
@@ -85,7 +81,6 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/personalization.vue")),
   },
   { id: "developer", label: "开发者选项", icon: IconCode, component: defineAsyncComponent(() => import("./panels/developer/index.vue")) },
-  { id: "about", label: "关于", icon: IconInfoCircle, component: defineAsyncComponent(() => import("./panels/about.vue")) },
 ].filter(panel => !webMode.value || !["mcp", "deviceLink"].includes(panel.id));
 const activePanel = shallowRef(settingsPanels[0]!);
 const visible = defineModel<boolean>({ default: false });
