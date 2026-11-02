@@ -6,7 +6,7 @@
     <el-tooltip content="刷新项目" placement="bottom" :showArrow="false" :hideAfter="0">
       <el-button class="refreshButton" text :icon="IconRefresh" :loading="refreshing" :disabled="!directory" aria-label="刷新项目" @click="refreshProject" />
     </el-tooltip>
-    <el-popover v-model:visible="membersVisible" trigger="click" placement="bottom-end" :width="320" :popperStyle="{ maxWidth: 'calc(100vw - 24px)' }" :showArrow="false" :disabled="!directory" @show="retryPresence">
+    <el-popover v-if="!webMode" v-model:visible="membersVisible" trigger="click" placement="bottom-end" :width="320" :popperStyle="{ maxWidth: 'calc(100vw - 24px)' }" :showArrow="false" :disabled="!directory" @show="retryPresence">
       <template #reference>
         <el-button class="presenceButton" :class="{ unavailable: status === 'error' || status === 'unsupported' }" text :disabled="!directory" :aria-expanded="membersVisible" aria-label="查看在线与操作人数，点击重试连接">
           <icon-users :size="15" aria-hidden="true" />
@@ -46,6 +46,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vu
 import axios from "axios";
 import { IconAlertTriangle, IconRefresh, IconUsers } from "@tabler/icons-vue";
 import { locale } from "@toonflow/i18n/vue";
+import { webMode } from "@/lib/webRuntime";
 
 type PresenceMember = { id: string; name: string; active: boolean; visible: boolean; panel: "canvas" | "document"; path: string };
 type PresencePayload = { directory: string; clientId: string; sessionId: string; panel: "canvas" | "document"; path: string; active: boolean; visible: boolean };
@@ -99,6 +100,7 @@ function isPresenceMember(value: unknown): value is PresenceMember {
 }
 
 async function updatePresence() {
+  if (webMode.value) return;
   if (!mounted || suspended || !props.directory || requestController || status.value === "unsupported") return;
   const now = performance.now();
   const visible = isForeground();
@@ -248,6 +250,7 @@ watch([() => props.panel, () => props.canvasId], () => {
 });
 
 onMounted(() => {
+  if (webMode.value) return;
   mounted = true;
   const options = { capture: true, passive: true, signal: listeners.signal };
   for (const event of ["pointerdown", "keydown", "wheel"]) window.addEventListener(event, handleActivity, options);

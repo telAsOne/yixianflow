@@ -145,7 +145,7 @@
       @upload="uploadAtCenter"
       @start="createFromStarter" />
     <div class="assetPanel">
-      <assetLibrary ref="assetLibraryRef" v-model="assetsVisible" :directory="project?.directory" />
+      <assetLibrary v-if="!webMode" ref="assetLibraryRef" v-model="assetsVisible" :directory="project?.directory" />
     </div>
     <nodeInspector v-show="inspectorShown" v-model:width="workspaceLayout.inspectorWidth.value" :maxWidth="workspaceLayout.inspectorMaxWidth.value" :title="inspectorTitle" :requiresModel="inspectorRequiresModel" @close="workspaceLayout.inspectorVisible.value = false">
       <div class="nodeDock">
@@ -225,6 +225,7 @@ import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
 import nodeInspector from "./components/nodeInspector.vue";
 import canvasDock from "./components/canvasDock.vue";
+import { webMode } from "@/lib/webRuntime";
 import canvasStarter from "./components/canvasStarter.vue";
 import { workspaceLayoutKey } from "../../workspaceLayout";
 import { finishGroupDrag } from "./selectionNodes";
@@ -368,7 +369,7 @@ provide("batchCanvasHistory", canvasHistory.batch);
 const { addEdges, removeEdges, findEdge, findNode, viewport } = flow;
 provide("retainNodeFiles", true);
 provide("selectionConnection", shallowRef<NodeConnectionFeedback>());
-provide("saveNodeToAssets", (label: string, outputs: { label: string; output: NodeOutput }[]) => assetLibraryRef.value?.openSave(label, outputs));
+  if (!webMode.value) provide("saveNodeToAssets", (label: string, outputs: { label: string; output: NodeOutput }[]) => assetLibraryRef.value?.openSave(label, outputs));
 let canvasController = new AbortController();
 let workspaceController = new AbortController();
 const createCanvasContext = useCanvasTools({

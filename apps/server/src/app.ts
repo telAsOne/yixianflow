@@ -11,6 +11,7 @@ import desktopRequest from "@/lib/desktop";
 import initializePlugins from "@/utils/plugins/initialize";
 import { languageRequest, resolveRequestLocale, runWithLocale, setLocaleFallback, translateError, translateMessage } from "@/lib/i18n";
 import { detectLocale, normalizeLocale } from "@toonflow/i18n";
+import { isWebMode } from "@/lib/webContext";
 
 const autoInstallProviders = mediaProviders.map(provider => `${provider.id}.ts`);
 
@@ -42,6 +43,10 @@ export async function createApp({
   // conf 由下方的路由动态加载，必须先确定整个进程共用的数据目录。
   if (dataDirectory) process.env.TOONFLOW_DATA_DIR = resolve(dataDirectory);
   const { default: conf } = await import("@/utils/conf");
+  if (isWebMode()) {
+    const { initializeWebStore } = await import("@/utils/web/store");
+    await initializeWebStore();
+  }
   const systemLocale = detectLocale([Intl.DateTimeFormat().resolvedOptions().locale]);
   const readLocale = () => normalizeLocale((conf.get("settings", {}).ui as { language?: unknown } | undefined)?.language) ?? systemLocale;
   let fallbackLocale = readLocale();
@@ -86,6 +91,8 @@ export async function createApp({
   app.use(languageRequest);
   if (hostnames) app.use(allowedHosts(hostnames));
   app.use(sameOriginOnly);
+  const { default: webRequest } = await import("@/lib/webRequest");
+  app.use(webRequest);
   app.use("/a2a", express.json({ limit: "2mb" }));
   app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "512mb" }));
   // ACT: 源码、Base64 安装包、画布快照和含媒体的对话保留原上限，其余 JSON 限制为 10 MB。
@@ -122,12 +129,13 @@ export async function createApp({
   // 错误处理
   app.use((err: Error & { status?: number }, request: Request, response: Response, next: NextFunction) => {
     if (response.headersSent) return next(err);
-    console.error(err);
     const body = errorFromCause(err);
+    if (isWebMode() && body.code < 500) console.warn(`[web] ${request.method} ${request.path} status=${body.code}`);
+    else console.error(err);
     response.status(body.code).json(body);
   });
 
   const { initializeMobileLinkRuntime } = await import("@/utils/mobileLink");
-  initializeMobileLinkRuntime(app);
+  if (!isWebMode()) initializeMobileLinkRuntime(app);
   return app;
 }

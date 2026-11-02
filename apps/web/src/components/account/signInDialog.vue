@@ -6,7 +6,7 @@
       <el-alert v-if="message" :title="message" type="error" :closable="false" showIcon />
       <div class="signInActions">
         <el-button type="primary" :loading="starting" :disabled="waiting" @click="start('signin')">登录</el-button>
-        <el-button :disabled="starting || waiting" @click="start('signup')">注册</el-button>
+        <el-button v-if="!webMode" :disabled="starting || waiting" @click="start('signup')">注册</el-button>
         <el-button v-if="waiting" @click="cancel">取消</el-button>
       </div>
     </div>
@@ -18,6 +18,7 @@ import { t } from "@toonflow/i18n/vue";
 import { onBeforeUnmount, ref } from "vue";
 import api, { errorMessage } from "@/lib/api";
 import { refreshAccount } from "@/stores/account";
+import { webMode } from "@/lib/webRuntime";
 
 const visible = defineModel<boolean>({ required: true });
 const waiting = ref(false);
@@ -57,6 +58,7 @@ async function start(screen: "signin" | "signup") {
   message.value = "";
   try {
     const { data } = await api.post<{ data: { url: string; browserOpened: boolean } }>("/api/account/start", { screen }, { timeout: 10000 });
+    if (webMode.value) { window.location.assign(data.data.url); return; }
     if (!data.data.browserOpened) window.open(data.data.url, "_blank", "noopener,noreferrer");
     waiting.value = true;
     deadline = Date.now() + 10 * 60_000;

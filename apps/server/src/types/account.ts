@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const userSchema = z.object({ id: z.number().int().positive(), username: z.string(), display_name: z.string() });
+export const userSchema = z.object({ id: z.number().int().positive(), username: z.string(), display_name: z.string(),
+  role: z.number().int().optional(), status: z.number().int().optional() });
 export const uploadLimitsSchema = z.object({
   imageMaxBytes: z.number().int().positive().max(20 * 1024 * 1024),
   audioMaxBytes: z.number().int().positive().max(64 * 1024 * 1024),

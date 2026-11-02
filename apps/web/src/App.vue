@@ -5,7 +5,7 @@
         <component :is="currentComponent" />
       </transition>
     </router-view>
-    <ffmpegRequired />
+    <ffmpegRequired v-if="!webMode" />
     <signInDialog v-model="signInVisible" />
     <updateBox
       v-if="updateBoxBuild && !installFailure"
@@ -51,8 +51,9 @@ import { useMcpControl } from "@/lib/mcpControl";
 import ffmpegRequired from "@/components/settings/ffmpegRequired.vue";
 import updateBox from "@/components/updateBox.vue";
 import "element-plus/theme-chalk/dark/css-vars.css";
+import { webMode } from "@/lib/webRuntime";
 
-useMcpControl();
+if (!webMode.value) useMcpControl();
 
 const updateBoxVisible = ref(false);
 const updateBoxBuild = shallowRef<{ version: string; hash: string }>();

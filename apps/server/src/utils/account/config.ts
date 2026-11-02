@@ -4,6 +4,7 @@ import { accountFetch, getAccount, getBaseUrl } from "./index";
 import { defaultUploadLimits, platformConfigSchema } from "@/types/account";
 import { getMediaProvider, saveMediaProvider } from "@/utils/media/provider";
 import yixian from "@toonflow/providers/language/yixian";
+import { isWebMode } from "@/lib/webContext";
 
 let pending: Promise<void> | undefined;
 let pendingAccount: ReturnType<typeof getAccount>;
@@ -14,6 +15,7 @@ let refreshedAt = 0;
 const refreshInterval = 60_000;
 
 export function getConfigState() {
+  if (isWebMode()) return { limits: defaultUploadLimits, imageTotalMaxBytes: defaultUploadLimits.requestTotalMaxBytes, cameraPresets: [], revision: undefined, configError: "" };
   const saved = conf.get("settings.yixianConfig") as { baseUrl?: string; userId?: number; config?: unknown } | undefined;
   const parsed = saved?.baseUrl === getBaseUrl() && saved.userId === getAccount()?.user.id ? platformConfigSchema.safeParse(saved.config) : undefined;
   const limits = parsed?.success ? parsed.data.limits : defaultUploadLimits;
@@ -25,6 +27,7 @@ export function getConfigState() {
 }
 
 export async function refreshConfig(force = true): Promise<void> {
+  if (isWebMode()) return;
   if (pending) {
     if (pendingAccount === getAccount()) return pending;
     await pending.catch(() => {});

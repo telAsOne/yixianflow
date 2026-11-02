@@ -1,3 +1,4 @@
+import "@/lib/appPath";
 import { createApp, h, nextTick, ref, shallowRef } from "vue";
 import { ElButton, ElResult, ElMessage, ElMessageBox } from "element-plus";
 import { createPinia } from "pinia";
@@ -11,13 +12,14 @@ import "element-plus/es/components/result/style/css";
 import router from "@/router";
 import { registerDesktopProtocol } from "@/lib/desktopProtocol";
 import { registerDownloads } from "@/lib/saveFile";
-import { isMobile, isRemoteConnection } from "@/lib/mobile";
+import { isMobile, isRemoteConnection, refreshMobileConnection } from "@/lib/mobile";
 import { getMissingBrowserFeatures } from "@/lib/browserCapabilities";
 import { flushSettings, loadSettings, settingsStorage } from "@/stores/settings";
 import { flushWorkspaceSave } from "@/lib/mcpControl";
 import { checkDesktopUpdate } from "@/stores/desktopUpdate";
 import { registerLanguage } from "@/lib/i18n";
 import { locale, translate } from "@toonflow/i18n/vue";
+import { loadWebRuntime } from "@/lib/webRuntime";
 
 const app = createApp(App);
 const closeMediaPreview = shallowRef<(() => Promise<void>)>();
@@ -84,7 +86,7 @@ async function notifyDesktopReady(failed = false) {
   ? Promise.reject(new Error("当前 Microsoft Edge WebView2 Runtime 版本过旧。请以管理员身份运行微软最新版安装器；若仍提示已安装，请修复 WebView2 或联系管理员检查更新服务。更新完成后，请完全退出 Toonflow 再重新打开。"))
   : requiresAndroidWebViewUpdate
   ? Promise.reject(new Error("系统当前使用的 Android System WebView 缺少 Toonflow 所需能力。请更新系统实际使用的 Android System WebView；部分厂商系统需要通过系统更新升级。更新完成后，请完全退出并重新打开 Toonflow。"))
-  : loadSettings()).then(async () => {
+  : loadWebRuntime().then(() => { void refreshMobileConnection().catch(() => {}); return loadSettings(); })).then(async () => {
   await language.ready();
   app.use(createPinia().use(createPersistedState({ storage: settingsStorage })));
   app.use(router);

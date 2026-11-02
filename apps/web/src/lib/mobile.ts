@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 import axios from "axios";
 import { t, translate } from "@toonflow/i18n/vue";
+import { webMode, webRuntimeLoaded } from "@/lib/webRuntime";
 
 export const isMobile = new URLSearchParams(window.location.search).get("mobile") === "1";
 export const isDesktop = new URLSearchParams(window.location.search).get("desktop") === "1";
@@ -29,6 +30,7 @@ let connectionRequest: Promise<MobileConnection> | undefined;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 export async function refreshMobileConnection() {
+  if (!webRuntimeLoaded.value || webMode.value) return mobileConnection.value;
   if (connectionRequest) return connectionRequest;
   clearTimeout(connectionTimer);
   connectionRequest = (async () => {

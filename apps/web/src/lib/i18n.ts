@@ -6,6 +6,8 @@ import { loadElementLocale } from "@toonflow/i18n/elementPlus";
 import { locale, setLocale, translate } from "@toonflow/i18n/vue";
 import { uiSettings } from "@/stores/settings";
 import type { LocaleConfig } from "vue-stream-markdown";
+import { webMode, webUserId } from "@/lib/webRuntime";
+import { appBasePath, resolveAppUrl } from "@/lib/appPath";
 
 const dayjsLocales = {
   "zh-CN": () => import("dayjs/locale/zh-cn"),
@@ -35,8 +37,17 @@ export const elementLocale = shallowRef<Awaited<ReturnType<typeof loadElementLoc
 export function registerApiLanguage(client: AxiosInstance) {
   const interceptor = client.interceptors.request.use(config => {
     const url = new URL(client.getUri(config), window.location.href);
+    const target = resolveAppUrl(url);
+    if (target.href !== url.href) {
+      config.url = target.href;
+      config.baseURL = "";
+      config.params = undefined;
+    }
     // ACT: 仅本应用 API 接收界面语言，不改变供应商等外部请求。
-    if (url.origin === window.location.origin && url.pathname.startsWith("/api/")) config.headers.set("Accept-Language", locale.value);
+    if (target.origin === window.location.origin && target.pathname.startsWith(`${appBasePath}/api/`)) {
+      config.headers.set("Accept-Language", locale.value);
+      if (webMode.value && webUserId.value) config.headers.set("x-yixianflow-user", String(webUserId.value));
+    }
     return config;
   });
   return () => client.interceptors.request.eject(interceptor);

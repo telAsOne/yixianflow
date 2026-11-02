@@ -5,6 +5,7 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
+import { isWebMode } from "@/lib/webContext";
 
 const router = Router();
 
@@ -12,7 +13,7 @@ export default router.get("/", validateFields({ directory: z.string().min(1).max
   const { directory, path } = await u.workspaceFile.resolveWorkspaceFile(req, req.query.directory as string, (req.query.path as string | undefined) ?? "");
   const entries = await readdir(path, { withFileTypes: true });
   res.set("Cache-Control", "no-store").json(success({
-    directory,
+    directory: isWebMode() ? req.query.directory : directory,
     empty: entries.length === 0,
     entries: entries.filter(entry => entry.isFile() || entry.isDirectory()).map(entry => ({
       name: entry.name, path: relative(directory, join(path, entry.name)).split(sep).join("/"), type: entry.isDirectory() ? "directory" : "file",

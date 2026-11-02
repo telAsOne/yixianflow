@@ -246,7 +246,10 @@ async function renameProject(project: Project) {
     inputValue: project.name, confirmButtonText: "保存", cancelButtonText: "取消",
     inputValidator: value => !!value?.trim() || "项目名称不能为空",
   }).catch(() => null);
-  if (result) workspaceStore.renameProject(project.directory, result.value);
+  if (result) {
+    try { await workspaceStore.renameProject(project.directory, result.value); }
+    catch (error) { ElMessage.error(error instanceof Error ? error.message : "项目名称保存失败，请重试"); }
+  }
 }
 
 async function createProject(fromPrompt = true) {

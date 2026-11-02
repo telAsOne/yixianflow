@@ -34,8 +34,14 @@ import * as teams from "@/utils/teams";
 import * as a2aSettings from "@/agent/a2a/settings";
 import * as personalization from "@/utils/personalization";
 import * as mentionFiles from "@/agent/mentionFiles";
+import * as webAuth from "@/utils/web/auth";
+import * as webStore from "@/utils/web/store";
+import * as webProjects from "@/utils/web/projects";
 
 export default {
+  webAuth,
+  webStore,
+  webProjects,
   assets,
   canvasIndex,
   canvasSync,

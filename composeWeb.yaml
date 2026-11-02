@@ -1,0 +1,28 @@
+services:
+  yixianflow:
+    image: ${YIXIANFLOW_IMAGE:?请指定画布镜像}
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TOONFLOW_WEB_MODE: "1"
+      TOONFLOW_WEB_ORIGIN: ${TOONFLOW_WEB_ORIGIN:?请配置 HTTPS 站点地址}
+      TOONFLOW_WEB_BASE_PATH: ${TOONFLOW_WEB_BASE_PATH:-/flow}
+      TOONFLOW_ALLOWED_HOSTS: ${TOONFLOW_ALLOWED_HOSTS:-yixian.lol}
+      TOONFLOW_WEB_DATABASE_URL: ${TOONFLOW_WEB_DATABASE_URL:?请配置独立 PostgreSQL 数据库}
+      TOONFLOW_WEB_SECRET: ${TOONFLOW_WEB_SECRET:?请配置凭据加密密钥}
+      TOONFLOW_DATA_DIR: /app/data
+      TOONFLOW_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:3102:3000"
+    volumes:
+      - ./data:/app/data
+    networks:
+      platform:
+        aliases:
+          - yixianflow
+
+networks:
+  platform:
+    external: true
+    name: newapi-yixian_default
