@@ -49,6 +49,8 @@ internal sealed class trayContext : ApplicationContext
     private Button chatStop;
     private Button chatNew;
     private bool chatRunning;
+    private bool stderrReported;
+    private int diagnosticRunning;
 
     public trayContext()
     {
@@ -60,6 +62,15 @@ internal sealed class trayContext : ApplicationContext
         menu.Items.Add("本机 AI 助手", null, (sender, args) => showChat());
         menu.Items.Add("状态与配对码", null, (sender, args) => showStatus());
         menu.Items.Add("复制配对码", null, (sender, args) => Clipboard.SetText(code.Replace("-", "")));
+        menu.Items.Add("打开日志文件夹", null, (sender, args) =>
+        {
+            try
+            {
+                string directory = Environment.GetEnvironmentVariable("TOONFLOW_HELPER_DATA_DIR") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnionFlfow", "localHelper");
+                Process.Start(new ProcessStartInfo(Path.Combine(Path.GetFullPath(directory), "logs")) { UseShellExecute = true });
+            }
+            catch (Exception error) { reportDiagnostic("openLogsFailed", error); MessageBox.Show(error.Message, "打开日志失败"); }
+        });
         menu.Items.Add(new ToolStripSeparator());
         pauseItem.Click += (sender, args) => send(new { type = "pause", value = !pauseItem.Checked });
         automaticItem.Click += (sender, args) =>
@@ -82,7 +93,7 @@ internal sealed class trayContext : ApplicationContext
                 }
                 startupItem.Checked = !startupItem.Checked;
             }
-            catch (Exception error) { MessageBox.Show(error.Message, "设置开机启动失败"); }
+            catch (Exception error) { reportDiagnostic("startupSettingFailed", error); MessageBox.Show(error.Message, "设置开机启动失败"); }
         };
         menu.Items.Add(startupItem);
         menu.Items.Add("重新连接进程", null, (sender, args) => startWorker());
@@ -161,6 +172,7 @@ internal sealed class trayContext : ApplicationContext
         if (worker != null && !worker.HasExited) { showStatus(); return; }
         try
         {
+            stderrReported = false;
             if (processJob != IntPtr.Zero) { CloseHandle(processJob); processJob = IntPtr.Zero; }
             processJob = CreateJobObject(IntPtr.Zero, null);
             if (processJob == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
@@ -186,16 +198,25 @@ internal sealed class trayContext : ApplicationContext
             };
             worker.ErrorDataReceived += (sender, args) =>
             {
-                if (!String.IsNullOrEmpty(args.Data) && !closing) dispatcher.BeginInvoke(new Action(() => { status = args.Data; }));
+                if (!String.IsNullOrEmpty(args.Data) && !closing) dispatcher.BeginInvoke(new Action(() =>
+                {
+                    status = args.Data;
+                    if (!stderrReported) { stderrReported = true; reportDiagnostic("workerStderr", null, null, args.Data.Length); }
+                }));
             };
             worker.Exited += (sender, args) =>
             {
+                var exited = sender as Process;
+                int exitCode = -1;
+                try { if (exited != null) exitCode = exited.ExitCode; } catch { }
                 if (!closing) dispatcher.BeginInvoke(new Action(() =>
                 {
+                    if (!Object.ReferenceEquals(worker, exited)) { reportDiagnostic("workerExited", null, exitCode); return; }
                     status = "本地进程已停止，请从托盘重新连接";
                     automaticItem.Checked = false;
                     setChatRunning(false);
                     appendChat("提示", "本地进程已停止，请重新连接；不会自动重新发送消息或执行操作。");
+                    reportDiagnostic("workerExited", null, exitCode);
                     icon.ShowBalloonTip(5000, "UnionFlfow 本地助手", status, ToolTipIcon.Warning);
                     foreach (var form in new List<Form>(prompts.Values)) form.Close();
                 }));
@@ -209,14 +230,45 @@ internal sealed class trayContext : ApplicationContext
             worker.StandardInput.AutoFlush = true;
             worker.BeginOutputReadLine();
             worker.BeginErrorReadLine();
+            reportDiagnostic("workerStarted");
         }
-        catch (Exception error) { status = error.Message; MessageBox.Show(error.Message, "本地助手启动失败"); }
+        catch (Exception error) { reportDiagnostic("workerStartFailed", error); status = error.Message; MessageBox.Show(error.Message, "本地助手启动失败"); }
+    }
+
+    private void reportDiagnostic(string eventName, Exception error = null, int? exitCode = null, int? length = null)
+    {
+        var data = new Dictionary<string, object> { { "event", eventName }, { "pid", Process.GetCurrentProcess().Id } };
+        if (error != null) { data.Add("errorType", error.GetType().Name); data.Add("systemCode", error.HResult); }
+        if (exitCode.HasValue) data.Add("exitCode", exitCode.Value);
+        if (length.HasValue) data.Add("length", length.Value);
+        try
+        {
+            if (worker != null && !worker.HasExited)
+            {
+                data.Add("type", "diagnostic");
+                worker.StandardInput.WriteLine(serializer.Serialize(data));
+                return;
+            }
+        }
+        catch { }
+        data.Remove("type");
+        // ACT: 工作进程退出后复用日志专用模式写入；不在原生外壳重复实现文件写入与归档。
+        if (Interlocked.CompareExchange(ref diagnosticRunning, 1, 0) != 0) return;
+        var diagnosticProcess = new Process { StartInfo = new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "localWorker.exe"))
+        {
+            UseShellExecute = false, CreateNoWindow = true,
+            Arguments = "--nativeDiagnostic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(serializer.Serialize(data))),
+            WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+        }, EnableRaisingEvents = true };
+        diagnosticProcess.Exited += (sender, args) => { Interlocked.Exchange(ref diagnosticRunning, 0); diagnosticProcess.Dispose(); };
+        try { diagnosticProcess.Start(); }
+        catch { diagnosticProcess.Dispose(); Interlocked.Exchange(ref diagnosticRunning, 0); }
     }
 
     private bool send(object message)
     {
         try { if (worker != null && !worker.HasExited) { worker.StandardInput.WriteLine(serializer.Serialize(message)); return true; } }
-        catch (Exception error) { status = "本地进程通信失败：" + error.Message; }
+        catch (Exception error) { reportDiagnostic("nativeSendFailed", error); status = "本地进程通信失败：" + error.Message; }
         return false;
     }
 
@@ -232,6 +284,11 @@ internal sealed class trayContext : ApplicationContext
         {
             var message = serializer.Deserialize<Dictionary<string, object>>(line);
             string type = value(message, "type");
+            if (type == "logFailure")
+            {
+                status = "诊断日志写入或归档失败，请检查磁盘空间与目录权限。错误码：" + value(message, "code");
+                icon.ShowBalloonTip(8000, "UnionFlfow 日志", status, ToolTipIcon.Warning);
+            }
             if (type == "chat")
             {
                 string role = value(message, "role");
@@ -263,7 +320,7 @@ internal sealed class trayContext : ApplicationContext
                 if (prompts.TryGetValue(value(message, "id"), out prompt)) prompt.Close();
             }
         }
-        catch (Exception error) { status = "消息处理失败：" + error.Message; }
+        catch (Exception error) { reportDiagnostic("nativeMessageFailed", error); status = "消息处理失败：" + error.Message; }
     }
 
     private void showConfirmation(string id, string title, string detail)

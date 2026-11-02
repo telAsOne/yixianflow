@@ -7,10 +7,11 @@ import { z } from "zod";
 import { fileTransferRequest, transferBatchMaxBytes, transferFileMaxBytes, type LocalComputerRequest } from "./protocol";
 import { fileRevision, localPath } from "./operations";
 import { deviceRequest } from "./connection";
+import { logEvent, logError, type LogContext } from "./logger";
 
-export async function remoteFiles(request: Extract<LocalComputerRequest, { action: "projects" | "upload" | "download" }>, server: URL, token: string, signal: AbortSignal) {
+export async function remoteFiles(request: Extract<LocalComputerRequest, { action: "projects" | "upload" | "download" }>, server: URL, token: string, signal: AbortSignal, context?: LogContext) {
   signal.throwIfAborted();
-  if (request.action === "projects") return deviceRequest(server, token, "projects", undefined, signal, "GET");
+  if (request.action === "projects") return deviceRequest(server, token, "projects", undefined, signal, "GET", context);
   const files: { path: string; target: string; size?: number; revision?: string }[] = [];
   let total = 0;
   const targets = new Set<string>();
@@ -33,16 +34,21 @@ export async function remoteFiles(request: Extract<LocalComputerRequest, { actio
   }
   const input = fileTransferRequest.parse({ ...request, files: files.map(({ path, target, ...file }) => ({ path, target, ...("size" in file ? { size: file.size } : {}) })) });
   const plan = z.strictObject({ id: z.uuid(), files: z.array(z.strictObject({ path: z.string(), target: z.string(), size: z.number().int().min(0).max(transferFileMaxBytes) })).min(1).max(20) })
-    .parse(await deviceRequest(server, token, "transfer", input, signal));
+    .parse(await deviceRequest(server, token, "transfer", input, signal, "POST", context));
   if (plan.files.length !== files.length || plan.files.some((file, index) => file.path !== files[index].path || file.target !== files[index].target)
     || plan.files.reduce((sum, file) => sum + file.size, 0) > transferBatchMaxBytes) throw new Error("平台返回的传输清单与本次操作不一致");
   const results: { path: string; target: string; ok: boolean; size?: number; error?: string }[] = [];
+  void logEvent("info", "transferPrepared", { ...context, transferId: plan.id, action: request.action, fileCount: files.length, bytes: plan.files.reduce((sum, file) => sum + file.size, 0) });
   try {
     for (let index = 0; index < files.length; index++) {
       if (signal.aborted) break;
       const file = plan.files[index];
       const url = new URL(`api/localHelper/device/${request.action}`, server);
       url.search = new URLSearchParams({ id: plan.id, index: String(index) }).toString();
+      const started = Date.now();
+      let httpStatus: number | undefined;
+      let bytes = 0;
+      void logEvent("info", "fileTransferStarted", { ...context, transferId: plan.id, action: request.action, index, bytes: file.size });
       try {
         if (request.action === "upload") {
           const handle = await open(file.path, "r");
@@ -56,15 +62,17 @@ export async function remoteFiles(request: Extract<LocalComputerRequest, { actio
               headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream", "Content-Length": String(file.size) },
               body: Readable.toWeb(stream) as ReadableStream<Uint8Array> });
             const result = await response.json() as { code?: number; message?: string };
+            httpStatus = response.status;
             if (!response.ok || result.code !== 200) throw new Error(result.message || `上传失败（HTTP ${response.status}）`);
             if (fileRevision(await handle.stat()) !== original.revision) throw new Error("上传期间源文件已变化，请核对服务器文件，未自动重传");
+            bytes = file.size;
           } finally { stream?.destroy(); await handle.close(); }
         } else {
           const temp = join(dirname(file.target), `.helper${randomUUID()}.part`);
           try {
             const response = await fetch(url, { redirect: "error", headers: { Authorization: `Bearer ${token}` }, signal });
+            httpStatus = response.status;
             if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error(`下载失败（HTTP ${response.status}）`); }
-            let bytes = 0;
             await pipeline(Readable.fromWeb(response.body), new Transform({ transform(chunk, _encoding, done) {
               bytes += chunk.length;
               done(bytes > file.size ? new Error("下载内容超过本次允许的大小") : null, chunk);
@@ -77,12 +85,15 @@ export async function remoteFiles(request: Extract<LocalComputerRequest, { actio
           }
         }
         results.push({ path: file.path, target: file.target, size: file.size, ok: true });
+        void logEvent("info", "fileTransferCompleted", { ...context, transferId: plan.id, action: request.action, index, httpStatus, bytes, durationMs: Date.now() - started });
       } catch (error) {
+        void logError("fileTransferFailed", error, { ...context, transferId: plan.id, action: request.action, index, httpStatus, bytes, durationMs: Date.now() - started, cancelled: signal.aborted });
         results.push({ path: file.path, target: file.target, ok: false, error: error instanceof Error ? error.message : String(error) });
       }
     }
   } finally {
-    await deviceRequest(server, token, "finishTransfer", { id: plan.id }, AbortSignal.timeout(10000)).catch(() => {});
+    await deviceRequest(server, token, "finishTransfer", { id: plan.id }, AbortSignal.timeout(10000), "POST", context)
+      .catch(error => { void logError("transferReleaseFailed", error, { ...context, transferId: plan.id }); });
   }
   return { files: results, completed: results.filter(file => file.ok).length, failed: results.filter(file => !file.ok).length,
     remaining: files.length - results.length, cancelled: signal.aborted };

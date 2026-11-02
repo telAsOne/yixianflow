@@ -67,6 +67,7 @@ for (const [name, url] of [
   await writeAtomic(join(bundle, "licenses", name), content);
 }
 await copyFile(join(root, "LICENSE"), join(bundle, "licenses/projectLicense.txt"));
+await copyFile(join(dirname(Bun.resolveSync("fflate", import.meta.dirname)), "../LICENSE"), join(bundle, "licenses/fflateLicense.txt"));
 await copyFile(join(root, "docs/localHelperWindows.md"), join(bundle, "readme.md"));
 const files = ["unionFlfowHelper.exe", "localWorker.exe", "tools/ffmpeg.exe", "tools/ffprobe.exe"];
 const hashes = Object.fromEntries(await Promise.all(files.map(async path => [path, createHash("sha256").update(await readFile(join(bundle, path))).digest("hex")])));

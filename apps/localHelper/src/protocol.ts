@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const helperVersion = "0.2.0";
+export const helperVersion = "0.2.1";
 export const fileBatchLimit = 20;
 export const transferFileMaxBytes = 100 * 1024 * 1024;
 export const transferBatchMaxBytes = 200 * 1024 * 1024;
