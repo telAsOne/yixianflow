@@ -3,7 +3,7 @@
     <aside class="sideBar" aria-label="工作台导航">
       <div class="brand">
         <img class="brandLogo" :src="logoUrl" alt="" aria-hidden="true" />
-        <div><span class="brandName">Yixianflow</span><span class="brandCaption">AI 影像创作空间</span></div>
+        <div><span class="brandName">UnionFlfow</span><span class="brandCaption">AI 影像创作空间</span></div>
       </div>
       <el-button class="newProjectButton" type="primary" :icon="IconPlus" :disabled="creating || opening" @click="createProject(false)">新建项目</el-button>
       <nav class="sideNav" aria-label="创作导航">
@@ -133,7 +133,7 @@ import modelPopover from "@/components/modelPopover.vue";
 import attachmentList from "@/components/agent/attachmentList.vue";
 import { createPastedTextFile, readTextAttachment } from "@/components/agent/textAttachments";
 import type { AgentAttachment } from "@/components/agent/types";
-import logoUrl from "@toonflow/assets/logo.svg";
+import logoUrl from "@toonflow/assets/unionIcon.svg";
 import { useWorkspaceStore, type Project } from "@/stores/workspace";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { accountView, signInVisible } from "@/stores/account";
@@ -338,8 +338,6 @@ async function createProject(fromPrompt = true) {
       .brandLogo {
         width: 28px;
         height: 28px;
-
-        .dark & { filter: invert(1); }
       }
 
       .brandName { display: block; font-size: 17px; font-weight: 650; letter-spacing: -0.03em; }

@@ -17,14 +17,14 @@
       </div>
 
       <footer class="pageFooter">
-        <p>© {{ new Date().getFullYear() }} Toonflow · 保留所有权利。</p>
+        <p>© {{ new Date().getFullYear() }} UnionFlfow · 保留所有权利。</p>
       </footer>
     </section>
     <div class="artPanel" aria-hidden="true">
       <bg class="artBg" />
       <div class="artBrand">
-        <span class="artLogo" v-html="logoSvg" />
-        <span class="artName">Toonflow</span>
+        <img class="artLogo" :src="logoUrl" alt="" />
+        <span class="artName">UnionFlfow</span>
       </div>
     </div>
     <mobileConnect v-model="mobileConnectVisible" />
@@ -38,7 +38,7 @@ import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { IconQrcode, IconDeviceDesktop } from "@tabler/icons-vue";
 import { useHelloStore } from "@/stores/hello";
-import logoSvg from "@toonflow/assets/logo.svg?raw";
+import logoUrl from "@toonflow/assets/unionIcon.svg";
 import bg from "./bg.vue";
 import languageSelect from "@/components/languageSelect.vue";
 import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib/mobile";
@@ -234,17 +234,7 @@ onBeforeUnmount(() => window.removeEventListener("toonflow:signed-in", completeS
       .artLogo {
         width: 44px;
         height: 44px;
-        line-height: 0;
-
-        :deep(svg) {
-          display: block;
-          width: 100%;
-          height: 100%;
-        }
-
-        :deep(path) {
-          fill: #fff;
-        }
+        object-fit: contain;
       }
 
       .artName {

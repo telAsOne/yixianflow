@@ -1,9 +1,9 @@
 <template>
   <div class="about">
     <div class="brand">
-      <div class="brandMark"><img class="brandLogo" :src="logoUrl" alt="Toonflow Logo" /></div>
+      <div class="brandMark"><img class="brandLogo" :src="logoUrl" alt="UnionFlfow Logo" /></div>
       <div class="brandInfo">
-        <h3>Toonflow</h3>
+        <h3>UnionFlfow</h3>
         <div class="brandMeta">
           <span v-if="currentVersion">v{{ currentVersion }}</span>
           <el-tag v-if="clientBuild?.channel || snapshot?.channel" type="info" size="small" round>{{ clientBuild?.channel || snapshot?.channel }}</el-tag>
@@ -24,7 +24,7 @@
             前往 GitHub 更新
           </el-button>
           <template v-else>
-            <el-tag size="small" type="info">GitHub · Yixianflow</el-tag>
+            <el-tag size="small" type="info">GitHub · UnionFlfow</el-tag>
             <el-badge isDot :hidden="!hasDesktopUpdate">
               <el-button size="small" type="primary" plain :loading="checking" @click="openUpdate">
                 {{ snapshot?.installFailure ? "查看更新失败原因" : snapshot?.updateReady ? "更新已就绪" : snapshot?.updating || action === "download" ? "查看更新进度" : "检查更新" }}
@@ -175,7 +175,7 @@ import {
   IconBrandWechat,
   IconQrcode,
 } from "@tabler/icons-vue";
-import logoUrl from "@toonflow/assets/logo.svg";
+import logoUrl from "@toonflow/assets/unionIcon.svg";
 import {
   desktopUpdateSnapshot as snapshot,
   desktopUpdateError as updateError,
@@ -287,10 +287,6 @@ async function runUpdate(nextAction: "read" | "check" | "download" | "apply") {
         width: 42px;
         height: 42px;
         object-fit: contain;
-
-        .dark & {
-          filter: invert(1);
-        }
       }
     }
 
