@@ -11,11 +11,11 @@ export const toolsDirectory = resolve(dirname(process.execPath), "tools");
 const windowsDirectory = process.env.SystemRoot || "C:\\Windows";
 const powershell = join(windowsDirectory, "System32/WindowsPowerShell/v1.0/powershell.exe");
 
-function fileRevision(info: Stats) {
+export function fileRevision(info: Stats) {
   return createHash("sha256").update(`${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`).digest("hex");
 }
 
-async function localPath(value: string, missing = false) {
+export async function localPath(value: string, missing = false) {
   if (!/^[a-z]:[\\/]/i.test(value) || /[\x00-\x1f]/.test(value)) throw new Error("只支持 Windows 本机磁盘绝对路径");
   if (value.slice(3).split(/[\\/]/).some(part => /[:<>"|?*]|[. ]$/.test(part)
     || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) throw new Error("文件路径无效");
@@ -76,8 +76,21 @@ export async function runProgram(executable: string, args: string[], cwd: string
   });
 }
 
-export async function operate(request: LocalComputerRequest, signal: AbortSignal): Promise<unknown> {
+export async function operate(request: Exclude<LocalComputerRequest, { action: "projects" | "upload" | "download" }>, signal: AbortSignal, readLimit = 65536): Promise<unknown> {
   signal.throwIfAborted();
+  if (request.action === "readBatch") {
+    const files = [];
+    const limit = Math.min(65536, Math.floor(256 * 1024 / request.files.length));
+    for (const file of request.files) {
+      signal.throwIfAborted();
+      try { files.push({ path: file.path, ok: true, result: await operate({ ...file, action: "read" }, signal, limit) }); }
+      catch (error) {
+        signal.throwIfAborted();
+        files.push({ path: file.path, ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { files, completed: files.filter(file => file.ok).length, failed: files.filter(file => !file.ok).length };
+  }
   if (request.action === "status") {
     const drives = (await Promise.all(Array.from({ length: 26 }, async (_, index) => {
       const path = `${String.fromCharCode(65 + index)}:\\`;
@@ -128,7 +141,7 @@ export async function operate(request: LocalComputerRequest, signal: AbortSignal
       if (offset && !request.revision) throw new Error("续读需要提供首次读取的 revision");
       if (request.revision && request.revision !== revision) throw new Error("文件已变化，请从头重新读取");
       if (offset > before.size) throw new Error("读取偏移超过文件大小");
-      const buffer = Buffer.alloc(Math.min(65536, before.size - offset));
+      const buffer = Buffer.alloc(Math.min(readLimit, before.size - offset));
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
       let bytes = buffer.subarray(0, bytesRead);
       let content: string;

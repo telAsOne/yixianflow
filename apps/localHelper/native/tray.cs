@@ -32,7 +32,7 @@ internal sealed class trayContext : ApplicationContext
     private readonly JavaScriptSerializer serializer = new JavaScriptSerializer();
     private readonly NotifyIcon icon;
     private readonly ToolStripMenuItem pauseItem = new ToolStripMenuItem("暂停接收任务");
-    private readonly ToolStripMenuItem automaticItem = new ToolStripMenuItem("本次运行自动执行写入和命令");
+    private readonly ToolStripMenuItem automaticItem = new ToolStripMenuItem("本次运行自动执行文件操作和命令");
     private readonly ToolStripMenuItem startupItem = new ToolStripMenuItem("开机启动");
     private readonly Dictionary<string, Form> prompts = new Dictionary<string, Form>();
     private Process worker;
@@ -42,6 +42,13 @@ internal sealed class trayContext : ApplicationContext
     private string code = "连接后显示";
     private string server = "https://yixian.lol/flow/";
     private string owner = "尚未绑定";
+    private Form chatWindow;
+    private TextBox chatLog;
+    private TextBox chatInput;
+    private Button chatSend;
+    private Button chatStop;
+    private Button chatNew;
+    private bool chatRunning;
 
     public trayContext()
     {
@@ -50,6 +57,7 @@ internal sealed class trayContext : ApplicationContext
         icon = new NotifyIcon { Text = "UnionFlfow 本地助手", Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath), Visible = true };
         var menu = new ContextMenuStrip();
         menu.Items.Add("打开 UnionFlfow", null, (sender, args) => Process.Start(new ProcessStartInfo(server) { UseShellExecute = true }));
+        menu.Items.Add("本机 AI 助手", null, (sender, args) => showChat());
         menu.Items.Add("状态与配对码", null, (sender, args) => showStatus());
         menu.Items.Add("复制配对码", null, (sender, args) => Clipboard.SetText(code.Replace("-", "")));
         menu.Items.Add(new ToolStripSeparator());
@@ -57,7 +65,7 @@ internal sealed class trayContext : ApplicationContext
         automaticItem.Click += (sender, args) =>
         {
             bool allow = !automaticItem.Checked;
-            if (allow && MessageBox.Show("仅在你信任当前账户与本轮 AI 操作时开启。\n\n开启后，AI 可以自动写入和删除文件、执行 PowerShell、安装软件，权限与当前 Windows 用户相同。\n本设置在退出助手后失效，可随时暂停或关闭。\n\n是否开启？", "允许自动执行", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (allow && MessageBox.Show("仅在你信任当前账户与本轮 AI 操作时开启。\n\n开启后，AI 可以自动写入、上传下载和删除文件、执行 PowerShell、安装软件，权限与当前 Windows 用户相同。\n本设置在退出助手后失效，可随时暂停或关闭。\n\n是否开启？", "允许自动执行", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             send(new { type = "automatic", value = allow });
         };
         menu.Items.Add(pauseItem);
@@ -86,7 +94,7 @@ internal sealed class trayContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (sender, args) => ExitThread());
         icon.ContextMenuStrip = menu;
-        icon.DoubleClick += (sender, args) => showStatus();
+        icon.DoubleClick += (sender, args) => showChat();
         startWorker();
     }
 
@@ -98,7 +106,54 @@ internal sealed class trayContext : ApplicationContext
 
     private void showStatus()
     {
-        MessageBox.Show("状态：" + status + "\n账户：" + owner + "\n服务：" + server + "\n\n配对码：" + code + "\n\n网页：设置 → 本地助手 → 输入配对码。\n请保持 AI 对话连接；取消对话会取消本机任务。", "UnionFlfow 本地助手", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show("状态：" + status + "\n账户：" + owner + "\n服务：" + server + "\n\n配对码：" + code + "\n\n网页：设置 → 本地助手 → 输入配对码。\n网页任务需保持原对话连接；托盘聊天可单独使用。", "UnionFlfow 本地助手", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void showChat()
+    {
+        if (chatWindow != null) { chatWindow.Show(); chatWindow.Activate(); return; }
+        chatWindow = new Form { Text = "UnionFlow · 本机 AI 助手", Width = 820, Height = 650,
+            StartPosition = FormStartPosition.CenterScreen, Font = new Font("Microsoft YaHei UI", 10), AutoScaleMode = AutoScaleMode.Dpi };
+        chatLog = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
+            BackColor = SystemColors.Window, AccessibleName = "本机智能体对话记录" };
+        chatInput = new TextBox { Multiline = true, Height = 100, MaxLength = 32000, Dock = DockStyle.Bottom,
+            ScrollBars = ScrollBars.Vertical, AccessibleName = "发送给本机智能体的消息" };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 55, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
+        chatSend = new Button { Text = "发送", Width = 100, Height = 32, Enabled = !chatRunning };
+        chatStop = new Button { Text = "停止", Width = 100, Height = 32, Enabled = chatRunning };
+        chatNew = new Button { Text = "新对话", Width = 100, Height = 32, Enabled = !chatRunning };
+        chatSend.Click += (sender, args) =>
+        {
+            string text = chatInput.Text.Trim();
+            if (text.Length == 0 || chatRunning) return;
+            appendChat("我", text);
+            chatInput.Clear();
+            setChatRunning(true);
+            if (!send(new { type = "chat", text = text })) { setChatRunning(false); appendChat("提示", "本地进程未连接，请从托盘重新连接进程。"); }
+        };
+        chatStop.Click += (sender, args) => send(new { type = "chatCancel" });
+        chatNew.Click += (sender, args) => send(new { type = "chatReset" });
+        actions.Controls.Add(chatSend); actions.Controls.Add(chatStop); actions.Controls.Add(chatNew);
+        chatWindow.Controls.Add(chatLog); chatWindow.Controls.Add(chatInput); chatWindow.Controls.Add(actions);
+        chatWindow.FormClosing += (sender, args) => { if (!closing) { args.Cancel = true; chatWindow.Hide(); } };
+        chatWindow.Show(); chatInput.Focus();
+    }
+
+    private void appendChat(string role, string text)
+    {
+        if (chatLog == null) return;
+        // ACT: 窗口最多保留约 262144 字符，不把本机文件正文写入聊天日志文件。
+        if (chatLog.TextLength + text.Length > 262144) chatLog.Text = chatLog.Text.Substring(Math.Max(0, chatLog.TextLength - 131072));
+        chatLog.AppendText(role + "：" + text + Environment.NewLine + Environment.NewLine);
+    }
+
+    private void setChatRunning(bool running)
+    {
+        chatRunning = running;
+        if (chatSend == null) return;
+        chatSend.Enabled = !running;
+        chatStop.Enabled = running;
+        chatNew.Enabled = !running;
     }
 
     private void startWorker()
@@ -139,6 +194,8 @@ internal sealed class trayContext : ApplicationContext
                 {
                     status = "本地进程已停止，请从托盘重新连接";
                     automaticItem.Checked = false;
+                    setChatRunning(false);
+                    appendChat("提示", "本地进程已停止，请重新连接；不会自动重新发送消息或执行操作。");
                     icon.ShowBalloonTip(5000, "UnionFlfow 本地助手", status, ToolTipIcon.Warning);
                     foreach (var form in new List<Form>(prompts.Values)) form.Close();
                 }));
@@ -156,10 +213,11 @@ internal sealed class trayContext : ApplicationContext
         catch (Exception error) { status = error.Message; MessageBox.Show(error.Message, "本地助手启动失败"); }
     }
 
-    private void send(object message)
+    private bool send(object message)
     {
-        try { if (worker != null && !worker.HasExited) worker.StandardInput.WriteLine(serializer.Serialize(message)); }
+        try { if (worker != null && !worker.HasExited) { worker.StandardInput.WriteLine(serializer.Serialize(message)); return true; } }
         catch (Exception error) { status = "本地进程通信失败：" + error.Message; }
+        return false;
     }
 
     private string value(Dictionary<string, object> message, string key)
@@ -174,6 +232,14 @@ internal sealed class trayContext : ApplicationContext
         {
             var message = serializer.Deserialize<Dictionary<string, object>>(line);
             string type = value(message, "type");
+            if (type == "chat")
+            {
+                string role = value(message, "role");
+                appendChat(role == "assistant" ? "AI" : role == "tool" ? "本机工具" : "提示", value(message, "text"));
+                if (value(message, "done") == "True") setChatRunning(false);
+            }
+            if (type == "chatState") setChatRunning(value(message, "running") == "True");
+            if (type == "chatReset") { if (chatLog != null) chatLog.Clear(); }
             if (type == "status")
             {
                 status = value(message, "message");
@@ -229,6 +295,7 @@ internal sealed class trayContext : ApplicationContext
         if (worker != null && !worker.HasExited && !worker.WaitForExit(5000)) worker.Kill();
         if (processJob != IntPtr.Zero) CloseHandle(processJob);
         icon.Visible = false; icon.Dispose(); dispatcher.Dispose();
+        if (chatWindow != null) chatWindow.Dispose();
         if (worker != null) worker.Dispose();
         base.ExitThreadCore();
     }

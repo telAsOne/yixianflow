@@ -5,7 +5,11 @@ import { getWebOrigin } from "@/utils/web/store";
 import { refreshConfig } from "@/utils/account";
 
 const publicRoutes = new Set(["GET /api/runtime", "GET /api/account/get", "GET /api/account/callback", "POST /api/account/start", "POST /api/account/logout", "GET /api/settings/get"]);
-const helperDeviceRoutes = new Set(["POST /api/localHelper/device/register", "POST /api/localHelper/device/poll", "POST /api/localHelper/device/result", "POST /api/localHelper/device/revoke"]);
+const helperDeviceRoutes = new Set([
+  "POST /api/localHelper/device/register", "POST /api/localHelper/device/poll", "POST /api/localHelper/device/result", "POST /api/localHelper/device/revoke",
+  "POST /api/localHelper/device/chat", "GET /api/localHelper/device/projects", "POST /api/localHelper/device/transfer",
+  "POST /api/localHelper/device/upload", "GET /api/localHelper/device/download", "POST /api/localHelper/device/finishTransfer",
+]);
 const privateRoutes = new Set([
   "GET /api/localHelper/status", "GET /api/localHelper/download", "POST /api/localHelper/bind", "PUT /api/localHelper/select", "DELETE /api/localHelper/revoke",
   "GET /api/projects/list", "POST /api/projects/create", "PUT /api/projects/rename", "PUT /api/settings/save",

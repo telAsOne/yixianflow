@@ -94,6 +94,7 @@ export async function createApp({
   const { default: webRequest } = await import("@/lib/webRequest");
   app.use(webRequest);
   app.use("/a2a", express.json({ limit: "2mb" }));
+  app.use(["/api/localHelper/device/chat", "/api/localHelper/device/transfer"], express.json({ limit: "1mb" }));
   app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "512mb" }));
   // ACT: 源码、Base64 安装包、画布快照和含媒体的对话保留原上限，其余 JSON 限制为 10 MB。
   app.use([

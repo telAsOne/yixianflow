@@ -3,7 +3,7 @@
     <section class="downloadSection">
       <div>
         <h3>Windows 本地助手</h3>
-        <p>启动后驻留系统托盘，让网页 AI 读取本机文件、调用本地程序、运行命令和安装工具。</p>
+        <p>驻留系统托盘，接收网页 AI 的本机任务，也可双击图标单独聊天，复用当前账户的文本模型与 Key。</p>
         <p>Windows 10 / 11，64 位。解压后运行 unionFlfowHelper.exe，已包含 FFmpeg 和 ffprobe。</p>
       </div>
       <a v-if="status?.downloadAvailable" class="downloadLink" :href="downloadUrl" download="unionFlfowHelper.zip">下载 Windows 版 · {{ status.version }}</a>
@@ -36,7 +36,7 @@
       </el-radio-group>
     </section>
 
-    <p class="permissionInfo">本机确认连接后，读取的文件内容会用于网页 AI 对话。写入、删除、命令和安装默认逐次在本机确认；可在托盘开启本次运行的自动执行，随时暂停或解除绑定。操作权限与当前 Windows 用户相同。</p>
+    <p class="permissionInfo">批量读取、上传和下载每次最多 20 个文件；传输单文件最多 100 MiB、整批最多 200 MiB，已有文件不覆盖。本机确认连接后，按需读取的内容用于 AI 对话；写入、传输、删除、命令和安装默认逐次确认，可在托盘开启本次运行的自动执行，随时暂停或解除绑定。</p>
     <el-alert v-if="notice" :title="notice" type="success" :closable="false" showIcon />
     <el-alert v-if="failure" :title="failure" type="error" :closable="false" showIcon />
   </div>

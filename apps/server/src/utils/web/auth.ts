@@ -42,22 +42,26 @@ export async function readWebSession(req: Request) {
     WHERE hash = ${sessionHash} AND "expiresAt" > CURRENT_TIMESTAMP
       AND "seenAt" > CURRENT_TIMESTAMP - INTERVAL '30 minutes' RETURNING "userId"`;
   if (!session) return;
-  const [record] = await sql`SELECT credentials, settings FROM yixianflow.users WHERE id = ${session.userId}`;
-  if (!record) return;
-  const baseUrl = getBaseUrl();
-  const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${session.userId}`)));
-  if (account.baseUrl !== baseUrl || account.user.id !== session.userId) throw new Error("服务端账户凭据不匹配");
-  let accountInfo;
   try {
-    accountInfo = await requireWebAdmin(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0");
-    account.user = accountInfo.user;
+    const account = await readWebAccount(session.userId, req.app.locals.appVersion || process.env.appVersion || "2.0.0");
+    return account && { sessionHash, ...account };
   } catch (error) {
     const status = (error as { status?: number }).status;
     if (status !== 401 && status !== 403) throw error;
     await sql`DELETE FROM yixianflow.sessions WHERE hash = ${sessionHash}`;
-    return;
   }
-  return { sessionHash, account, settings: record.settings as Record<string, unknown>, accountInfo };
+}
+
+export async function readWebAccount(userId: number, version: string) {
+  const sql = getWebDatabase();
+  const [record] = await sql`SELECT credentials, settings FROM yixianflow.users WHERE id = ${userId}`;
+  if (!record) return;
+  const baseUrl = getBaseUrl();
+  const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${userId}`)));
+  if (account.baseUrl !== baseUrl || account.user.id !== userId) throw new Error("服务端账户凭据不匹配");
+  const accountInfo = await requireWebAdmin(account, version);
+  account.user = accountInfo.user;
+  return { account, settings: record.settings as Record<string, unknown>, accountInfo };
 }
 
 export async function startWebLogin(req: Request, res: Response, screen: "signin" | "signup") {

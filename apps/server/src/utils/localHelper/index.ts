@@ -3,10 +3,13 @@ import { setTimeout } from "node:timers/promises";
 import { resolve, dirname } from "node:path";
 import { stat } from "@toonflow/file";
 import type { Request } from "express";
-import { helperVersion, type LocalComputerRequest, type LocalHelperDevice, type LocalHelperJob, type LocalHelperResult, type LocalHelperStatus } from "@toonflow/local-helper/protocol";
+import { helperVersion, localComputerRequest, type LocalComputerRequest, type LocalHelperDevice, type LocalHelperJob, type LocalHelperResult, type LocalHelperStatus } from "@toonflow/local-helper/protocol";
 import { isWebMode, requireWebAccount, webContext } from "@/lib/webContext";
 import { getWebDatabase, hashWebToken } from "@/utils/web/store";
 import conf from "@/utils/conf";
+
+export { chat } from "./chat";
+export { deviceProjects, prepareTransfer, uploadFile, downloadFile, finishTransfer } from "./files";
 
 const registrationLimits = new Map<string, { count: number; until: number }>();
 
@@ -101,6 +104,15 @@ export async function authenticateDevice(req: Request) {
   return device as { id: string; ownerId: number | null; ownerName: string | null };
 }
 
+export async function requireReadyDevice(req: Request) {
+  const device = await authenticateDevice(req);
+  const sql = getWebDatabase();
+  const [ready] = await sql`SELECT id FROM yixianflow.localDevices WHERE id = ${device.id} AND "ownerId" = ${device.ownerId}
+    AND NOT revoked AND approved AND NOT paused AND "lastSeenAt" > CURRENT_TIMESTAMP - INTERVAL '45 seconds'`;
+  if (!ready || !device.ownerId) throw unavailable("本地助手尚未授权、已暂停或离线");
+  return { ...device, ownerId: device.ownerId };
+}
+
 export async function disconnectDevice(req: Request) {
   const device = await authenticateDevice(req);
   if (device.ownerId !== null) return revokeDevice(device.id, device.ownerId);
@@ -156,7 +168,7 @@ export async function completeDeviceCall(req: Request, input: LocalHelperResult)
   const device = await authenticateDevice(req);
   const sql = getWebDatabase();
   const [call] = await sql`UPDATE yixianflow.localCalls AS call SET status = ${input.error ? "failed" : "completed"},
-    result = ${JSON.stringify(input.result ?? null)}::jsonb, error = ${input.error ?? null}, "finishedAt" = CURRENT_TIMESTAMP
+    result = ${input.result ?? null}::jsonb, error = ${input.error ?? null}, "finishedAt" = CURRENT_TIMESTAMP
     WHERE id = ${input.id} AND "deviceId" = ${device.id} AND "ownerId" = ${device.ownerId} AND nonce = ${input.nonce}
       AND status = 'running' AND "expiresAt" > CURRENT_TIMESTAMP
       AND EXISTS (SELECT 1 FROM yixianflow.sessions WHERE hash = call."sessionHash" AND "userId" = call."ownerId"
@@ -180,9 +192,11 @@ export async function getSelectedDevice() {
 
 export async function callDevice(device: NonNullable<Awaited<ReturnType<typeof getSelectedDevice>>>, request: LocalComputerRequest, signal?: AbortSignal) {
   signal?.throwIfAborted();
+  request = localComputerRequest.parse(request);
   const sql = getWebDatabase();
   const id = crypto.randomUUID();
-  const timeout = ("timeoutSeconds" in request ? request.timeoutSeconds ?? (request.action === "install" ? 1200 : 60) : 60) * 1000 + 180000;
+  const timeout = ("timeoutSeconds" in request ? request.timeoutSeconds ?? (request.action === "install" ? 1200 : 60)
+    : ["upload", "download"].includes(request.action) ? 900 : 60) * 1000 + 180000;
   await sql.begin(async transaction => {
     const [available] = await transaction`SELECT id FROM yixianflow.localDevices
       WHERE id = ${device.id} AND "ownerId" = ${device.ownerId} AND NOT revoked AND approved AND NOT paused
@@ -196,7 +210,7 @@ export async function callDevice(device: NonNullable<Awaited<ReturnType<typeof g
     if (queue.size >= 20) throw unavailable("本地任务队列已满，请等待现有任务完成", 429);
     await transaction`DELETE FROM yixianflow.localCalls WHERE "deviceId" = ${device.id} AND "finishedAt" < CURRENT_TIMESTAMP - INTERVAL '1 day'`;
     await transaction`INSERT INTO yixianflow.localCalls (id, "deviceId", "ownerId", "sessionHash", request, "expiresAt")
-      VALUES (${id}, ${device.id}, ${device.ownerId}, ${device.sessionHash}, ${JSON.stringify(request)}::jsonb, ${new Date(Date.now() + timeout)})`;
+      VALUES (${id}, ${device.id}, ${device.ownerId}, ${device.sessionHash}, ${request}::jsonb, ${new Date(Date.now() + timeout)})`;
   });
   let finished = false;
   try {
