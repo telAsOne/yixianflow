@@ -43,7 +43,11 @@ export default async function webRequest(req: Request, res: Response, next: Next
     && (req.get("origin") !== origin || req.get("x-toonflow-workspace") !== "1"))
     throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
   const route = `${req.method} ${req.path}`;
-  const session = await readWebSession(req);
+  // 平台暂时不可用时公开接口按未登录处理，页面仍可启动和退出；其他接口照常拒绝。
+  const session = await readWebSession(req).catch((error: { status?: number }) => {
+    if (error.status === 503 && publicRoutes.has(route)) return undefined;
+    throw error;
+  });
   const expectedUser = req.get("x-yixianflow-user") ?? (req.path === "/api/assets/read" && typeof req.query.userId === "string" ? req.query.userId : undefined);
   if (expectedUser && session && expectedUser !== String(session.account.user.id))
     throw Object.assign(new Error("账户已切换或登录已过期，请刷新页面后继续"), { status: 409 });

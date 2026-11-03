@@ -37,12 +37,17 @@ export async function chat(req: Request) {
         await response.body?.cancel();
         throw Object.assign(new Error(`文本模型请求失败（HTTP ${response.status}）`), { status: 502 });
       }
-      const body = await response.json() as { choices?: { message?: { role?: string; content?: unknown; reasoning_content?: string; tool_calls?: unknown }; finish_reason?: string }[] };
+      const body = await response.json() as { choices?: { message?: { role?: string; content?: unknown; reasoning_content?: string;
+        tool_calls?: { id?: unknown; type?: unknown; function?: { name?: unknown; arguments?: unknown } }[] | null }; finish_reason?: string }[] };
       const choice = body.choices?.[0];
       if (choice?.finish_reason === "length") throw new Error("模型回复已达到长度上限，未执行截断的工具请求");
       const raw = choice?.message;
+      // 网关常在工具调用上附加 index 等字段，只保留协议字段再严格校验。
+      const toolCalls = Array.isArray(raw?.tool_calls)
+        ? raw.tool_calls.map(call => ({ id: call?.id, type: call?.type, function: { name: call?.function?.name, arguments: call?.function?.arguments } }))
+        : raw?.tool_calls;
       const message = helperChatMessage.parse({ role: raw?.role, content: raw?.content ?? null,
-        ...(raw?.tool_calls != null ? { tool_calls: raw.tool_calls } : {}),
+        ...(toolCalls != null ? { tool_calls: toolCalls } : {}),
         ...(raw?.reasoning_content ? { reasoning_content: raw.reasoning_content } : {}) });
       if (message.role !== "assistant" || (!message.content?.trim() && !message.tool_calls?.length)) throw new Error("模型没有返回有效回复");
       return { message, model: model.label };

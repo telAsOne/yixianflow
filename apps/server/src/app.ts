@@ -82,6 +82,8 @@ export async function createApp({
   if (dataDirectory && agentsRoot) await initializePlugins(resolve(dataDirectory, "agents"), agentsRoot);
   const app = express();
   app.locals.appVersion = appVersion;
+  // 网页版只经同机或容器网络内的反向代理访问，按代理转发的地址识别客户端。
+  if (isWebMode()) app.set("trust proxy", "loopback, uniquelocal");
 
   if (process.env.NODE_ENV === "dev") {
     await buildRoute();
