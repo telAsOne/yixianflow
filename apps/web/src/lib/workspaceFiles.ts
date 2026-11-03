@@ -27,7 +27,7 @@ function requestMedia(directory: string, path: string) {
       for (let offset = 0; offset < paths.length; offset += 50) {
         const page = paths.slice(offset, offset + 50);
         try {
-          const { data } = await client.post<{ data: (MediaAccess | { path: string; error: string })[] }>("/mediaAccess", { directory, paths: page });
+          const { data } = await client.post<{ data: (MediaAccess | { path: string; error: string })[] }>("/mediaAccess", { directory, paths: page }, { timeout: 15000 });
           const items = new Map(data.data.map(item => [item.path, item]));
           for (const path of page) {
             const item = items.get(path);
@@ -164,10 +164,11 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return data.data;
   }
 
-  function acquireUrl(path: string, mimeType?: string, preview = false) {
+  function acquireUrl(path: string, mimeType?: string, preview = false, refresh = false) {
     const directory = getDirectory();
     const signedMedia = /^(image|video|audio)\//.test(mimeType ?? "") && /\.(png|jpe?g|webp|avif|gif|bmp|svg|apng|mp4|m4v|mov|webm|mkv|avi|ogv|mp3|wav|ogg|opus|flac|m4a|aac)$/i.test(path) && !isMobile;
     const key = JSON.stringify([directory, path, mimeType, signedMedia && preview]);
+    if (refresh) fileUrls.delete(key);
     let entry = fileUrls.get(key);
     if (!entry) {
       const url = signedMedia

@@ -12,7 +12,7 @@
       ref="video"
       class="videoPreview"
       :class="{ nodrag: previewing }"
-      :src="src"
+      :src="playbackSrc"
       :poster="cachedPoster || poster"
       :controls="previewing"
       controlsList="nofullscreen"
@@ -29,12 +29,12 @@
       @ended="playing = false; ended = true"
       @volumechange="readVolume"
       @error="mediaError" />
-    <div v-if="previewing && ended" class="playbackEnded">
-      <el-button type="primary" :icon="IconPlayerPlay" @click="replay">重新播放</el-button>
+    <div v-if="previewing && (ended || failed)" class="playbackEnded">
+      <el-button type="primary" :icon="IconPlayerPlay" :loading="reloading" @click="failed ? togglePlayback() : replay()">{{ failed ? '重试播放' : '重新播放' }}</el-button>
       <el-button @click="closePreview">返回画布</el-button>
     </div>
     <div v-show="!previewing" class="playerControls nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
-      <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="!ready" :aria-label="playing ? '暂停视频' : '播放视频'" :title="playing ? '暂停' : '播放'" @click="togglePlayback" />
+      <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :loading="reloading" :disabled="!playbackSrc || reloading" :aria-label="failed ? '重试播放视频' : playing ? '暂停视频' : '播放视频'" :title="failed ? '重试播放' : playing ? '暂停' : '播放'" @click="togglePlayback" />
       <span class="currentTime">{{ formatTime(currentTime) }}</span>
       <el-slider class="progressSlider" :modelValue="currentTime" :min="0" :max="duration || 1" :step="0.01" :disabled="!ready || !duration" :formatTooltip="formatTime" aria-label="视频播放进度" @input="seek" />
       <span class="durationLabel"><span class="timeSeparator">/</span>{{ formatTime(duration) }}</span>
@@ -72,10 +72,10 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch, type Ref, type
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElDialog, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage, ElPopover, ElSlider } from "element-plus";
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward, IconArrowLeft, IconX, IconMinimize, IconMaximize } from "@tabler/icons-vue";
-import { useNodeFiles } from "@toonflow/nodes-scaffold/runtime";
+import { useNodeFiles, type NodeMediaValue } from "@toonflow/nodes-scaffold/runtime";
 import type { NodeDocumentContext } from "@toonflow/nodes-scaffold/nodeDocument";
 
-const { src, previewSrc, metadata, label = "节点视频" } = defineProps<{ src: string; previewSrc?: string; metadata?: { width?: number; height?: number; duration?: number }; label?: string }>();
+const { src, file, previewSrc, metadata, label = "节点视频" } = defineProps<{ src: string; file?: NodeMediaValue; previewSrc?: string; metadata?: { width?: number; height?: number; duration?: number }; label?: string }>();
 const emit = defineEmits<{ loadedmetadata: [event: Event] }>();
 const video = ref<HTMLVideoElement>();
 const fullscreen = ref(false);
@@ -88,6 +88,15 @@ const closeMediaPreview = inject<ShallowRef<(() => Promise<void>) | undefined> |
 let previousFocus: HTMLElement | undefined;
 let fullscreenExitTime = -Infinity;
 const ready = ref(false);
+const playbackSrc = ref(src);
+const failed = ref(false);
+const reloading = ref(false);
+let sourceRevision = 0;
+let refreshedMedia: { release(): void } | undefined;
+let pendingReload: Promise<void> | undefined;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let automaticallyRetried = false;
+let resumeTime = 0;
 const poster = ref("");
 const cachedPoster = ref("");
 watch(() => previewSrc, (value, _previous, onCleanup) => {
@@ -117,6 +126,16 @@ let captureController: AbortController | undefined;
 watch(() => getCanvas?.()?.id, () => captureController?.abort(), { flush: "sync" });
 watch(() => src, () => {
   captureController?.abort();
+  sourceRevision++;
+  clearTimeout(retryTimer);
+  refreshedMedia?.release();
+  refreshedMedia = undefined;
+  pendingReload = undefined;
+  playbackSrc.value = src;
+  failed.value = false;
+  reloading.value = false;
+  automaticallyRetried = false;
+  resumeTime = 0;
   ready.value = false;
   poster.value = "";
   playing.value = false;
@@ -129,7 +148,12 @@ watch([() => src, () => metadata], () => {
 }, { immediate: true });
 onBeforeUnmount(() => {
   captureController?.abort();
+  sourceRevision++;
+  clearTimeout(retryTimer);
+  refreshedMedia?.release();
   video.value?.pause();
+  video.value?.removeAttribute("src");
+  video.value?.load();
   if (closeMediaPreview?.value === closePreview) closeMediaPreview.value = undefined;
 });
 watch(() => canvasActive?.value !== false || documentContext?.targets.has(node.id), visible => {
@@ -187,8 +211,7 @@ function restoreFocus() { if (previousFocus?.isConnected) previousFocus.focus({ 
 async function replay() {
   if (!video.value) return;
   video.value.currentTime = 0;
-  try { await video.value.play(); }
-  catch { ElMessage.error("视频无法播放，请检查文件或重试"); }
+  await togglePlayback();
 }
 
 watch(previewing, (visible, _previous, onCleanup) => {
@@ -217,17 +240,20 @@ function formatTime(value: number) {
 
 function readMetadata(event: Event) {
   const source = event.currentTarget as HTMLVideoElement;
-  if (source.currentSrc !== src) return;
+  if (source.currentSrc !== playbackSrc.value) return;
   ready.value = true;
   const value = source.duration;
   duration.value = Number.isFinite(value) ? value : 0;
+  if (resumeTime && duration.value) source.currentTime = Math.min(resumeTime, Math.max(0, duration.value - 0.001));
+  resumeTime = 0;
   emit("loadedmetadata", event);
 }
 
 function readPreview(event: Event) {
   const source = event.currentTarget as HTMLVideoElement;
-  if (source.currentSrc !== src) return;
+  if (source.currentSrc !== playbackSrc.value) return;
   ready.value = true;
+  failed.value = false;
   if (cachedPoster.value || poster.value || !source.videoWidth || !source.videoHeight) return;
   try {
     const canvas = document.createElement("canvas");
@@ -244,23 +270,75 @@ function readPreview(event: Event) {
   }
 }
 
-function mediaError() {
+async function reloadVideo() {
+  if (pendingReload) return pendingReload;
+  const source = video.value;
+  if (!source) return Promise.resolve();
+  const revision = sourceRevision;
+  const currentFile = file;
+  const workspace = currentFile ? files.getWorkspaceFiles() : undefined;
+  const time = source.currentTime;
+  clearTimeout(retryTimer);
+  reloading.value = true;
+  const operation = Promise.resolve().then(async () => {
+    let media = currentFile ? workspace?.acquireUrl?.(currentFile.url, currentFile.mimeType, false, true) : undefined;
+    try {
+      const url = media ? await media.url : src;
+      if (revision !== sourceRevision) return;
+      refreshedMedia?.release();
+      refreshedMedia = media;
+      media = undefined;
+      playbackSrc.value = url;
+      await nextTick();
+      if (revision !== sourceRevision) return;
+      resumeTime = time;
+      ready.value = false;
+      failed.value = false;
+      source.load();
+    } finally { media?.release(); }
+  });
+  pendingReload = operation.finally(() => {
+    if (revision !== sourceRevision) return;
+    reloading.value = false;
+    pendingReload = undefined;
+  });
+  return pendingReload;
+}
+
+function mediaError(event: Event) {
+  const source = event.currentTarget as HTMLVideoElement;
+  if (!source.error || source.currentSrc && source.currentSrc !== playbackSrc.value) return;
   ready.value = false;
   playing.value = false;
+  failed.value = true;
+  // ACT: 每个源只自动恢复一次；后续由用户点击重试，避免损坏文件反复请求。
+  if (!automaticallyRetried) {
+    automaticallyRetried = true;
+    const revision = sourceRevision;
+    retryTimer = setTimeout(() => {
+      void reloadVideo().catch(() => { if (revision === sourceRevision) ElMessage.error("无法预览该视频"); });
+    }, 800);
+    return;
+  }
   ElMessage.error("无法预览该视频");
 }
 
 async function togglePlayback() {
-  if (!video.value) return;
-  if (playing.value) video.value.pause();
+  const source = video.value;
+  if (!source || reloading.value) return;
+  const revision = sourceRevision;
+  if (playing.value) source.pause();
   else {
-    try { await video.value.play(); }
-    catch (error) { if (!(error instanceof DOMException && error.name === "AbortError")) ElMessage.error("视频播放失败"); }
+    try {
+      if (failed.value || source.error) await reloadVideo();
+      if (revision === sourceRevision) await source.play();
+    }
+    catch (error) { if (revision === sourceRevision && !(error instanceof DOMException && error.name === "AbortError")) ElMessage.error("视频播放失败"); }
   }
 }
 
 function playFromSurface(event: MouseEvent) {
-  if (previewing.value || !ready.value || event.defaultPrevented || event.detail > 1) return;
+  if (previewing.value || event.defaultPrevented || event.detail > 1) return;
   void togglePlayback();
 }
 
@@ -311,7 +389,7 @@ function loadFrame(source: HTMLVideoElement, time: number, signal: AbortSignal) 
     source.onseeked = () => finish();
     source.onerror = () => finish(new Error("无法读取视频帧"));
     signal.addEventListener("abort", abort, { once: true });
-    source.src = src;
+    source.src = playbackSrc.value;
     source.load();
     if (signal.aborted) abort();
   });

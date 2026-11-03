@@ -37,6 +37,7 @@
         v-if="previewUrl"
         ref="player"
         :src="previewUrl"
+        :file="outputFile"
         :previewSrc="posterUrl"
         :metadata="mediaInfo"
         label="生成视频"
@@ -44,6 +45,7 @@
       <div v-else class="videoEmpty" role="img" aria-label="暂无生成视频">
         <icon-camera-ai :size="48" stroke="1.25" aria-hidden="true" />
       </div>
+      <mediaPreviewStatus :preview="mediaPreview" />
     </div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
@@ -174,6 +176,8 @@ import { IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, 
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle, type VideoTaskStatus, type NodeInputValue } from "@toonflow/nodes-scaffold/runtime";
 import { registerGenerationTools } from "@toonflow/node-shared/generationTools";
 import { useMediaModels } from "@toonflow/node-shared/useMediaModels";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import { useOutputReplace } from "@toonflow/node-shared/useOutputReplace";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { useNodeGeneration, type GenerationTiming } from "@toonflow/node-shared/useNodeGeneration";
@@ -489,10 +493,8 @@ function uploadReferences(replacement?: H3Reference) {
   input.click();
 }
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const previewUrl = files.useFileUrl(
-  outputFile,
-  (error) => showNodeError(error, "视频读取失败")
-);
+const mediaPreview = useMediaPreview(outputFile);
+const previewUrl = mediaPreview.url;
 const posterUrl = files.useFileUrl(outputFile, error => showNodeError(error, "视频封面读取失败"), true);
 const mediaInfo = files.useMediaInfo(outputFile, error => showNodeError(error, "视频信息读取失败"));
 watchEffect(() => { if (mediaInfo.value?.width && mediaInfo.value.height) videoWidth.value = Math.max(180, 240 * mediaInfo.value.width / mediaInfo.value.height); });

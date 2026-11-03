@@ -8,6 +8,8 @@
     "./referenceItem": "./src/components/referenceItem.vue",
     "./referenceCard": "./src/components/referenceCard.vue",
     "./mediaHistory": "./src/components/mediaHistory.vue",
+    "./mediaPreviewStatus": "./src/components/mediaPreviewStatus.vue",
+    "./useMediaPreview": "./src/useMediaPreview.ts",
     "./showNodeError": "./src/showNodeError.ts",
     "./useNodeReferences": "./src/useNodeReferences.ts",
     "./useNodeGeneration": "./src/useNodeGeneration.ts",

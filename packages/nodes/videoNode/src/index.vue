@@ -43,9 +43,11 @@
         v-else-if="previewUrl"
         ref="player"
         :src="previewUrl"
+        :file="outputFile"
         :previewSrc="posterUrl"
         :metadata="mediaInfo"
         @loadedmetadata="resizeVideo" />
+      <mediaPreviewStatus :preview="mediaPreview" />
       <input ref="fileInput" class="fileInput" type="file" accept="video/*" aria-label="选择视频" :disabled="uploading || exporting" @change="uploadVideo" />
       <el-button
         v-if="!exporting && !outputs.video"
@@ -65,6 +67,8 @@
 
 <script setup lang="ts">
 import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import { computed, nextTick, ref, watchEffect } from "vue";
 import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
@@ -89,10 +93,8 @@ const exporting = computed(() => typeof exportProgress.value === "number");
 const videoWidth = ref(0);
 
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const previewUrl = files.useFileUrl(
-  outputFile,
-  (error) => showError(error, "视频读取失败")
-);
+const mediaPreview = useMediaPreview(outputFile);
+const previewUrl = mediaPreview.url;
 const posterUrl = files.useFileUrl(outputFile, error => showError(error, "视频封面读取失败"), true);
 const mediaInfo = files.useMediaInfo(outputFile, error => showError(error, "视频信息读取失败"));
 watchEffect(() => { if (mediaInfo.value?.width && mediaInfo.value.height) videoWidth.value = Math.max(180, 240 * mediaInfo.value.width / mediaInfo.value.height); });

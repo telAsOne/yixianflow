@@ -35,15 +35,16 @@
         :toolbarTarget="paintToolbar"
         :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
         alt="生成图片"
-        @load="resizeImage"
-        @error="showNodeError('无法预览该图片', '图片预览失败')" />
+        @load="mediaPreview.onReady($event); resizeImage($event)"
+        @error="mediaPreview.onError" />
       <div v-else-if="inpaintGuideUrl" class="inpaintGuide">
-        <img :src="inpaintGuideUrl" alt="局部重绘标注图" draggable="false" @load="resizeImage" @error="showNodeError('无法读取重绘标注图', '重绘标注读取失败')" />
+        <img :src="inpaintGuideUrl" alt="局部重绘标注图" draggable="false" @load="inpaintPreview.onReady($event); resizeImage($event)" @error="inpaintPreview.onError" />
         <span>红色标注为重绘区域</span>
       </div>
       <div v-else class="imageEmpty" role="img" aria-label="暂无生成图片">
         <icon-photo-ai :size="48" stroke="1.25" aria-hidden="true" />
       </div>
+      <mediaPreviewStatus :preview="outputFile ? mediaPreview : inpaintPreview" />
     </div>
     <template v-if="editor?.mode !== 'mark'" #bottom>
       <div v-if="lightingVisible" ref="lightingTarget" />
@@ -120,12 +121,17 @@
   <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="generating || deleting || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
   <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
   <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
-  <el-image-viewer v-if="inpaintPreviewVisible && inpaintGuideUrl" :urlList="[inpaintGuideUrl]" teleported @close="inpaintPreviewVisible = false" />
+  <el-image-viewer v-if="inpaintPreviewVisible && inpaintGuideUrl" :urlList="[inpaintGuideUrl]" teleported @error="inpaintPreview.onError" @close="inpaintPreviewVisible = false">
+    <template #viewer-error><el-button :loading="inpaintPreview.loading.value" aria-label="重试重绘标注预览" @click="inpaintPreview.retry">重试预览</el-button></template>
+  </el-image-viewer>
   <el-image-viewer
     v-if="previewVisible && previewUrl"
     :urlList="[previewUrl]"
     teleported
-    @close="previewVisible = false" />
+    @error="mediaPreview.onError"
+    @close="previewVisible = false">
+    <template #viewer-error><el-button :loading="mediaPreview.loading.value" :disabled="!mediaPreview.canRetry.value" aria-label="重试图片预览" @click="mediaPreview.retry">重试预览</el-button></template>
+  </el-image-viewer>
 </template>
 
 <script setup lang="ts">
@@ -135,6 +141,8 @@ import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, Icon
 import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle, type NodeImageRequest, type NodeImageResult, type ImageTaskStatus } from "@toonflow/nodes-scaffold/runtime";
 import { registerGenerationTools } from "@toonflow/node-shared/generationTools";
 import { useMediaModels } from "@toonflow/node-shared/useMediaModels";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import { useOutputReplace } from "@toonflow/node-shared/useOutputReplace";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { useNodeGeneration, type GenerationTiming } from "@toonflow/node-shared/useNodeGeneration";
@@ -238,15 +246,11 @@ const generationPrompt = computed(() =>
     .join("\n\n")
 );
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
-const inpaintGuideUrl = files.useFileUrl(
-  () => data.value.inpaint?.guide ? { url: data.value.inpaint.guide, mimeType: "image/png" } : undefined,
-  error => showNodeError(error, "重绘标注读取失败")
-);
-const previewUrl = files.useFileUrl(
-  outputFile,
-  (error) => showNodeError(error, "图片读取失败")
-);
-const thumbnailUrl = files.useFileUrl(outputFile, error => showNodeError(error, "图片预览读取失败"), true);
+const inpaintPreview = useMediaPreview(() => data.value.inpaint?.guide ? { url: data.value.inpaint.guide, mimeType: "image/png" } : undefined);
+const inpaintGuideUrl = inpaintPreview.url;
+const mediaPreview = useMediaPreview(outputFile, () => !editor.value?.mode && !editor.value?.busy);
+const previewUrl = mediaPreview.url;
+const thumbnailUrl = files.useFileUrl(outputFile, () => {}, true);
 watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || previewVisible.value || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
 
 onMounted(async () => {

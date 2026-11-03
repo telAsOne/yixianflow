@@ -19,7 +19,10 @@
         <span>截取音频</span>
       </div>
     </template>
-    <audioClipEditor v-if="mode === 'clip'" ref="clipEditor" v-model="segments" :src="src" :disabled="processing" />
+    <div v-if="mode === 'clip'" class="clipPreview">
+      <audioClipEditor ref="clipEditor" v-model="segments" :src="src" :sourceKey="file?.url" :disabled="processing" @error="emit('error', $event)" @retry="emit('retry')" />
+      <mediaPreviewStatus v-if="preview" :preview="preview" />
+    </div>
     <template #footer>
       <div class="clipFooter">
         <span v-if="processing" class="processingStatus" role="status">{{ cancelling ? '正在取消并清理…' : exportScope === 'all' ? '正在拼接导出全部片段…' : '正在导出选中片段…' }}</span>
@@ -41,9 +44,11 @@ import { useNodeFfmpeg, useNodeFiles, type NodeMediaValue, type WorkspaceFiles }
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { processAudio, type AudioSegment, type AudioProcessingOptions } from "../audioProcessing";
 import audioClipEditor from "./audioClipEditor.vue";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
+import type { MediaPreview } from "@toonflow/node-shared/useMediaPreview";
 
-const props = defineProps<{ file?: NodeMediaValue; src: string; disabled?: boolean; target?: HTMLElement }>();
-const emit = defineEmits<{ pause: [] }>();
+const props = defineProps<{ file?: NodeMediaValue; src: string; preview?: MediaPreview; disabled?: boolean; target?: HTMLElement }>();
+const emit = defineEmits<{ pause: []; error: [event: Event]; retry: [] }>();
 const { node } = useNode();
 const { addNodes, findNode, getNodes, nodeTypes } = useVueFlow();
 const files = useNodeFiles();
@@ -161,6 +166,7 @@ async function process(scope: "selected" | "all") {
 </script>
 
 <style scoped lang="scss">
+.clipPreview { position: relative; min-height: 144px; }
 .speedPanel {
   .speedControls {
     display: flex;
