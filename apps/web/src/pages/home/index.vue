@@ -14,7 +14,7 @@
         <span class="sideCaption">继续上次创作</span>
         <button class="resumeProject" type="button" :disabled="creating || opening" :title="project.directory" @click="openProject(project)"><icon-layout-dashboard :size="18" /><span>{{ project.name }}</span><icon-arrow-up-right :size="15" /></button>
       </div>
-      <div class="sideFooter"><icon-device-desktop :size="15" /><span>{{ webMode ? '画布与素材保存在服务器' : '画布与素材保存在工作目录' }}</span></div>
+      <div v-if="!webMode" class="sideFooter"><icon-device-desktop :size="15" /><span>画布与素材保存在工作目录</span></div>
     </aside>
     <div class="mainArea">
       <header class="topBar">
@@ -44,15 +44,14 @@
             <el-input ref="promptInput" v-model="prompt" class="promptInput" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" resize="none" :disabled="creating || opening" :placeholder="promptPlaceholder" aria-label="创作描述" @paste.capture="pasteText" />
             <div class="composerFooter">
               <workspacePicker v-if="!webMode" v-model="workspaceDirectory" :disabled="creating || opening" />
-              <span v-else class="workspaceLocation"><icon-folder :size="14" />服务器工作区</span>
               <div class="sendActions">
                 <modelPopover v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" class="modelSelect" :disabled="creating || opening" />
                 <el-button class="sendButton" type="primary" :icon="IconArrowUpRight" :loading="creating" :disabled="creating || opening" @click="createProject()">{{ hasPrompt ? '开始创作' : '新建画布' }}</el-button>
               </div>
             </div>
           </div>
-          <div class="composerHint" role="status">
-            <span><icon-folder :size="14" aria-hidden="true" />{{ directoryHint }}</span>
+          <div v-if="!webMode || !selectedModel" class="composerHint" role="status">
+            <span v-if="!webMode"><icon-folder :size="14" aria-hidden="true" />{{ directoryHint }}</span>
             <span v-if="!selectedModel"><icon-info-circle :size="14" aria-hidden="true" />{{ accountView?.authenticated ? '请先选择可用模型进行 AI 创作' : 'AI 创作需要登录账户' }}<el-button v-if="!accountView?.authenticated" link type="primary" :disabled="creating || opening" @click="signInVisible = true">去登录</el-button></span>
           </div>
           <div class="creationEntries" aria-label="创作方式">
@@ -66,7 +65,7 @@
             </button>
             <button class="creationEntry" type="button" :disabled="creating || opening" @click="openProject()">
               <span class="entryIcon importEntry"><icon-folder-open :size="21" /></span>
-              <span class="entryCopy"><strong>{{ webMode ? '打开已有项目' : '导入已有项目' }}</strong><span>{{ webMode ? '选择自己的服务器项目，继续创作' : '打开工作目录，接着上次继续' }}</span></span><icon-arrow-up-right class="entryArrow" :size="17" />
+              <span class="entryCopy"><strong>{{ webMode ? '打开已有项目' : '导入已有项目' }}</strong><span>{{ webMode ? '打开项目，继续上次的创作' : '打开工作目录，接着上次继续' }}</span></span><icon-arrow-up-right class="entryArrow" :size="17" />
             </button>
           </div>
         </section>
@@ -157,10 +156,7 @@ const promptAttachments = ref<AgentAttachment[]>([]);
 const workspaceStore = useWorkspaceStore();
 const { project, projectList } = storeToRefs(workspaceStore);
 const workspaceDirectory = ref("");
-const directoryHint = computed(() => {
-  if (webMode.value) return "新项目保存在服务器，画布和素材仅当前账号可访问。";
-  return workspaceDirectory.value ? "新项目将保存在所选文件夹，请确保文件夹为空。" : "开始时选择一个空文件夹，保存画布和素材。";
-});
+const directoryHint = computed(() => workspaceDirectory.value ? "新项目将保存在所选文件夹，请确保文件夹为空。" : "开始时选择一个空文件夹，保存画布和素材。");
 const hasPrompt = computed(() => !!prompt.value.trim() || !!promptAttachments.value.length);
 const promptPlaceholder = computed(() => translate("描述你想创作的故事、角色或镜头，AI 助手会和你一起搭建画布…"));
 const activeSection = ref("create");
