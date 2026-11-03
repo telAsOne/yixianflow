@@ -27,7 +27,10 @@
         ref="player"
         class="audioPreview"
         :src="previewUrl"
-        @loadedmetadata="updateNodeInternals" />
+        @loadedmetadata="mediaPreview.onReady($event); updateNodeInternals()"
+        @error="mediaPreview.onError"
+        @retry="mediaPreview.retry" />
+      <mediaPreviewStatus :preview="mediaPreview" />
       <input ref="fileInput" class="fileInput" type="file" accept="audio/*" aria-label="选择音频" :disabled="uploading || actions?.processing" @change="uploadAudio" />
       <el-button
         v-if="!outputs.audio"
@@ -43,11 +46,13 @@
     </div>
     <template v-if="actions?.mode === 'speed'" #bottom><div ref="speedTarget" /></template>
   </nodeSkeleton>
-  <audioActions ref="actions" :file="outputFile" :src="previewUrl" :target="speedTarget" :disabled="uploading" @pause="player?.pause()" />
+  <audioActions ref="actions" :file="outputFile" :src="previewUrl" :preview="mediaPreview" :target="speedTarget" :disabled="uploading" @pause="player?.pause()" @error="mediaPreview.onError" @retry="mediaPreview.retry" />
 </template>
 
 <script setup lang="ts">
 import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import { computed, ref } from "vue";
 import { IconMusic, IconUpload, IconTransfer, IconScissors, IconGauge } from "@tabler/icons-vue";
 import { ElButton, ElMessage } from "element-plus";
@@ -70,10 +75,8 @@ const actions = ref<InstanceType<typeof audioActions>>();
 const speedTarget = ref<HTMLElement>();
 
 const outputFile = computed(() => outputs.value.audio?.dataType === "AUDIO" ? outputs.value.audio.value : undefined);
-const previewUrl = files.useFileUrl(
-  outputFile,
-  (error) => showError(error, "音频读取失败")
-);
+const mediaPreview = useMediaPreview(outputFile);
+const previewUrl = mediaPreview.url;
 
 nodeEvent.on("save", reason => {
   if (uploading.value) throw new Error("音频处理中，请完成后再切换或刷新节点");

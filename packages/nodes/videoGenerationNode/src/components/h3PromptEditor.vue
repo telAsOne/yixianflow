@@ -101,8 +101,12 @@
         <ol class="dialogueHelp"><li>在素材卡下方给图片或视频中的主体取名，同一个人物的多个素材使用同一名称。</li><li>点“换位置”或把素材拖到同类素材上交换，提示词中的编号自动更新。</li><li>在提示词中输入 @，可以插入主体、素材、说话人、镜头和任务类型。</li><li>点击“插入对白”，选择主体、语言和发声方式；多选主体生成齐声编号，例如 (S1,S2)。</li><li>音频可绑定主体和说话人；内置音色和上传音频一起按音频顺序编号。</li><li>“代码”展示实际 H3 标签；“复制”复制完整提交文本。“撤销”可恢复优化前的内容。</li></ol>
       </el-dialog>
       <el-dialog :modelValue="!!previewReference" :title="previewReference?.name" width="min(760px, 92vw)" appendToBody destroyOnClose @close="previewReference = undefined">
-        <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" />
-        <div v-else-if="previewSource" class="referencePreview"><img v-if="previewReference?.category === 'picture'" :src="previewSource" :alt="previewReference.name" /><video v-else-if="previewReference?.category === 'video'" :src="previewSource" controls preload="metadata" /><audio v-else :src="previewSource" controls preload="metadata" aria-label="参考音频试听" /></div>
+        <div class="referencePreview">
+          <img v-if="previewSource && previewReference?.category === 'picture'" :src="previewSource" :alt="previewReference.name" @load="referencePreview.onReady" @error="referencePreview.onError" />
+          <video v-else-if="previewSource && previewReference?.category === 'video'" :src="previewSource" controls preload="metadata" @loadedmetadata="referencePreview.onReady" @error="referencePreview.onError" />
+          <audio v-else-if="previewSource" :src="previewSource" controls preload="metadata" aria-label="参考音频试听" @loadedmetadata="referencePreview.onReady" @error="referencePreview.onError" />
+          <mediaPreviewStatus :preview="referencePreview" />
+        </div>
       </el-dialog>
       <el-dialog v-model="resultVisible" title="优化结果（原内容已保留）" width="min(900px, 94vw)" appendToBody><p>优化期间内容或素材发生了变化，请对照后取用，避免覆盖正在编辑的内容。</p><el-input :modelValue="pendingResult" type="textarea" :rows="18" readonly aria-label="未应用的优化结果" /></el-dialog>
     </section>
@@ -118,6 +122,8 @@ import { ElAlert, ElButton, ElCheckbox, ElCollapse, ElCollapseItem, ElDialog, El
 import { IconSettings, IconSparkles, IconMaximize, IconMinimize, IconVideo } from "@tabler/icons-vue";
 import { type useNode, type NodeAiModel } from "@toonflow/nodes-scaffold/runtime";
 import promptInput from "@toonflow/node-shared/promptInput";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import h3ReferenceList from "./h3ReferenceList.vue";
 import h3CodeEditor from "./h3CodeEditor.vue";
 import h3PromptSkill from "../h3PromptSkill.txt?raw";
@@ -153,14 +159,13 @@ const error = ref("");
 const skillVisible = ref(false);
 const helpVisible = ref(false);
 const previewReference = ref<H3Reference>();
-const previewError = ref("");
 const previewMedia = computed(() => {
+  if (previewReference.value?.voice?.url) return { url: previewReference.value.voice.url, mimeType: "audio/mpeg" };
   const input = previewReference.value?.input;
   return input && ["IMAGE", "VIDEO", "AUDIO"].includes(String(input.dataType)) ? input.value as { url: string; mimeType: string } | undefined : undefined;
 });
-watch(previewReference, () => { previewError.value = ""; });
-const localPreview = props.files.useFileUrl(() => previewMedia.value && !/^https?:\/\//.test(previewMedia.value.url) ? previewMedia.value : undefined, cause => { previewError.value = cause instanceof Error ? cause.message : "参考素材读取失败"; });
-const previewSource = computed(() => previewReference.value?.voice?.url || (previewMedia.value && /^https?:\/\//.test(previewMedia.value.url) ? previewMedia.value.url : localPreview.value));
+const referencePreview = useMediaPreview(previewMedia);
+const previewSource = referencePreview.url;
 const resultVisible = ref(false);
 const pendingResult = ref("");
 const editingDisabled = computed(() => props.disabled || optimizing.value);
@@ -572,5 +577,5 @@ onScopeDispose(() => { clearTimeout(historyTimer); optimizationController?.abort
 .cameraLibrary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; :deep(.el-button) { margin: 0; } }
 .dialogueForm { .dialogueRow { display: flex; flex-wrap: wrap; gap: 16px; > * { flex: 1; } } }
 .dialogueHelp { padding-left: 22px; line-height: 1.8; li { margin-bottom: 8px; } }
-.referencePreview { display: grid; place-items: center; img, video { max-width: 100%; max-height: 70vh; } audio { width: 100%; } }
+.referencePreview { position: relative; display: grid; place-items: center; min-height: 144px; img, video { max-width: 100%; max-height: 70vh; } audio { width: 100%; } }
 </style>

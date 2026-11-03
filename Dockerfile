@@ -2,6 +2,8 @@
 FROM oven/bun:1.3.14
 
 WORKDIR /app
+ARG TOONFLOW_WEB_BASE_PATH=""
+ENV TOONFLOW_WEB_BASE_PATH=${TOONFLOW_WEB_BASE_PATH}
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates ffmpeg \

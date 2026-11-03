@@ -1,0 +1,17 @@
+{
+  "name": "@toonflow/local-helper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./protocol": "./src/protocol.ts" },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@toonflow/file": "workspace:*",
+    "@toonflow/ffmpeg": "workspace:*",
+    "zod": "^4.6.2",
+    "fflate": "^0.8.3"
+  }
+}

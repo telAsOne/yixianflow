@@ -1,9 +1,12 @@
-import conf from "@/utils/conf";
+import conf, { getSettings } from "@/utils/conf";
 import { translateMessage } from "@/lib/i18n";
 import { accountFetch, getAccount, getBaseUrl } from "./index";
-import { defaultUploadLimits, platformConfigSchema } from "@/types/account";
+import { defaultUploadLimits, platformConfigSchema, type PlatformConfig } from "@/types/account";
 import { getMediaProvider, saveMediaProvider } from "@/utils/media/provider";
 import yixian from "@toonflow/providers/language/yixian";
+import { isWebMode } from "@/lib/webContext";
+import { hashWebToken, saveWebManagedSettings } from "@/utils/web/store";
+import type { Provider } from "@toonflow/providers";
 
 let pending: Promise<void> | undefined;
 let pendingAccount: ReturnType<typeof getAccount>;
@@ -12,18 +15,71 @@ let timer: ReturnType<typeof setInterval> | undefined;
 let refreshedAccount: ReturnType<typeof getAccount>;
 let refreshedAt = 0;
 const refreshInterval = 60_000;
+type WebConfigState = { identity: string; refreshedAt: number; config?: PlatformConfig; pending?: Promise<PlatformConfig>; error: string };
+const webConfigStates = new Map<number, WebConfigState>();
+
+export function getManagedConfig() {
+  const saved = getSettings().yixianConfig as { baseUrl?: string; userId?: number; config?: unknown } | undefined;
+  if (saved?.baseUrl !== getBaseUrl() || saved.userId !== getAccount()?.user.id) return;
+  const parsed = platformConfigSchema.safeParse(saved.config);
+  return parsed.success ? parsed.data : undefined;
+}
+
+export function getManagedMediaModels(config: PlatformConfig | undefined): (Provider["models"][number] & { type: "image" | "video" })[] {
+  if (!config) return [];
+  const { image, video } = config.categories;
+  return [
+    ...(image.enabled ? image.models.map(model => ({ ...model, type: "image" as const })) : []),
+    ...(video.enabled ? video.models.map(model => ({ ...model, type: "video" as const, taskRecovery: true, referenceInput: "platformAsset" as const })) : []),
+  ].map(model => ({ ...model, mode: model.mode as Provider["models"][number]["mode"] }));
+}
+
+async function refreshWebConfig(force: boolean) {
+  const account = getAccount();
+  if (!account) return;
+  const identity = hashWebToken(account.baseUrl + ":" + account.key);
+  const previous = webConfigStates.get(account.user.id);
+  const state: WebConfigState = previous?.identity === identity ? previous : { identity, refreshedAt: 0, error: "" };
+  webConfigStates.set(account.user.id, state);
+  try {
+    if (force || !state.config || Date.now() - state.refreshedAt >= refreshInterval) {
+      state.pending ??= accountFetch("/v1/toonflow/config").then(value => platformConfigSchema.parse(value))
+        .finally(() => { state.pending = undefined; });
+      state.config = await state.pending;
+      state.refreshedAt = Date.now();
+    }
+    if (webConfigStates.get(account.user.id) !== state) throw Object.assign(new Error("账户已更新，请刷新页面"), { status: 401 });
+    const config = state.config;
+    const { text } = config.categories;
+    const { id, label, icon, version, protocol } = yixian;
+    const customProviders = [{ id, label, icon, version, protocol, apiUrl: account.baseUrl + "/v1", models: text.enabled ? text.models : [], requestBodyLimitMiB: text.requestBodyLimitMiB }];
+    const defaultModels = Object.fromEntries(Object.entries(config.categories).map(([type, category]) => [type,
+      category.enabled ? { providerId: type === "text" ? "yixian" : "yixianVideo", modelId: category.defaultModel } : null]));
+    const settings = getSettings();
+    const saved = settings.yixianConfig as { config?: unknown } | undefined;
+    if (JSON.stringify(saved?.config) !== JSON.stringify(config) || JSON.stringify(settings.customProviders) !== JSON.stringify(customProviders)
+      || JSON.stringify(settings.defaultModels) !== JSON.stringify(defaultModels)) {
+      await saveWebManagedSettings({ customProviders, defaultModels, mediaProviderConfigs: {}, yixianConfig: { baseUrl: account.baseUrl, userId: account.user.id, config } });
+    }
+    state.error = "";
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : "刷新模型失败";
+    throw error;
+  }
+}
 
 export function getConfigState() {
-  const saved = conf.get("settings.yixianConfig") as { baseUrl?: string; userId?: number; config?: unknown } | undefined;
-  const parsed = saved?.baseUrl === getBaseUrl() && saved.userId === getAccount()?.user.id ? platformConfigSchema.safeParse(saved.config) : undefined;
-  const limits = parsed?.success ? parsed.data.limits : defaultUploadLimits;
-  const imageBodyLimit = parsed?.success ? parsed.data.categories.image.requestBodyLimitMiB : undefined;
+  const config = getManagedConfig();
+  const limits = config?.limits ?? defaultUploadLimits;
+  const imageBodyLimit = config?.categories.image.requestBodyLimitMiB;
   return { limits,
     imageTotalMaxBytes: Math.min(limits.requestTotalMaxBytes, imageBodyLimit ? Math.max(0, imageBodyLimit - 1) * 1024 * 1024 : limits.requestTotalMaxBytes),
-    revision: parsed?.success ? parsed.data.revision : undefined, configError: getAccount() ? translateMessage(configError) : "" };
+    revision: config?.revision,
+    configError: getAccount() ? translateMessage(isWebMode() ? webConfigStates.get(getAccount()!.user.id)?.error ?? "" : configError) : "" };
 }
 
 export async function refreshConfig(force = true): Promise<void> {
+  if (isWebMode()) return refreshWebConfig(force);
   if (pending) {
     if (pendingAccount === getAccount()) return pending;
     await pending.catch(() => {});

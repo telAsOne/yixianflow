@@ -1,6 +1,6 @@
 <template>
   <div class="audioPlayer" @keydown.stop>
-    <audio ref="audio" :src="src" preload="auto" :aria-label="label" @loadedmetadata="readMetadata" @durationchange="readDuration" @timeupdate="readTime" @play="startProgress(); emit('play')" @pause="stopProgress" @ended="stopProgress" @volumechange="readVolume" @error="mediaError" />
+    <audio ref="audio" :src="src || undefined" preload="auto" :aria-label="label" @loadedmetadata="readMetadata" @durationchange="readDuration" @timeupdate="readTime" @play="startProgress(); emit('play')" @pause="stopProgress" @ended="stopProgress" @volumechange="readVolume" @error="mediaError" />
     <div class="waveformPanel" :class="{ unavailable: !duration || failed }">
       <div class="waveformTrack">
         <slot name="track" :duration="duration" :currentTime="currentTime" :peaks="peaks">
@@ -30,7 +30,7 @@
       </div>
     </div>
     <div class="playerControls">
-      <el-button class="playButton nodrag nopan nowheel" :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="!duration || failed" circle :aria-label="playing ? '暂停音频' : playLabel" :title="playing ? '暂停' : playLabel" @pointerdown.stop @mousedown.stop @dblclick.stop @click="togglePlayback" />
+      <el-button class="playButton nodrag nopan nowheel" :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="!src" circle :aria-label="failed ? '重试播放音频' : playing ? '暂停音频' : playLabel" :title="failed ? '重试播放' : playing ? '暂停' : playLabel" @pointerdown.stop @mousedown.stop @dblclick.stop @click="togglePlayback" />
       <span class="timeLabel"><slot name="time"><span>{{ formatTime(currentTime) }}</span><span class="timeSeparator">/</span>{{ formatTime(duration) }}</slot></span>
       <div class="volumeControl nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop>
         <el-button class="volumeButton" :icon="muted || !volume ? IconVolumeOff : IconVolume" text circle :disabled="failed" :aria-label="muted || !volume ? '取消静音' : '静音音频'" :title="muted || !volume ? '取消静音' : '静音'" :aria-pressed="muted || !volume" @click="toggleMute" />
@@ -41,13 +41,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import { computed, getCurrentInstance, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { ElButton, ElMessage } from "element-plus";
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff } from "@tabler/icons-vue";
 import { getWaveformPeaks } from "../audioWaveform";
 
 const { src, label = "节点音频", playLabel = "播放音频" } = defineProps<{ src: string; label?: string; playLabel?: string }>();
-const emit = defineEmits<{ loadedmetadata: [event: Event]; play: [] }>();
+const emit = defineEmits<{ loadedmetadata: [event: Event]; play: []; error: [event: Event]; retry: [] }>();
+const instance = getCurrentInstance();
 const audio = ref<HTMLAudioElement>();
 const peaks = shallowRef<number[]>([]);
 const waveformLoading = ref(false);
@@ -69,6 +70,7 @@ watch(() => src, async (value, _previous, onCleanup) => {
   currentTime.value = duration.value = 0;
   failed.value = false;
   peaks.value = [];
+  if (!value) { waveformLoading.value = false; return; }
   waveformLoading.value = true;
   try {
     const response = await fetch(value, { signal: controller.signal });
@@ -90,6 +92,8 @@ watch(() => src, async (value, _previous, onCleanup) => {
 onBeforeUnmount(() => {
   disposed = true;
   audio.value?.pause();
+  audio.value?.removeAttribute("src");
+  audio.value?.load();
   stopProgress();
 });
 
@@ -131,7 +135,12 @@ function stopProgress() {
 
 async function togglePlayback() {
   const element = audio.value;
-  if (!element || !duration.value || failed.value) return;
+  if (!element || !src) return;
+  if (failed.value || element.error) {
+    if (instance?.vnode.props?.onRetry) { emit("retry"); return; }
+    failed.value = false;
+    element.load();
+  }
   if (!element.paused) return element.pause();
   try { await element.play(); }
   catch (error) {
@@ -175,9 +184,11 @@ function toggleMute() {
   audio.value.muted = !(muted.value || !volume.value);
 }
 
-function mediaError() {
+function mediaError(event: Event) {
+  if (!src) return;
   failed.value = true;
   stopProgress();
+  emit("error", event);
 }
 </script>
 

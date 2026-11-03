@@ -3,7 +3,7 @@
     <aside class="sideBar" aria-label="工作台导航">
       <div class="brand">
         <img class="brandLogo" :src="logoUrl" alt="" aria-hidden="true" />
-        <div><span class="brandName">Yixianflow</span><span class="brandCaption">AI 影像创作空间</span></div>
+        <div><span class="brandName">UnionFlfow</span><span class="brandCaption">AI 影像创作空间</span></div>
       </div>
       <el-button class="newProjectButton" type="primary" :icon="IconPlus" :disabled="creating || opening" @click="createProject(false)">新建项目</el-button>
       <nav class="sideNav" aria-label="创作导航">
@@ -14,17 +14,18 @@
         <span class="sideCaption">继续上次创作</span>
         <button class="resumeProject" type="button" :disabled="creating || opening" :title="project.directory" @click="openProject(project)"><icon-layout-dashboard :size="18" /><span>{{ project.name }}</span><icon-arrow-up-right :size="15" /></button>
       </div>
-      <div class="sideFooter"><icon-device-desktop :size="15" /><span>画布与素材保存在工作目录</span></div>
+      <div v-if="!webMode" class="sideFooter"><icon-device-desktop :size="15" /><span>画布与素材保存在工作目录</span></div>
     </aside>
     <div class="mainArea">
       <header class="topBar">
         <span class="pageTitle">创作工作台</span>
         <nav class="topActions" aria-label="快捷操作">
-          <el-button class="chromeButton" text :type="deviceHubEnabled ? 'success' : undefined" :icon="deviceHubEnabled || mobileConnection.mode === 'remote' ? IconDeviceDesktop : IconQrcode" :aria-label="mobileConnectionLabel" @click="mobileConnectVisible = true">
+          <el-button v-if="!webMode" class="chromeButton" text :type="deviceHubEnabled ? 'success' : undefined" :icon="deviceHubEnabled || mobileConnection.mode === 'remote' ? IconDeviceDesktop : IconQrcode" :aria-label="mobileConnectionLabel" @click="mobileConnectVisible = true">
             <span class="chromeLabel">{{ mobileConnectionLabel }}</span>
           </el-button>
+          <el-button v-if="webMode && !webUserId" class="chromeButton" text @click="signInVisible = true">管理员登录</el-button>
           <el-badge isDot :hidden="!hasDesktopUpdate" :offset="[-6, 6]">
-            <el-button class="chromeButton" text :icon="IconSettings" :aria-label="hasDesktopUpdate ? '设置，有新版本可用' : '设置'" @click="settingsVisible = true">
+            <el-button class="chromeButton" text :icon="IconSettings" :aria-label="hasDesktopUpdate ? '设置，有新版本可用' : '设置'" @click="openSettings">
               <span class="chromeLabel">设置</span>
             </el-button>
           </el-badge>
@@ -42,15 +43,15 @@
             <attachmentList v-if="promptAttachments.length" class="promptAttachments" :attachments="promptAttachments" removable restorable :disabled="creating || opening" @remove="promptAttachments.splice($event, 1)" @restore="restoreAttachment" />
             <el-input ref="promptInput" v-model="prompt" class="promptInput" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" resize="none" :disabled="creating || opening" :placeholder="promptPlaceholder" aria-label="创作描述" @paste.capture="pasteText" />
             <div class="composerFooter">
-              <workspacePicker v-model="workspaceDirectory" :disabled="creating || opening" />
+              <workspacePicker v-if="!webMode" v-model="workspaceDirectory" :disabled="creating || opening" />
               <div class="sendActions">
                 <modelPopover v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" class="modelSelect" :disabled="creating || opening" />
                 <el-button class="sendButton" type="primary" :icon="IconArrowUpRight" :loading="creating" :disabled="creating || opening" @click="createProject()">{{ hasPrompt ? '开始创作' : '新建画布' }}</el-button>
               </div>
             </div>
           </div>
-          <div class="composerHint" role="status">
-            <span><icon-folder :size="14" aria-hidden="true" />{{ workspaceDirectory ? '新项目将保存在所选文件夹，请确保文件夹为空。' : '开始时选择一个空文件夹，保存画布和素材。' }}</span>
+          <div v-if="!webMode || !selectedModel" class="composerHint" role="status">
+            <span v-if="!webMode"><icon-folder :size="14" aria-hidden="true" />{{ directoryHint }}</span>
             <span v-if="!selectedModel"><icon-info-circle :size="14" aria-hidden="true" />{{ accountView?.authenticated ? '请先选择可用模型进行 AI 创作' : 'AI 创作需要登录账户' }}<el-button v-if="!accountView?.authenticated" link type="primary" :disabled="creating || opening" @click="signInVisible = true">去登录</el-button></span>
           </div>
           <div class="creationEntries" aria-label="创作方式">
@@ -64,7 +65,7 @@
             </button>
             <button class="creationEntry" type="button" :disabled="creating || opening" @click="openProject()">
               <span class="entryIcon importEntry"><icon-folder-open :size="21" /></span>
-              <span class="entryCopy"><strong>导入已有项目</strong><span>打开工作目录，接着上次继续</span></span><icon-arrow-up-right class="entryArrow" :size="17" />
+              <span class="entryCopy"><strong>{{ webMode ? '打开已有项目' : '导入已有项目' }}</strong><span>{{ webMode ? '打开项目，继续上次的创作' : '打开工作目录，接着上次继续' }}</span></span><icon-arrow-up-right class="entryArrow" :size="17" />
             </button>
           </div>
         </section>
@@ -73,7 +74,7 @@
             <h2 id="projectListTitle">我的项目<span v-if="projectList.length" class="projectCount">{{ projectList.length }}</span></h2>
             <div class="sectionActions">
               <el-input v-if="projectList.length" v-model="projectSearch" class="projectSearch" :prefixIcon="IconSearch" placeholder="搜索项目名称或路径" clearable aria-label="搜索项目" />
-              <el-button class="sectionButton" text :icon="IconFolderOpen" :disabled="creating || opening" @click="openProject()">导入项目</el-button>
+              <el-button class="sectionButton" text :icon="IconFolderOpen" :disabled="creating || opening" @click="openProject()">{{ webMode ? '打开项目' : '导入项目' }}</el-button>
               <span class="actionDivider" aria-hidden="true" />
               <el-tooltip :content="sortDescending ? '按时间降序' : '按时间升序'" placement="top" :showArrow="false" :hideAfter="0">
                 <el-button class="iconButton" text :icon="sortDescending ? IconSortDescending : IconSortAscending" :aria-label="sortDescending ? '按时间降序' : '按时间升序'" @click="sortDescending = !sortDescending" />
@@ -89,7 +90,7 @@
               <button class="projectEntry" type="button" :disabled="creating || opening" :aria-label="`打开项目 ${project.name}`" @click="openProject(project)">
                 <span class="projectVisual" aria-hidden="true"><span class="visualGrid" /><icon-layout-dashboard :size="32" /><span class="visualLabel">画布项目</span><span class="openProjectHint"><icon-arrow-up-right :size="18" />打开项目</span></span>
                 <span class="projectName" :title="project.name">{{ project.name }}</span>
-                <span class="projectPath" :title="project.directory">{{ project.directory }}</span>
+                <span v-if="!webMode" class="projectPath" :title="project.directory">{{ project.directory }}</span>
                 <span class="projectTime" :title="new Date(project.lastOpenedAt).toLocaleString(locale, { hour12: false })"><icon-clock :size="13" />{{ dateFormatter.format(project.lastOpenedAt) }}</span>
               </button>
               <div class="projectActions">
@@ -109,7 +110,7 @@
       </main>
     </div>
     <settings v-model="settingsVisible" />
-    <mobileConnect v-model="mobileConnectVisible" />
+    <mobileConnect v-if="!webMode" v-model="mobileConnectVisible" />
     <workspacePicker ref="relocationPicker" hideTrigger />
   </div>
 </template>
@@ -118,7 +119,7 @@
 import { locale, translate } from "@toonflow/i18n/vue";
 import axios from "axios";
 import { storeToRefs } from "pinia";
-import { computed, defineAsyncComponent, nextTick, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type InputInstance } from "element-plus";
 import {
@@ -131,7 +132,7 @@ import modelPopover from "@/components/modelPopover.vue";
 import attachmentList from "@/components/agent/attachmentList.vue";
 import { createPastedTextFile, readTextAttachment } from "@/components/agent/textAttachments";
 import type { AgentAttachment } from "@/components/agent/types";
-import logoUrl from "@toonflow/assets/logo.svg";
+import logoUrl from "@toonflow/assets/unionIcon.svg";
 import { useWorkspaceStore, type Project } from "@/stores/workspace";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { accountView, signInVisible } from "@/stores/account";
@@ -139,6 +140,8 @@ import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import settings from "@/components/settings/index.vue";
 import workspacePicker from "./workspacePicker.vue";
+import api, { errorMessage } from "@/lib/api";
+import { webMode, webUserId } from "@/lib/webRuntime";
 
 const settingsVisible = ref(false);
 const mobileConnectVisible = ref(false);
@@ -153,6 +156,7 @@ const promptAttachments = ref<AgentAttachment[]>([]);
 const workspaceStore = useWorkspaceStore();
 const { project, projectList } = storeToRefs(workspaceStore);
 const workspaceDirectory = ref("");
+const directoryHint = computed(() => workspaceDirectory.value ? "新项目将保存在所选文件夹，请确保文件夹为空。" : "开始时选择一个空文件夹，保存画布和素材。");
 const hasPrompt = computed(() => !!prompt.value.trim() || !!promptAttachments.value.length);
 const promptPlaceholder = computed(() => translate("描述你想创作的故事、角色或镜头，AI 助手会和你一起搭建画布…"));
 const activeSection = ref("create");
@@ -165,6 +169,14 @@ const selectedModel = ref("");
 const reasoningEffort = ref("");
 const sortDescending = ref(true);
 const viewMode = ref("grid");
+onMounted(() => {
+  if (webMode.value && webUserId.value) void workspaceStore.loadProjects().catch(error => ElMessage.error(errorMessage(error, "读取项目失败")));
+});
+
+function openSettings() {
+  if (webMode.value && !webUserId.value) { signInVisible.value = true; return; }
+  settingsVisible.value = true;
+}
 const sortedProjects = computed(() => [...projectList.value].sort((left, right) =>
   sortDescending.value ? right.lastOpenedAt - left.lastOpenedAt : left.lastOpenedAt - right.lastOpenedAt
 ));
@@ -217,6 +229,7 @@ async function restoreAttachment(index: number) {
 }
 
 async function openProject(project?: Project) {
+  if (webMode.value && !webUserId.value) { signInVisible.value = true; return; }
   if (creating.value || opening.value) return;
   opening.value = true;
   try {
@@ -224,7 +237,7 @@ async function openProject(project?: Project) {
     if (!directory) return;
     try { await workspaceStore.openProject(directory); }
     catch (err) {
-      if (!project || !axios.isAxiosError(err) || err.response?.status !== 404) throw err;
+      if (webMode.value || !project || !axios.isAxiosError(err) || err.response?.status !== 404) throw err;
       const reselect = await ElMessageBox.confirm(`项目“${project.name}”的文件夹不存在，是否重新选择文件夹？`, "工作目录不存在", {
         confirmButtonText: "重新选择", cancelButtonText: "取消", type: "warning",
       }).then(() => true, () => false);
@@ -246,14 +259,29 @@ async function renameProject(project: Project) {
     inputValue: project.name, confirmButtonText: "保存", cancelButtonText: "取消",
     inputValidator: value => !!value?.trim() || "项目名称不能为空",
   }).catch(() => null);
-  if (result) workspaceStore.renameProject(project.directory, result.value);
+  if (result) {
+    try { await workspaceStore.renameProject(project.directory, result.value); }
+    catch (error) { ElMessage.error(error instanceof Error ? error.message : "项目名称保存失败，请重试"); }
+  }
 }
 
 async function createProject(fromPrompt = true) {
+  if (webMode.value && !webUserId.value) { signInVisible.value = true; return; }
   if (creating.value || opening.value) return;
   if (fromPrompt && hasPrompt.value && !selectedModel.value) return ElMessage.warning("请先选择可用模型，再开始 AI 创作；也可以直接新建空白画布。");
   creating.value = true;
   try {
+    if (webMode.value) {
+      const result = await ElMessageBox.prompt("请输入项目名称", "新建项目", { confirmButtonText: "创建", cancelButtonText: "取消",
+        inputValidator: value => !!value?.trim() && value.trim().length <= 256 || "请输入 1 至 256 字的项目名称" }).catch(() => null);
+      if (!result) return;
+      const { data } = await api.post<{ data: Project }>("/api/projects/create", { name: result.value.trim() });
+      await workspaceStore.openProject(data.data.directory);
+      if (fromPrompt && hasPrompt.value) workspaceStore.pendingAgentMessage = { directory: data.data.directory, prompt: prompt.value,
+        attachments: [...promptAttachments.value], model: selectedModel.value, reasoningEffort: reasoningEffort.value };
+      await router.push("/workspace");
+      return;
+    }
     let path = fromPrompt ? workspaceDirectory.value : "";
     if (!path) {
       path = await relocationPicker.value?.chooseDirectory() ?? "";
@@ -306,8 +334,6 @@ async function createProject(fromPrompt = true) {
       .brandLogo {
         width: 28px;
         height: 28px;
-
-        .dark & { filter: invert(1); }
       }
 
       .brandName { display: block; font-size: 17px; font-weight: 650; letter-spacing: -0.03em; }

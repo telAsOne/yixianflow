@@ -12,7 +12,10 @@
       decoding="async"
       draggable="false"
       @click.stop
-      @error="thumbnailFailed ? mediaError() : thumbnailFailed = true" />
+      @load="mediaPreview.onReady"
+      @error="thumbnailFailed ? mediaPreview.onError($event) : thumbnailFailed = true">
+      <template #viewer-error><el-button :loading="mediaPreview.loading.value" aria-label="重试引用图片预览" @click.stop="mediaPreview.retry">重试预览</el-button></template>
+    </el-image>
     <img
       v-else-if="item.dataType === 'VIDEO' && previewUrl && !previewError"
       class="preview"
@@ -32,8 +35,9 @@
       aria-hidden="true"
       @loadedmetadata="readDuration"
       @loadeddata="readVideoPreview"
-      @error="mediaError" />
+      @error="mediaPreview.onError" />
     <component v-else :is="itemIcon" class="typeIcon" :size="21" aria-hidden="true" />
+    <mediaPreviewStatus :preview="mediaPreview" compact />
     <el-button
       class="removeButton nodrag nopan"
       :disabled="disabled"
@@ -59,11 +63,12 @@ import { ElButton, ElImage } from "element-plus";
 import { IconX, IconFileText, IconPhoto, IconVideo, IconMusic, IconPlayerPlay } from "@tabler/icons-vue";
 import { useNodeFiles } from "@toonflow/nodes-scaffold/workspaceFiles";
 import type { NodeInputValue } from "@toonflow/nodes-scaffold/values";
+import { useMediaPreview } from "../useMediaPreview";
+import mediaPreviewStatus from "./mediaPreviewStatus.vue";
 
 const props = defineProps<{ item: NodeInputValue; index: number; label?: string; disabled?: boolean }>();
 const emit = defineEmits<{ remove: []; preview: [url: string, originalUrl: string] }>();
 const imageRef = ref<InstanceType<typeof ElImage>>();
-const previewError = ref("");
 const duration = ref("");
 const videoThumbnail = ref("");
 const thumbnailFailed = ref(false);
@@ -75,19 +80,16 @@ const title = computed(() => {
 });
 
 watch(media, () => {
-  previewError.value = "";
   duration.value = "";
   videoThumbnail.value = "";
   thumbnailFailed.value = false;
 });
 const { useFileUrl, useMediaInfo } = useNodeFiles();
-const originalUrl = useFileUrl(() => props.item.dataType === "IMAGE" || thumbnailFailed.value ? media.value : undefined, error => {
-  previewError.value = error instanceof Error ? error.message : "读取引用文件失败";
-});
+const mediaPreview = useMediaPreview(() => props.item.dataType === "IMAGE" || thumbnailFailed.value ? media.value : undefined);
+const originalUrl = mediaPreview.url;
+const previewError = mediaPreview.error;
 const thumbnailUrl = useFileUrl(media, () => { thumbnailFailed.value = true; }, true);
-const info = useMediaInfo(() => props.item.dataType === "VIDEO" ? media.value : undefined, error => {
-  previewError.value = error instanceof Error ? error.message : "读取引用信息失败";
-});
+const info = useMediaInfo(() => props.item.dataType === "VIDEO" ? media.value : undefined, () => {});
 const previewUrl = computed(() => props.item.dataType === "VIDEO" ? videoThumbnail.value || (thumbnailFailed.value ? "" : thumbnailUrl.value)
   : thumbnailFailed.value ? originalUrl.value : thumbnailUrl.value);
 watch(info, value => { if (value?.duration !== undefined) setDuration(value.duration); });
@@ -96,13 +98,10 @@ watch([previewUrl, previewError, originalUrl], ([url, error, original]) => {
   emit("preview", error ? "" : url, error ? "" : props.item.dataType === "IMAGE" ? original : url);
 }, { immediate: true });
 
-function mediaError() {
-  previewError.value = props.item.dataType === "VIDEO" ? "无法预览该视频" : "无法预览该图片";
-}
-
 function readVideoPreview(event: Event) {
   const video = event.currentTarget as HTMLVideoElement;
   if (video.currentSrc !== originalUrl.value || !video.videoWidth || !video.videoHeight) return;
+  mediaPreview.onReady(event);
   const canvas = document.createElement("canvas");
   const scale = 96 / Math.max(video.videoWidth, video.videoHeight);
   canvas.width = Math.max(1, Math.round(video.videoWidth * scale));

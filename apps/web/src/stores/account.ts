@@ -2,6 +2,8 @@ import { ref } from "vue";
 import api from "@/lib/api";
 import { applyManagedSettings } from "@/stores/settings";
 import type { AccountView } from "@toonflow/server/account";
+import { webMode } from "@/lib/webRuntime";
+import { appBasePath } from "@/lib/appPath";
 
 export const accountView = ref<AccountView>();
 export const signInVisible = ref(false);
@@ -32,6 +34,7 @@ export async function refreshModels() {
 
 export async function logout() {
   await api.post("/api/account/logout");
+  if (webMode.value) { window.location.replace(`${appBasePath}/#/home`); window.location.reload(); return; }
   accountView.value = undefined;
   applyManagedSettings({ customProviders: [], defaultModels: {}, yixianConfig: undefined });
   await refreshAccount();

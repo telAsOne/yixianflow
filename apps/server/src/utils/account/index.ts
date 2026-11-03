@@ -5,8 +5,9 @@ import { z } from "zod";
 import conf from "@/utils/conf";
 import { translateMessage } from "@/lib/i18n";
 import { accountInfoSchema, userSchema, type AccountView } from "@/types/account";
+import { isWebMode, webContext } from "@/lib/webContext";
 
-const credentialSchema = z.object({ key: z.string().max(8192).regex(/^sk-[a-zA-Z0-9_-]+$/), user: userSchema, baseUrl: z.string() });
+export const credentialSchema = z.object({ key: z.string().max(8192).regex(/^sk-[a-zA-Z0-9_-]+$/), user: userSchema, baseUrl: z.string() });
 let credentials: z.infer<typeof credentialSchema> | undefined;
 let version = "";
 let loginGeneration = 0;
@@ -23,7 +24,10 @@ export function getBaseUrl() {
   return url.origin;
 }
 
-export function getAccount() { return credentials?.baseUrl === getBaseUrl() ? credentials : undefined; }
+export function getAccount() {
+  if (isWebMode()) return webContext.getStore()?.account;
+  return credentials?.baseUrl === getBaseUrl() ? credentials : undefined;
+}
 export function requireAccount() {
   const account = getAccount();
   if (!account) throw Object.assign(new Error("请登录或注册逸仙账户后开始生成"), { status: 401, code: "toonflow.login_required" });
@@ -42,6 +46,11 @@ function saveAccount(account?: z.infer<typeof credentialSchema>) {
 }
 
 export async function logout() {
+  if (isWebMode()) {
+    const { logoutWebSession } = await import("@/utils/web/auth");
+    await logoutWebSession();
+    return;
+  }
   loginGeneration++;
   pending = undefined;
   loginStatus = "idle";
@@ -135,6 +144,11 @@ export async function accountFetch(path: string, init?: RequestInit) {
 }
 
 export async function getView(): Promise<AccountView> {
+  if (isWebMode()) {
+    const account = getAccount();
+    const { getConfigState } = await import("./config");
+    return { authenticated: !!account, loginStatus: "idle", account: webContext.getStore()?.accountInfo, ...getConfigState() };
+  }
   if (pending && pending.expiresAt <= Date.now()) { pending = undefined; loginStatus = "expired"; message = "登录已超时，请重新登录"; }
   const { getConfigState, refreshConfig } = await import("./config");
   const account = getAccount();
@@ -149,6 +163,7 @@ export async function getView(): Promise<AccountView> {
 
 export async function initializeAccount(appVersion: string) {
   version = appVersion;
+  if (isWebMode()) return;
   const source = await readFile(accountPath, "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
   if (source) credentials = credentialSchema.parse(JSON.parse(source));
   const { initializeConfig } = await import("./config");

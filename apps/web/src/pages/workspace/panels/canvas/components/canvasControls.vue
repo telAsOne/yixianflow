@@ -118,8 +118,6 @@
                 @click="helpVisible = false">
                 汇报 BUG
               </el-button>
-              <el-button class="helpAction" text :icon="IconBrandWechat" @click="showContact('community')">加入交流群</el-button>
-              <el-button class="helpAction" text :icon="IconBriefcase" @click="showContact('business')">商务合作</el-button>
             </div>
           </el-popover>
         </span>
@@ -127,29 +125,13 @@
     </div>
   </div>
   <arrangeDialog ref="arrangeDialogRef" :active="active" :canvasId="canvasId" :directory="directory" :projectName="projectName" :batchHistory="batchHistory" />
-  <el-dialog v-model="contactVisible" :title="contactInfo.title" width="min(360px, calc(100vw - 32px))" alignCenter appendToBody>
-    <div class="contactContent">
-      <tdesignProvider><q-r-code
-        :value="contactInfo.url"
-        :size="192"
-        type="svg"
-        color="#000000"
-        bgColor="#ffffff"
-        borderless
-        role="img"
-        :aria-label="`${contactInfo.title}二维码`" /></tdesignProvider>
-      <p class="contactTip">{{ contactInfo.tip }}</p>
-    </div>
-  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import tdesignProvider from "@/components/tdesignProvider.vue";
 import { computed, ref } from "vue";
 import { useVueFlow } from "@vue-flow/core";
-import { IconArrowGuide, IconBook, IconBug, IconBrandWechat, IconBriefcase, IconMagnet, IconSitemap } from "@tabler/icons-vue";
+import { IconArrowGuide, IconBook, IconBug, IconMagnet, IconSitemap } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
-import { QRCode } from "tdesign-vue-next";
 import arrangeDialog from "./arrangeDialog.vue";
 import type { CanvasNavigation } from "../useCanvasNavigation";
 import { generalSettings } from "@/stores/settings";
@@ -169,21 +151,6 @@ const showMap = defineModel<boolean>("showMap", { default: true });
 const zoomMenuVisible = ref(false);
 const moreVisible = ref(false);
 const helpVisible = ref(false);
-const contactVisible = ref(false);
-const contactType = ref<"community" | "business">("community");
-const contacts = {
-  community: {
-    title: "加入交流群",
-    url: "https://work.weixin.qq.com/u/vc36adcc89845edcbe?v=5.0.3.63936&bb=85b8d228e8",
-    tip: "Toonflow 是为爱发电的开源项目。欢迎文明交流、友善反馈；回复可能需要一些时间，请避免责问或命令式沟通，感谢你的理解与尊重。",
-  },
-  business: {
-    title: "商务合作",
-    url: "https://work.weixin.qq.com/u/vc0f54596c5837d05a?v=5.0.8.70675",
-    tip: "此联系方式仅用于商务合作接洽，不提供问题答疑。使用问题欢迎在交流群交流，需求与 BUG 可通过反馈表提交。感谢理解。",
-  },
-};
-const contactInfo = computed(() => contacts[contactType.value]);
 const flow = useVueFlow();
 const { viewport, zoomTo, zoomIn, zoomOut, getNodes } = flow;
 const canNavigate = computed(() => props.active && !!props.canvasId && !!props.directory);
@@ -216,12 +183,6 @@ function toggleMap() {
 function focusSelection() {
   zoomMenuVisible.value = false;
   return props.navigation.focusNodes(flow.getSelectedNodes.value.map(node => node.id));
-}
-
-function showContact(type: "community" | "business") {
-  contactType.value = type;
-  helpVisible.value = false;
-  contactVisible.value = true;
 }
 
 function applyZoom(value: number | undefined) {
@@ -330,17 +291,4 @@ async function requestArrange(signal?: AbortSignal) {
   }
 }
 
-.contactContent {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-
-  .contactTip {
-    margin: 0;
-    color: var(--el-text-color-secondary);
-    font-size: 12px;
-    line-height: 1.7;
-  }
-}
 </style>

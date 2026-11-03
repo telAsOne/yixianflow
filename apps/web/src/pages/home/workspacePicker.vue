@@ -3,12 +3,12 @@
     <span class="directoryName">{{ selectedDirectory ? selectedDirectory.split(/[\\/]/).filter(Boolean).at(-1) || selectedDirectory : '工作目录' }}</span>
     <icon-chevron-down :size="14" />
   </el-button>
-  <el-dialog v-model="dialogVisible" :title="isMobile && !isRemoteMobile ? '选择手机工作目录' : '选择服务器工作目录'" width="min(680px, 92vw)" appendToBody :closeOnClickModal="!editing" :closeOnPressEscape="!editing" :showClose="!editing" @close="finishSelection?.(null)">
+  <el-dialog v-model="dialogVisible" :title="webMode ? '选择项目' : isMobile && !isRemoteMobile ? '选择手机工作目录' : '选择服务器工作目录'" width="min(680px, 92vw)" appendToBody :closeOnClickModal="!editing" :closeOnPressEscape="!editing" :showClose="!editing" @close="finishSelection?.(null)">
     <div class="workspaceBrowser">
       <div class="directoryHeader">
         <el-button :icon="IconArrowLeft" circle :disabled="loading || editing || !listing?.path" aria-label="上一级目录" @click="loadDirectory(listing?.parent ?? '')" />
-        <el-text class="directoryPath" truncated :title="listing?.absolutePath">{{ isMobile && !isRemoteMobile ? '手机工作区' : '服务器工作区' }}{{ listing?.path ? ` / ${listing.path}` : '' }}</el-text>
-        <el-button :icon="IconFolderPlus" :disabled="loading || editing || !listing || !!browseError" @click="manageEntry('mkdir')">新建文件夹</el-button>
+        <el-text class="directoryPath" truncated :title="webMode ? listing?.name : listing?.absolutePath">{{ directoryLabel }}</el-text>
+        <el-button v-if="!webMode" :icon="IconFolderPlus" :disabled="loading || editing || !listing || !!browseError" @click="manageEntry('mkdir')">新建文件夹</el-button>
       </div>
       <el-alert v-if="browseError" :title="browseError" type="error" :closable="false" />
       <el-table v-loading="loading" :data="listing?.entries ?? []" height="300" emptyText="当前目录为空">
@@ -18,7 +18,7 @@
             <span v-else class="fileName" :title="row.name"><icon-file :size="16" /><span>{{ row.name }}</span></span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="130" align="right">
+        <el-table-column v-if="!webMode" label="操作" width="130" align="right">
           <template #default="{ row }">
             <el-button link :disabled="loading || editing" :aria-label="`重命名 ${row.name}`" @click="manageEntry('rename', row as WorkspaceEntry)">重命名</el-button>
             <el-button link type="danger" :disabled="loading || editing" :aria-label="`删除 ${row.name}`" @click="manageEntry('remove', row as WorkspaceEntry)">删除</el-button>
@@ -28,18 +28,19 @@
     </div>
     <template #footer>
       <el-button :disabled="editing" @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" :disabled="loading || editing || !listing || !!browseError" @click="confirmDirectory">选择此目录</el-button>
+      <el-button type="primary" :disabled="loading || editing || !listing || !!browseError || webMode && !listing.absolutePath" @click="confirmDirectory">{{ webMode ? '打开项目' : '选择此目录' }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import axios from "axios";
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { IconFolder, IconFolderPlus, IconFile, IconChevronDown, IconArrowLeft } from "@tabler/icons-vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { isMobile, isRemoteMobile, isRemoteConnection } from "@/lib/mobile";
+import { webMode } from "@/lib/webRuntime";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
 type DirectoryListing = {
@@ -47,6 +48,7 @@ type DirectoryListing = {
   absolutePath: string;
   parent: string | null;
   entries: WorkspaceEntry[];
+  name?: string;
 };
 
 const selectedDirectory = defineModel<string>({ default: "" });
@@ -58,6 +60,11 @@ const loading = ref(false);
 const editing = ref(false);
 const listing = ref<DirectoryListing>();
 const browseError = ref("");
+const directoryLabel = computed(() => {
+  if (webMode.value) return listing.value?.name ?? "我的项目";
+  const root = isMobile && !isRemoteMobile ? "手机工作区" : "服务器工作区";
+  return root + (listing.value?.path ? ` / ${listing.value.path}` : "");
+});
 let finishSelection: ((directory: string | null) => void) | undefined;
 onBeforeUnmount(() => finishSelection?.(null));
 defineExpose({ chooseDirectory });
@@ -66,7 +73,7 @@ async function chooseDirectory(): Promise<string | null> {
   if (selecting.value || loading.value || props.disabled) return null;
   selecting.value = true;
   try {
-    if (isDesktop && !isRemoteConnection) {
+    if (isDesktop && !isRemoteConnection && !webMode.value) {
       const { data } = await axios.post<{ data: { directory: string | null } }>("/api/desktop/selectDirectory", null, { headers: { "x-toonflow-desktop": "1" } });
       if (data.data.directory) selectedDirectory.value = data.data.directory;
       return data.data.directory;
@@ -92,9 +99,10 @@ async function loadDirectory(path: string) {
   loading.value = true;
   browseError.value = "";
   try {
-    const { data } = await axios.get<{ code: number; data: Omit<DirectoryListing, "entries">; message: string }>("/api/workspaces/list", { params: { path } });
+    const { data } = await axios.get<{ code: number; data: Omit<DirectoryListing, "entries"> & { entries?: WorkspaceEntry[] }; message: string }>("/api/workspaces/list", { params: { path } });
     if (data.code !== 200) throw new Error(data.message);
     listing.value = { ...data.data, entries: [] };
+    if (webMode.value) { listing.value.entries = data.data.entries ?? []; return; }
     const { entries } = await useWorkspaceFiles(data.data.absolutePath).list();
     listing.value = { ...data.data, entries: entries.sort((a, b) => Number(b.type === "directory") - Number(a.type === "directory") || a.name.localeCompare(b.name, "zh-CN", { numeric: true })) };
   } catch (err) {

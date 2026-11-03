@@ -19,7 +19,8 @@
         <span>{{ cancelling ? '正在取消烧录' : '正在烧录字幕' }}</span>
       </div>
       <p v-if="error" class="burnError" role="alert">{{ error }}</p>
-      <videoPlayer v-if="previewUrl" ref="player" :src="previewUrl" :previewSrc="posterUrl" :metadata="mediaInfo" :label="nodeProps.label" @loadedmetadata="resizeVideo" />
+      <videoPlayer v-if="previewUrl" ref="player" :src="previewUrl" :file="outputFile" :previewSrc="posterUrl" :metadata="mediaInfo" :label="nodeProps.label" @loadedmetadata="resizeVideo" />
+      <mediaPreviewStatus :preview="mediaPreview" />
     </div>
   </nodeSkeleton>
 </template>
@@ -30,6 +31,8 @@ import { ElButton, ElProgress } from "element-plus";
 import { getTargetValues, nodeSkeleton, nodeTools, useNode, z, type NodeHandle, type NodeInputValue } from "@toonflow/nodes-scaffold/runtime";
 import { useNodeGeneration } from "@toonflow/node-shared/useNodeGeneration";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import videoPlayer from "@toonflow/node-video/videoPlayer";
 import { burnVideo } from "./videoBurning";
 
@@ -57,7 +60,8 @@ let cleanupFailed = false;
 const generation = useNodeGeneration(outputs, cancelJob, "字幕烧录已取消");
 const { generating } = generation;
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const previewUrl = files.useFileUrl(outputFile, failure => reportError(failure, "视频读取失败"));
+const mediaPreview = useMediaPreview(outputFile);
+const previewUrl = mediaPreview.url;
 const posterUrl = files.useFileUrl(outputFile, failure => reportError(failure, "视频封面读取失败"), true);
 const mediaInfo = files.useMediaInfo(outputFile, failure => reportError(failure, "视频信息读取失败"));
 watchEffect(() => {
@@ -146,6 +150,7 @@ nodeTools.register({
 
 <style scoped lang="scss">
 .burnContent {
+  position: relative;
   min-height: 144px;
   .burnProgress {
     padding: 12px;

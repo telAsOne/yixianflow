@@ -7,25 +7,26 @@
           <button
             class="settingsItem"
             type="button"
-            :aria-label="item.id === 'about' && hasDesktopUpdate ? `${item.label}，有新版本可用` : item.label"
+            :aria-label="item.label"
             :aria-pressed="activePanel.id === item.id"
             @click="activePanel = item">
-            <el-badge class="panelIcon" isDot :hidden="item.id !== 'about' || !hasDesktopUpdate">
-              <component :is="item.icon" :size="18" aria-hidden="true" />
-            </el-badge>
+            <component :is="item.icon" class="panelIcon" :size="18" aria-hidden="true" />
             <span>{{ item.label }}</span>
           </button>
         </template>
       </aside>
       <section class="content" :aria-label="activePanel.label" tabindex="0">
-        <h2 class="panelTitle">{{ activePanel.label }}</h2>
+        <h2 class="panelTitle">
+          <template v-if="activePanel.id === 'account'"><a class="accountLink" href="https://yixian.lol/" target="_blank" rel="noopener noreferrer">UnionAigc</a> 账户</template>
+          <template v-else>{{ activePanel.label }}</template>
+        </h2>
         <div class="panelContent">
           <transition name="el-fade-in" mode="out-in">
             <keep-alive include="personalization">
               <component
                 :is="activePanel.component"
                 v-bind="
-                  ['pluginMarket', 'languageModel', 'mediaModel', 'account', 'personalization', 'deviceLink'].includes(activePanel.id) ? { visible } : {}
+                  ['pluginMarket', 'languageModel', 'mediaModel', 'account', 'personalization', 'deviceLink', 'localHelper'].includes(activePanel.id) ? { visible } : {}
                 " />
             </keep-alive>
           </transition>
@@ -37,14 +38,13 @@
 
 <script setup lang="ts">
 import { defineAsyncComponent, shallowRef } from "vue";
-import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { isMobile } from "@/lib/mobile";
+import { webMode } from "@/lib/webRuntime";
 import {
   IconPalette,
   IconSettings,
   IconPhotoVideo,
   IconBuildingStore,
-  IconInfoCircle,
   IconCode,
   IconPlugConnected,
   IconUserCog,
@@ -64,7 +64,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/languageModel/index.vue")),
   },
   { id: "mediaModel", label: "媒体模型", icon: IconPhotoVideo, component: defineAsyncComponent(() => import("./panels/mediaModel/index.vue")) },
-  { id: "account", label: "逸仙账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
+  { id: "account", label: "UnionAigc 账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
   {
     id: "pluginMarket",
     label: "插件市场",
@@ -73,6 +73,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/pluginMarket/index.vue")),
   },
   { id: "mcp", label: "MCP", icon: IconPlugConnected, groupLabel: "通讯", component: defineAsyncComponent(() => import("./panels/mcp/index.vue")) },
+  ...(webMode.value ? [{ id: "localHelper", label: "本地助手", icon: IconDevices, component: defineAsyncComponent(() => import("./panels/localHelper.vue")) }] : []),
   ...(!isMobile
     ? [{ id: "deviceLink", label: "设备互联", icon: IconDevices, component: defineAsyncComponent(() => import("./panels/deviceLink.vue")) }]
     : []),
@@ -84,8 +85,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/personalization.vue")),
   },
   { id: "developer", label: "开发者选项", icon: IconCode, component: defineAsyncComponent(() => import("./panels/developer/index.vue")) },
-  { id: "about", label: "关于", icon: IconInfoCircle, component: defineAsyncComponent(() => import("./panels/about.vue")) },
-];
+].filter(panel => !webMode.value || !["mcp", "deviceLink"].includes(panel.id));
 const activePanel = shallowRef(settingsPanels[0]!);
 const visible = defineModel<boolean>({ default: false });
 </script>
@@ -207,6 +207,12 @@ const visible = defineModel<boolean>({ default: false });
       font-size: 20px;
       font-weight: 600;
       letter-spacing: -0.01em;
+
+      .accountLink {
+        color: var(--el-color-primary);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
     }
 
     .panelContent {

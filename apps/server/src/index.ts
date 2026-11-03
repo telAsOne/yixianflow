@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { createApp } from "./app";
 import packageInfo from "../../../package.json";
+import { isWebMode } from "@/lib/webContext";
 
 const startTime = Date.now();
 const host = process.env.TOONFLOW_HOST ?? "127.0.0.1";
@@ -34,9 +35,11 @@ app.listen(port, host, async error => {
     console.error("服务启动失败：", error);
     process.exit(1);
   }
-  await initializeMcpRuntime(app, mcpAddress, resolve(appDirectory, fromSource ? "packages/mcp/src/stdio.ts" : "build/mcp/stdio.js"))
-    .catch(error => console.error("MCP 启动失败：", error));
-  await startMobileLinkRuntime(app).catch(error => console.error("设备互联启动失败：", error));
+  if (!isWebMode()) {
+    await initializeMcpRuntime(app, mcpAddress, resolve(appDirectory, fromSource ? "packages/mcp/src/stdio.ts" : "build/mcp/stdio.js"))
+      .catch(error => console.error("MCP 启动失败：", error));
+    await startMobileLinkRuntime(app).catch(error => console.error("设备互联启动失败：", error));
+  }
   console.log(`[服务启动成功]: http://${host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${port}`);
   console.log(`[启动耗时]: ${(Date.now() - startTime).toFixed(2)}ms`);
 });

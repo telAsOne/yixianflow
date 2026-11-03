@@ -6,6 +6,7 @@ import type { RemoteTeam } from "@/utils/teams";
 import type { A2aSettings } from "@/agent/a2a/settings";
 import type { desktopUpdateAttempt } from "@/types/desktop";
 import type { MobileLinkConfig } from "@/utils/mobileLink";
+import { isWebMode, requireWebAccount, webContext } from "@/lib/webContext";
 
 const dataDirectory = process.env.TOONFLOW_DATA_DIR ?? resolve(import.meta.dirname, "../../../../../data");
 mkdirSync(dataDirectory, { recursive: true });
@@ -18,6 +19,15 @@ const config = new conf<{ settings: Record<string, unknown>; disabledSkills: str
   configFileMode: 0o600,
   watch: true,
 });
+
+export function getSettings(): Record<string, unknown> {
+  if (isWebMode()) return webContext.getStore()?.settings ?? {};
+  return config.get("settings", {});
+}
+
+export function getUserDataDirectory() {
+  return isWebMode() ? resolve(configDirectory, "users", String(requireWebAccount().user.id)) : configDirectory;
+}
 
 export function removeLegacySettings(settings: Record<string, unknown>) {
   let changed = false;

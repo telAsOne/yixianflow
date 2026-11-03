@@ -1,4 +1,4 @@
-import { inject, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
+import { inject, nextTick, ref, shallowRef, toValue, watch, type MaybeRefOrGetter } from "vue";
 import type { NodeMediaValue } from "./values";
 import { useNodePreviewReady } from "./useNodePreviewReady";
 
@@ -7,7 +7,7 @@ export interface WorkspaceFiles {
   getMediaInfo?(path: string): Promise<{ width?: number; height?: number; duration?: number }>;
   list(path?: string): Promise<{ directory: string; entries: { name: string; path: string; type: "file" | "directory" }[] }>;
   read(path: string): Promise<ArrayBuffer>;
-  acquireUrl?(path: string, mimeType: string, preview?: boolean): { url: Promise<string>; release(): void };
+  acquireUrl?(path: string, mimeType: string, preview?: boolean, refresh?: boolean): { url: Promise<string>; release(): void };
   readText(path: string): Promise<string>;
   readTextSnapshot(path: string): Promise<{ text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }>;
   writeTextSnapshot(path: string, text: string, snapshot: { revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }): Promise<string>;
@@ -71,34 +71,61 @@ export function useNodeFiles() {
 
   function useFileUrl(file: MaybeRefOrGetter<NodeMediaValue | undefined>, onError: (error: unknown) => void, preview = false) {
     const fileUrl = ref("");
+    const loading = ref(false);
+    const error = shallowRef<unknown>();
+    const reloadRequest = ref(0);
     const previewReady = useNodePreviewReady();
-    watch([() => toValue(file), previewReady], async ([value, ready], _previous, onCleanup) => {
+    watch([() => toValue(file), previewReady, reloadRequest], async ([value, ready, reload], previous, onCleanup) => {
       let cancelled = false;
       let url = "";
+      let cancelRetry: (() => void) | undefined;
       let shared: ReturnType<NonNullable<WorkspaceFiles["acquireUrl"]>> | undefined;
       onCleanup(() => {
         cancelled = true;
+        cancelRetry?.();
         shared?.release();
         if (url) URL.revokeObjectURL(url);
       });
       fileUrl.value = "";
+      loading.value = false;
+      error.value = undefined;
       if (!value || !ready) return;
+      loading.value = true;
       try {
         const files = getWorkspaceFiles();
-        shared = files.acquireUrl?.(value.url, value.mimeType, preview);
-        if (shared) {
-          const sharedUrl = await shared.url;
-          if (!cancelled) fileUrl.value = sharedUrl;
-          return;
+        // 同一地址也先移除旧视图，让浏览器能重新加载已经失败的资源。
+        await nextTick();
+        for (let attempt = 0; attempt < 2 && !cancelled; attempt++) {
+          try {
+            shared = files.acquireUrl?.(value.url, value.mimeType, preview, attempt > 0 || reload > 0 && reload !== previous[2]);
+            const nextUrl = shared ? await shared.url : await files.read(value.url).then(content => {
+              if (cancelled) return "";
+              return url = URL.createObjectURL(new Blob([content], { type: value.mimeType }));
+            });
+            if (!cancelled) fileUrl.value = nextUrl;
+            return;
+          } catch (failure) {
+            shared?.release();
+            shared = undefined;
+            if (cancelled) return;
+            if (attempt) {
+              error.value = failure;
+              reportError(failure, onError);
+              return;
+            }
+            // ACT: 只重试一次文件读取；写入和生成请求不参与恢复。
+            await new Promise<void>(resolve => {
+              const timer = setTimeout(resolve, 800);
+              cancelRetry = () => { clearTimeout(timer); resolve(); };
+            });
+            cancelRetry = undefined;
+          }
         }
-        const content = await files.read(value.url);
-        if (cancelled) return;
-        fileUrl.value = url = URL.createObjectURL(new Blob([content], { type: value.mimeType }));
-      } catch (error) {
-        if (!cancelled) reportError(error, onError);
-      }
+      } catch (failure) {
+        if (!cancelled) { error.value = failure; reportError(failure, onError); }
+      } finally { if (!cancelled) loading.value = false; }
     }, { immediate: true });
-    return fileUrl;
+    return Object.assign(fileUrl, { loading, error, reload: () => { reloadRequest.value++; } });
   }
 
   function useMediaInfo(file: MaybeRefOrGetter<NodeMediaValue | undefined>, onError: (error: unknown) => void) {

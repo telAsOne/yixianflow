@@ -3,12 +3,24 @@ import { z } from "zod";
 import u from "@/utils";
 import { getLocale, translateMessage } from "@/lib/i18n";
 import { isLocalSocket } from "@/lib/desktop";
+import { isWebMode } from "@/lib/webContext";
 
 export default Router().get("/", async (req, res) => {
   res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff" });
   let status = 200;
   let message = "已登录，请返回 Toonflow";
+  if (isWebMode()) {
+    try {
+      const query = z.object({ state: z.string().regex(/^[A-Za-z0-9_-]{43,128}$/), code: z.string().max(8192).optional(), error: z.string().max(100).optional() }).parse(req.query);
+      await u.webAuth.completeWebLogin(req, res, query.state, query.code, query.error);
+      return void res.redirect(`${u.webStore.getWebBasePath()}/#/home`);
+    } catch (error) {
+      console.warn("[web] login callback rejected");
+      const reason = (error as { code?: string }).code === "toonflow.admin_required" ? "adminRequired" : "failed";
+      return void res.redirect(`${u.webStore.getWebBasePath()}/#/home?login=${reason}`);
+    }
+  }
   try {
     if (!isLocalSocket(req) || req.hostname !== "127.0.0.1") throw new Error("只允许本机接收登录回调");
     const query = z.object({ state: z.string().max(128), code: z.string().max(8192).optional(), error: z.string().max(100).optional() }).parse(req.query);

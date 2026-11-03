@@ -5,6 +5,7 @@ import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 import { maxSystemPromptLength } from "@/agent/runtime/prompt";
 import { t } from "@/lib/i18n";
+import { isWebMode } from "@/lib/webContext";
 
 const router = Router();
 
@@ -15,6 +16,10 @@ export default router.put("/", validateFields({ settings: z.record(z.string(), z
   u.mcpControl.assertAppRequest(req);
   const { settings } = req.body;
   u.removeLegacySettings(settings);
+  if (isWebMode()) {
+    await u.webStore.saveWebSettings(settings);
+    return void res.json(success({ customProviders: u.getSettings().customProviders ?? [] }, "设置已保存"));
+  }
   const previousSettings = u.conf.get("settings", {});
   for (const key of ["customProviders", "mediaProviderConfigs", "defaultModels", "yixianConfig"]) {
     if (Object.hasOwn(previousSettings, key)) settings[key] = previousSettings[key];

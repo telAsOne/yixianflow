@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import { useHelloStore } from "@/stores/hello";
+import { webMode, webUserId } from "@/lib/webRuntime";
+import { useWorkspaceStore } from "@/stores/workspace";
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -9,7 +11,7 @@ const router = createRouter({
     },
     {
       path: "/hello",
-      beforeEnter: async () => await useHelloStore().load() ? { path: "/home", replace: true } : true,
+      beforeEnter: async () => webMode.value || await useHelloStore().load() ? { path: "/home", replace: true } : true,
       component: () => import("@/pages/hello/index.vue"),
     },
     {
@@ -22,6 +24,15 @@ const router = createRouter({
     },
     {
       path: "/workspace",
+      beforeEnter: async () => {
+        if (!webMode.value) return true;
+        if (!webUserId.value) return "/home";
+        const workspace = useWorkspaceStore();
+        await workspace.loadProjects();
+        if (!workspace.project) return "/home";
+        await workspace.openProject(workspace.project.directory);
+        return true;
+      },
       component: () => import("@/pages/workspace/index.vue"),
     },
   ],

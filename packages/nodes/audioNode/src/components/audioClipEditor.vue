@@ -1,7 +1,7 @@
 <template>
   <div class="audioClipEditor nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.capture="handleKeydown" @keydown.stop>
     <div class="editorHint"><span>拖动左右边界，选择需要的音频；点击波形定位。</span><span>原音频 {{ formatTime(duration) }}</span></div>
-    <audioPlayer ref="player" :src="src" label="音频截取预览" playLabel="试听选中片段" :inert="disabled || !valid" @loadedmetadata="readDuration" @play="startPlayback">
+    <audioPlayer ref="player" :src="src" label="音频截取预览" playLabel="试听选中片段" :inert="disabled || !valid" @loadedmetadata="readDuration" @play="startPlayback" @error="emit('error', $event)" @retry="emit('retry')">
       <template #track="{ peaks }">
         <div class="timeline">
           <div class="timeRuler"><span v-for="tick in 6" :key="tick" :style="{ left: `${(tick - 1) * 20}%` }">{{ formatTime((tick - 1) * duration / 5) }}</span></div>
@@ -54,7 +54,8 @@ import type { AudioSegment } from "../audioProcessing";
 import audioPlayer from "./audioPlayer.vue";
 
 type EditState = { segments: AudioSegment[]; selectedIndex: number; time: number };
-const props = defineProps<{ src: string; disabled?: boolean }>();
+const props = defineProps<{ src: string; sourceKey?: string; disabled?: boolean }>();
+const emit = defineEmits<{ error: [event: Event]; retry: [] }>();
 const segments = defineModel<AudioSegment[]>({ required: true });
 const player = ref<InstanceType<typeof audioPlayer>>();
 const track = ref<HTMLElement>();
@@ -81,7 +82,7 @@ let drag: { pointerId: number; target: HTMLElement; x: number; time: number; wid
 for (const edge of boundaryNames) watch(() => activeSegment.value?.[edge], value => {
   if (value !== undefined) boundaryInputs.value[edge] = Number(value.toFixed(2));
 }, { immediate: true, flush: "sync" });
-watch(() => props.src, () => {
+watch(() => props.sourceKey ?? props.src, () => {
   endDrag();
   initialized = false;
   duration.value = 0;

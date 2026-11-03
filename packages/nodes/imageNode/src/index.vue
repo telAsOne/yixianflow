@@ -39,8 +39,9 @@
         :toolbarTarget="paintToolbar"
         :disabled="uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
         alt="节点图片"
-        @load="resizeImage"
-        @error="ElMessage.error('无法预览该图片')" />
+        @load="mediaPreview.onReady($event); resizeImage($event)"
+        @error="mediaPreview.onError" />
+      <mediaPreviewStatus :preview="mediaPreview" />
       <input ref="fileInput" class="fileInput" type="file" accept="image/*" aria-label="选择图片" :disabled="uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @change="uploadImage" />
       <el-button
         v-if="!outputFile"
@@ -69,11 +70,16 @@
     v-if="previewVisible && previewUrl"
     :urlList="[previewUrl]"
     teleported
-    @close="previewVisible = false" />
+    @error="mediaPreview.onError"
+    @close="previewVisible = false">
+    <template #viewer-error><el-button :loading="mediaPreview.loading.value" :disabled="!mediaPreview.canRetry.value" aria-label="重试图片预览" @click="mediaPreview.retry">重试预览</el-button></template>
+  </el-image-viewer>
 </template>
 
 <script setup lang="ts">
 import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
+import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
+import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import { computed, nextTick, ref, watchEffect } from "vue";
 import { IconPhoto, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown } from "@tabler/icons-vue";
 import { ElButton, ElImageViewer, ElMessage } from "element-plus";
@@ -115,11 +121,9 @@ const previewVisible = ref(false);
 const imageWidth = ref(0);
 
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
-const previewUrl = files.useFileUrl(
-  outputFile,
-  (error) => showError(error, "图片读取失败")
-);
-const thumbnailUrl = files.useFileUrl(outputFile, error => showError(error, "图片预览读取失败"), true);
+const mediaPreview = useMediaPreview(outputFile, () => !editor.value?.mode && !editor.value?.busy);
+const previewUrl = mediaPreview.url;
+const thumbnailUrl = files.useFileUrl(outputFile, () => {}, true);
 watchEffect(() => { retainPreview.value = uploading.value || previewVisible.value || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
 
 nodeEvent.on("save", () => {
@@ -223,6 +227,7 @@ function showError(error: unknown, fallback: string) {
 
 <style scoped lang="scss">
 .imageContent {
+  position: relative;
   min-height: 144px;
 
   .fileInput {

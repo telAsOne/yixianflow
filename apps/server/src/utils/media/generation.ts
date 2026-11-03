@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { mediaProviders, type Provider, type VideoTaskContext, type ImageTaskContext } from "@toonflow/providers";
 import type { GeneratedMedia, MediaGenerationRequest, MediaModel, MediaReference } from "@toonflow/tools-scaffold/runtime";
-import conf from "@/utils/conf";
+import { getSettings } from "@/utils/conf";
 import { getMediaProvider, listMediaProviders, loadMediaProviderSource } from "@/utils/media/provider";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { runVideoTask } from "@/utils/media/videoTasks";
@@ -41,7 +41,7 @@ export async function listMediaModels(): Promise<MediaModel[]> {
   if (!getAccount() || !getConfigState().revision) return [];
   const installedProviders = await listMediaProviders();
   const { limits: uploadLimits, imageTotalMaxBytes } = getConfigState();
-  const defaults = conf.get("settings.defaultModels") as Record<string, { modelId: string } | null> | undefined;
+  const defaults = getSettings().defaultModels as Record<string, { modelId: string } | null> | undefined;
   return installedProviders.flatMap(provider => provider.models.flatMap(model => {
     if (model.type !== "image" && model.type !== "video") return [];
     const builtIn = (mediaProviders as readonly Provider[]).find(item => item.id === provider.id)?.models.find(item => item.id === model.id);
@@ -73,7 +73,7 @@ export async function listMediaModels(): Promise<MediaModel[]> {
 async function videoProvider(providerId: string, modelId: string, signal?: AbortSignal) {
   const info = await getMediaProvider(providerId);
   if (!info.models.some(model => model.id === modelId && model.type === "video")) invalid("所选视频模型不存在");
-  const configs = record(conf.get("settings", {}).mediaProviderConfigs);
+  const configs = record(getSettings().mediaProviderConfigs);
   return loadMediaProviderSource(info.source, record(configs[providerId]), signal);
 }
 
@@ -194,7 +194,7 @@ async function generateMediaResult(
   const providerInfo = await getMediaProvider(request.providerId);
   const model = providerInfo.models.find(model => model.id === request.modelId && model.type === mediaType);
   if (!model) throw Object.assign(new Error("所选媒体模型不存在或类型不匹配，请重新选择"), { status: 400, code: "toonflow.model_unavailable" });
-  const configurations = record(conf.get("settings", {}).mediaProviderConfigs);
+  const configurations = record(getSettings().mediaProviderConfigs);
   const provider = await loadMediaProviderSource(providerInfo.source, record(configurations[providerInfo.id]), signal, undefined, directory, videoTask, imageTask);
   const generate = mediaType === "image" ? provider.generateImage : mediaType === "video" ? provider.generateVideo : provider.generateAudio;
   if (typeof generate !== "function") invalid(t`此供应商不支持${translateMessage({ image: "图片", video: "视频", audio: "音频" }[mediaType])}生成`);

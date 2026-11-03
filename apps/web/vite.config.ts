@@ -21,6 +21,7 @@ if (process.env.releaseNotesFile && (!releaseNotes || releaseNotes.version !== a
 }
 
 export default defineConfig({
+  base: `${process.env.TOONFLOW_WEB_BASE_PATH || ""}/`,
   css: { postcss: postcssConfig },
   define: {
     "import.meta.env.appVersion": JSON.stringify(appVersion),

@@ -15,6 +15,7 @@ import { isWithin, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile
 import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
+import { createLocalComputerTools } from "@/utils/localHelper/tools";
 
 export function createAgentToolContext(cwd: string, config: Record<string, unknown> = {}, canvas?: CanvasContext, question?: QuestionContext, workspaceAvailable = true, clientFiles?: ClientFileContext): ToolContext {
   const skillsDirectory = join(dirname(conf.path), "skills");
@@ -106,6 +107,10 @@ export async function createAgentTools(cwd: string, canvas?: CanvasContext, ques
         ],
       });
     }
+  }
+  for (const tool of await createLocalComputerTools()) {
+    if (names.has(tool.name)) throw new Error(t`工具名称重复：${tool.name}`);
+    tools.push(tool);
   }
   return tools;
 }

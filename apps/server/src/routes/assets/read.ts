@@ -1,6 +1,6 @@
 import { lstat } from "@toonflow/file";
 import { sendFile } from "@/utils/fileHttp";
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
 import { Router } from "express";
 import { z } from "zod";
 import u from "@/utils";
@@ -20,11 +20,11 @@ export default router.get("/", validateFields({ path: z.string().min(1).max(4096
   const cancel = () => controller.abort();
   res.once("close", cancel);
   try {
-    const mimeType = res.type(path).get("Content-Type")!.split(";")[0]!;
+    const mimeType = res.type(extname(path)).get("Content-Type")!.split(";")[0]!;
     const preview = req.query.preview && req.query.download !== "true"
       ? await u.mediaPreviews.mediaPreview(path, `${info.size}:${info.mtimeMs}:${info.ctimeMs}`, mimeType, 512, controller.signal) : path;
     if (!preview) { res.status(204).end(); return; }
-    res.type(preview);
+    res.type(extname(preview));
     await sendFile(res, preview, { dotfiles: "allow" }, err => { if (err) next(err); });
   } finally { res.off("close", cancel); }
 });

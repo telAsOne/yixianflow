@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const userSchema = z.object({ id: z.number().int().positive(), username: z.string(), display_name: z.string() });
+export const userSchema = z.object({ id: z.number().int().positive(), username: z.string(), display_name: z.string(),
+  role: z.number().int().optional(), status: z.number().int().optional() });
 export const uploadLimitsSchema = z.object({
   imageMaxBytes: z.number().int().positive().max(20 * 1024 * 1024),
   audioMaxBytes: z.number().int().positive().max(64 * 1024 * 1024),
@@ -38,6 +39,7 @@ const textAndImageCategorySchema = createCategorySchema(modelSchema.extend({
 const videoCategorySchema = createCategorySchema(modelSchema.required({ audio: true }));
 export const platformConfigSchema = z.object({ revision: z.string().min(1), min_client_version: z.string(),
   categories: z.object({ text: textAndImageCategorySchema, image: textAndImageCategorySchema, video: videoCategorySchema }), limits: uploadLimitsSchema });
+export type PlatformConfig = z.infer<typeof platformConfigSchema>;
 export const accountInfoSchema = z.object({ user: userSchema, balance: z.object({ quota: z.number(), display: z.string() }),
   storage: z.object({ used_bytes: z.number().nonnegative(), quota_bytes: z.number().nonnegative() }),
   topup_url: z.url({ protocol: /^https$/ }).refine(value => { const url = new URL(value); return !url.username && !url.password; }),

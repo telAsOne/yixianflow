@@ -14,7 +14,7 @@ import * as mediaProvider from "@/utils/media/provider";
 import * as ffmpeg from "@/utils/ffmpeg";
 import * as whisper from "@/utils/whisper";
 import * as pluginInstall from "@/utils/plugins/install";
-import conf, { removeLegacySettings } from "@/utils/conf";
+import conf, { getSettings, getUserDataDirectory, removeLegacySettings } from "@/utils/conf";
 import * as ai from "@/utils/ai";
 import * as plugins from "@/utils/plugins/tools";
 import * as nodePlugins from "@/utils/plugins/nodes";
@@ -34,8 +34,16 @@ import * as teams from "@/utils/teams";
 import * as a2aSettings from "@/agent/a2a/settings";
 import * as personalization from "@/utils/personalization";
 import * as mentionFiles from "@/agent/mentionFiles";
+import * as webAuth from "@/utils/web/auth";
+import * as webStore from "@/utils/web/store";
+import * as webProjects from "@/utils/web/projects";
+import * as localHelper from "@/utils/localHelper";
 
 export default {
+  localHelper,
+  webAuth,
+  webStore,
+  webProjects,
   assets,
   canvasIndex,
   canvasSync,
@@ -53,6 +61,8 @@ export default {
   whisper,
   pluginInstall,
   conf,
+  getSettings,
+  getUserDataDirectory,
   removeLegacySettings,
   ai,
   plugins,

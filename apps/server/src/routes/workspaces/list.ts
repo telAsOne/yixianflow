@@ -5,10 +5,18 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { error, success } from "@/lib/responseFormat";
+import { isWebMode } from "@/lib/webContext";
 
 const router = Router();
 
 export default router.get("/", validateFields({ path: z.string().max(4096).optional() }, "query"), async (req, res) => {
+  if (isWebMode()) {
+    const projects = await u.webProjects.listWebProjects();
+    const selected = projects.find(project => project.id === req.query.path);
+    if (req.query.path && !selected) return void res.status(404).json(error("项目不存在或无权访问", null, 404));
+    return void res.set("Cache-Control", "no-store").json(success({ path: "", absolutePath: selected?.id ?? "", name: selected?.name,
+      parent: null, entries: projects.map(project => ({ name: project.name, path: project.id, type: "directory" })) }));
+  }
   const workspaceRoot = resolve(dirname(u.conf.path), "workspaces");
   await mkdir(workspaceRoot, { recursive: true });
   const root = await realpath(workspaceRoot);

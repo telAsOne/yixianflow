@@ -87,11 +87,16 @@ watch([() => workspaceStore.project?.directory, workspaceName], () => {
   projectNameDraft.value = workspaceName.value;
 }, { immediate: true });
 
-function saveProjectName(event: Event) {
+async function saveProjectName(event: Event) {
   if (event instanceof KeyboardEvent && event.isComposing) return;
   const project = workspaceStore.project;
-  if (project) workspaceStore.renameProject(project.directory, projectNameDraft.value);
-  projectNameDraft.value = workspaceName.value;
+  try {
+    if (project) await workspaceStore.renameProject(project.directory, projectNameDraft.value);
+  } catch (error) {
+    ElMessage.error(errorMessage(error, "项目名称保存失败，请重试"));
+  } finally {
+    if (workspaceStore.project?.directory === project?.directory) projectNameDraft.value = workspaceName.value;
+  }
 }
 
 type Canvas = { id: string; name: string; flow?: Pick<FlowExportObject, "nodes" | "edges" | "viewport">; snapshot?: Pick<TextSnapshot, "revision" | "encoding"> };
