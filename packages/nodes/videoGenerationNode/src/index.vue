@@ -193,7 +193,7 @@ import generationSettings from "./components/generationSettings.vue";
 import zealmanSettings from "./components/zealmanSettings.vue";
 import h3PromptEditor from "./components/h3PromptEditor.vue";
 import h3MediaLibrary from "./components/h3MediaLibrary.vue";
-import { h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
+import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, loadCameraPresets, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
 import { loadZealmanOptions, validateZealmanSettings, zealmanAssetUrl, type ZealmanOptions, type ZealmanAsset } from "./zealmanOptions";
 
 defineOptions({
@@ -537,9 +537,10 @@ async function startGeneration() {
   if (!choice) throw new Error("请先选择视频模型");
   if (!generationPrompt.value) throw new Error("请输入生成提示词");
   if (isH3Prompt.value) {
-    const issues = h3PromptIssues(generationPrompt.value, h3ReferenceList.value, data.value.duration ?? 10).filter(issue => !issue.startsWith("分镜正文"));
+    const cameraPresets = h3CameraTagLike.test(generationPrompt.value) ? await loadCameraPresets().catch(() => undefined) : undefined;
+    const issues = h3PromptIssues(generationPrompt.value, h3ReferenceList.value, data.value.duration ?? 10, cameraPresets).filter(issue => !issue.startsWith("分镜正文"));
     if (issues.length) throw new Error(issues.join("；"));
-  }
+  } else if (h3CameraTagLike.test(generationPrompt.value)) throw new Error("运镜标签仅支持 H3 模型，请删除后再生成");
   if (isZealmanU06.value) {
     const options = await ensureZealmanOptions();
     validateZealmanSettings(data.value.zealmanSettings, options);

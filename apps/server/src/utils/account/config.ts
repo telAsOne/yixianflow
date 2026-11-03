@@ -74,7 +74,7 @@ export function getConfigState() {
   const imageBodyLimit = config?.categories.image.requestBodyLimitMiB;
   return { limits,
     imageTotalMaxBytes: Math.min(limits.requestTotalMaxBytes, imageBodyLimit ? Math.max(0, imageBodyLimit - 1) * 1024 * 1024 : limits.requestTotalMaxBytes),
-    revision: config?.revision, cameraPresets: config?.cameraPresets ?? [],
+    revision: config?.revision,
     configError: getAccount() ? translateMessage(isWebMode() ? webConfigStates.get(getAccount()!.user.id)?.error ?? "" : configError) : "" };
 }
 

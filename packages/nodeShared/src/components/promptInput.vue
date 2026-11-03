@@ -174,14 +174,15 @@ function referenceHtml(reference: PromptReference) {
 
 function normalizeModel(value: AnyTagProps[][]): AnyTagProps[][] {
   if (!value.length) return [[{ type: "Write", text: "" }]];
+  const textTags = (value: string): AnyTagProps[] => value.split(tokenPattern.value).map(text => {
+    const reference = props.references.find(item => !item.action && item.value === text);
+    return reference
+      ? { type: "Custom", html: `<span style="display: inline-block;">${referenceHtml(reference)}</span>` }
+      : { type: "Write", text };
+  });
   return value.map(line => {
     const tags = line.flatMap((tag): AnyTagProps[] => {
-      if (tag.type === "Write") return tag.text.split(tokenPattern.value).map(text => {
-        const reference = props.references.find(item => !item.action && item.value === text);
-        return reference
-          ? { type: "Custom", html: `<span style="display: inline-block;">${referenceHtml(reference)}</span>` }
-          : { type: "Write", text };
-      });
+      if (tag.type === "Write") return textTags(tag.text);
       if (tag.type !== "Custom") return [tag];
       const template = document.createElement("template");
       template.innerHTML = tag.html;
@@ -189,7 +190,7 @@ function normalizeModel(value: AnyTagProps[][]): AnyTagProps[][] {
       const id = element?.dataset.referenceId;
       if (!id) return [tag];
       const reference = props.references.find(item => item.id === id);
-      if (!reference) return props.preserveMissingReferences || element?.dataset.category ? [{ type: "Write", text: element?.dataset.value ?? "" }] : [];
+      if (!reference) return props.preserveMissingReferences || element?.dataset.category ? textTags(element?.dataset.value ?? "") : [];
       return [{ type: "Custom", html: `<span style="display: inline-block;">${referenceHtml(reference)}</span>` }];
     });
     const next: AnyTagProps[] = [{ type: "Write", text: "" }];
