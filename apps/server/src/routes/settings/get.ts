@@ -4,7 +4,7 @@ import { success } from "@/lib/responseFormat";
 
 const router = Router();
 
-export default router.get("/", async (req, res) => {
+export default router.get("/", (req, res) => {
   u.mcpControl.assertAppRequest(req);
   res.set("Cache-Control", "no-store");
   const settings = u.getSettings();

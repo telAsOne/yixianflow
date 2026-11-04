@@ -78,7 +78,7 @@ export async function registerDevice(req: Request, input: { id: string; code: st
   const token = deviceToken(req);
   const now = Date.now();
   for (const [key, limit] of registrationLimits) if (limit.until < now) registrationLimits.delete(key);
-  const key = req.socket.remoteAddress ?? "unknown";
+  const key = req.ip ?? "unknown";
   const limit = registrationLimits.get(key) ?? { count: 0, until: now + 60000 };
   if (++limit.count > 5 || registrationLimits.size > 10000) throw unavailable("请求过于频繁，请稍后重试", 429);
   registrationLimits.set(key, limit);
@@ -168,7 +168,7 @@ export async function completeDeviceCall(req: Request, input: LocalHelperResult)
   const device = await authenticateDevice(req);
   const sql = getWebDatabase();
   const [call] = await sql`UPDATE yixianflow.localCalls AS call SET status = ${input.error ? "failed" : "completed"},
-    result = ${input.result ?? null}::jsonb, error = ${input.error ?? null}, "finishedAt" = CURRENT_TIMESTAMP
+    result = ${input.result == null ? null : JSON.stringify(input.result)}::jsonb, error = ${input.error ?? null}, "finishedAt" = CURRENT_TIMESTAMP
     WHERE id = ${input.id} AND "deviceId" = ${device.id} AND "ownerId" = ${device.ownerId} AND nonce = ${input.nonce}
       AND status = 'running' AND "expiresAt" > CURRENT_TIMESTAMP
       AND EXISTS (SELECT 1 FROM yixianflow.sessions WHERE hash = call."sessionHash" AND "userId" = call."ownerId"

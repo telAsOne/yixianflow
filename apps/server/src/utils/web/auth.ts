@@ -10,19 +10,35 @@ const sessionCookie = "__Host-yixianflow";
 const loginCookie = "__Host-yixianflowLogin";
 const cookieOptions = { httpOnly: true, secure: true, sameSite: "lax", path: "/" } as const;
 const adminAccountSchema = accountInfoSchema.extend({ user: userSchema.extend({ role: z.number().int(), status: z.number().int() }) });
+// ACT: 管理员身份按账户凭据缓存 1 分钟并合并并发校验；平台撤销权限最多延迟 1 分钟生效，需要即时生效时改由平台主动通知失效。
+const adminCacheTime = 60_000;
+const adminChecks = new Map<number, { identity: string; expiresAt: number; info: Promise<z.infer<typeof adminAccountSchema>> }>();
 
 async function requireWebAdmin(account: WebAccount, version: string) {
+  const unavailable = () => Object.assign(new Error("暂时无法确认管理员身份，请稍后重试"), { status: 503 });
   const response = await fetch(`${account.baseUrl}/v1/toonflow/me`, { cache: "no-store", redirect: "error",
-    signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${account.key}`, "X-Toonflow-Version": version } });
+    signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${account.key}`, "X-Toonflow-Version": version } })
+    .catch(() => { throw unavailable(); });
   if (response.status === 401 || response.status === 403)
     throw Object.assign(new Error("登录已失效，请重新登录"), { status: response.status });
-  const body = await response.json() as { success?: boolean; data?: { user?: unknown } };
-  if (!response.ok || body.success !== true) throw Object.assign(new Error("暂时无法确认管理员身份，请稍后重试"), { status: 503 });
+  const body = await response.json().catch(() => undefined) as { success?: boolean; data?: { user?: unknown } } | undefined;
+  if (!response.ok || body?.success !== true) throw unavailable();
   const info = adminAccountSchema.parse(body.data);
   const identity = info.user;
   if (identity.id !== account.user.id) throw Object.assign(new Error("账户身份不匹配，请重新登录"), { status: 401 });
   if (identity.role < 10 || identity.status !== 1)
     throw Object.assign(new Error("当前画布仅向逸仙管理员开放"), { status: 403, code: "toonflow.admin_required" });
+  return info;
+}
+
+function checkWebAdmin(account: WebAccount, version: string) {
+  const identity = hashWebToken(`${account.baseUrl}:${account.key}`);
+  const cached = adminChecks.get(account.user.id);
+  if (cached?.identity === identity && cached.expiresAt > Date.now()) return cached.info;
+  const info = requireWebAdmin(account, version);
+  adminChecks.set(account.user.id, { identity, expiresAt: Date.now() + adminCacheTime, info });
+  // 失败不缓存，下一次请求重新向平台确认。
+  info.catch(() => { if (adminChecks.get(account.user.id)?.info === info) adminChecks.delete(account.user.id); });
   return info;
 }
 
@@ -59,7 +75,7 @@ export async function readWebAccount(userId: number, version: string) {
   const baseUrl = getBaseUrl();
   const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${userId}`)));
   if (account.baseUrl !== baseUrl || account.user.id !== userId) throw new Error("服务端账户凭据不匹配");
-  const accountInfo = await requireWebAdmin(account, version);
+  const accountInfo = await checkWebAdmin(account, version);
   account.user = accountInfo.user;
   return { account, settings: record.settings as Record<string, unknown>, accountInfo };
 }
@@ -128,7 +144,10 @@ export async function completeWebLogin(req: Request, res: Response, state: strin
 export async function logoutWebSession(res?: Response, req?: Request) {
   const sql = getWebDatabase();
   const current = webContext.getStore();
-  if (current) await sql`DELETE FROM yixianflow.sessions WHERE hash = ${current.sessionHash}`;
+  // 平台暂时不可用时退出请求没有会话上下文，按 Cookie 删除当前会话。
+  const token = req && readCookie(req, sessionCookie);
+  const sessionHash = current?.sessionHash ?? (token ? hashWebToken(token) : undefined);
+  if (sessionHash) await sql`DELETE FROM yixianflow.sessions WHERE hash = ${sessionHash}`;
   if (current) console.info(`[web] logout userId=${current.account.user.id}`);
   const browser = req && readCookie(req, loginCookie);
   if (browser) await sql`DELETE FROM yixianflow.logins WHERE "browserHash" = ${hashWebToken(browser)}`;

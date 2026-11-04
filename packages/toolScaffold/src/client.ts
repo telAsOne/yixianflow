@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import * as vueRuntime from "vue";
 import * as elementPlusRuntime from "element-plus";
 import axios from "axios";
@@ -32,7 +33,8 @@ export async function loadToolComponent(toolName: string): Promise<Component | u
   if (!pending) {
     pending = new Promise<Record<string, Component>>((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = renderer.url;
+      // 子路径部署时脚本标签不经过宿主的 fetch 适配，按页面基础路径加载。
+      script.src = import.meta.env.BASE_URL.replace(/\/$/, "") + renderer.url;
       script.onload = () => {
         script.remove();
         const components = toolWindow.toonflowToolViews?.[renderer.name];
