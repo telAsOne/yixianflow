@@ -12,6 +12,7 @@ import { readAiReferences, referenceContent } from "@/utils/ai";
 import { installRequestBudget } from "@/utils/ai/requestBudget";
 import { createAgentTools } from "@/agent/tools";
 import { createAgentResources } from "@/agent/runtime/resources";
+import { installSkillExecution } from "@/agent/runtime/skillExecution";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createSubAgentTool } from "@/agent/tools/subAgent";
 import { createMemoryTool } from "@/agent/tools/memory";
@@ -198,6 +199,7 @@ export async function run(
       customTools: tools,
     });
     active.session = session;
+    installSkillExecution(session, cwd, tools, canvas, prompt, signal);
     installRequestBudget(session, provider);
 
     const streamFunction = session.agent.streamFunction;

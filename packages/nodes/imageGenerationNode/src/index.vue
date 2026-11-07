@@ -136,10 +136,12 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
+import { useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer } from "element-plus";
 import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown } from "@tabler/icons-vue";
 import { nodeSkeleton, useNode, z, type NodeHandle, type NodeImageRequest, type NodeImageResult, type ImageTaskStatus } from "@toonflow/nodes-scaffold/runtime";
 import { registerGenerationTools } from "@toonflow/node-shared/generationTools";
+import { assetIdentitySchema, validateAssetIdentity, type AssetIdentity } from "@toonflow/node-shared/assetIdentity";
 import { useMediaModels } from "@toonflow/node-shared/useMediaModels";
 import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
 import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
@@ -173,7 +175,8 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals,
   label: "图片生成",
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; inpaint?: ImageInpaint; appliedImageTaskId?: string; generationTiming?: GenerationTiming });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; inpaint?: ImageInpaint; appliedImageTaskId?: string; generationTiming?: GenerationTiming; assetIdentity?: AssetIdentity });
+const { getNodes } = useVueFlow();
 const rememberPreferences = useGenerationPreferences("image", () => data.value);
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
@@ -228,7 +231,8 @@ watch(
     // ACT: 现有分辨率使用 K 单位；出现其他单位时再统一换算，未知名称排在数值选项之后。
     if (!sizeOptions.value.includes(data.value.size)) data.value.size = choice.defaultImageSize && sizeOptions.value.includes(choice.defaultImageSize)
       ? choice.defaultImageSize
-      : sizeOptions.value.toSorted((left, right) => (Number.parseFloat(left) || Infinity) - (Number.parseFloat(right) || Infinity))[0]!;
+      : choice.modelId === "gpt-image-2.6" && sizeOptions.value.includes("4K") ? "4K"
+        : sizeOptions.value.toSorted((left, right) => (Number.parseFloat(left) || Infinity) - (Number.parseFloat(right) || Infinity))[0]!;
     if (!ratioOptions.value.includes(data.value.ratio)) {
       if (choice.defaultImageRatio && ratioOptions.value.includes(choice.defaultImageRatio)) data.value.ratio = choice.defaultImageRatio;
       else data.value.ratio = ratioOptions.value.includes("16:9") ? "16:9" : ratioOptions.value[0]!;
@@ -466,13 +470,15 @@ function getConfig() {
       modelId: selectedModel.value?.modelId ?? "",
       size: data.value.size,
       ratio: data.value.ratio,
+      assetIdentity: data.value.assetIdentity ?? null,
+      references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, ready: item.value !== undefined })),
     },
     models: models.value,
   };
 }
 
 registerGenerationTools({
-  configDescription: "读取此图片生成节点的当前模型、分辨率、比例及可选图片模型能力，不含密钥；未声明分辨率或比例时分别使用 2K、16:9",
+  configDescription: "读取图片节点当前模型、分辨率、比例、assetIdentity 及可选模型能力，不含密钥。新图片默认 gpt-image-2.6、4K；比例按剧情、资产用途和用户要求选择，不把视频画幅套给全部资产",
   promptDescription: "修改此节点的普通图片生成提示词，支持 {{ref 1}} 等参考标记；不修改局部重绘提示词，不启动生成",
   loadModels, getConfig,
   setPrompt(value) {
@@ -480,12 +486,13 @@ registerGenerationTools({
     data.value.prompt = value;
     data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
   },
-  updateDescription: "修改此图片生成节点的模型、分辨率或比例；先用 getConfig 查询可选能力，providerId 与 modelId 必须同时提供；不修改提示词、不启动生成",
+  updateDescription: "修改图片模型、分辨率、比例或 assetIdentity，不启动生成。assetIdentity 登记 kind（character/scene/prop/effect/detail）、稳定 identity、state；同一人物不同形态 identity 相同，变体 baseNodeId 必须指向共同底图节点。先用 getConfig 查询能力，providerId 与 modelId 同时提供",
   configSchema: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     size: z.string().min(1).optional(),
     ratio: z.string().min(1).optional(),
+    assetIdentity: assetIdentitySchema.optional(),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async setConfig(args, signal) {
     signal?.throwIfAborted();
@@ -500,15 +507,26 @@ registerGenerationTools({
     const ratios = choice.imageRatios?.length ? choice.imageRatios : ["16:9"];
     if (args.size !== undefined && !sizes.includes(args.size)) throw new Error(`当前模型不支持分辨率 ${args.size}，可选：${sizes.join("、")}`);
     if (args.ratio !== undefined && !ratios.includes(args.ratio)) throw new Error(`当前模型不支持比例 ${args.ratio}，可选：${ratios.join("、")}`);
+    if ((args.assetIdentity ?? data.value.assetIdentity)?.baseNodeId && !choice.mode?.some(mode => mode === "singleImage" || mode === "multiReference")) throw new Error("人物变体需要真实底图，所选模型未声明参考图能力；请核实模型能力，不能改成独立文生图来绕过底图");
+    if (args.assetIdentity) validateAssetIdentity(id, args.assetIdentity, getNodes.value, refList.value);
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
     if (args.size !== undefined) data.value.size = args.size;
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
+    if (args.assetIdentity) data.value.assetIdentity = args.assetIdentity;
     return getConfig();
   },
   generate: {
     name: "generateImage",
     description: "启动此节点的后台普通图片生成，使用普通生成提示词、模型、分辨率、比例和参考图片；局部重绘模式下须先退出；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 停止生成",
-    execute: () => generating.value ? { status: "generating" } : startGeneration(),
+    execute: () => {
+      if (generating.value) return { status: "generating" };
+      if (!pendingTask.value) {
+        const asset = assetIdentitySchema.safeParse(data.value.assetIdentity);
+        if (!asset.success) throw new Error("AI 生成前请用 setConfig 的 assetIdentity 登记素材类型、稳定身份和状态；人物变体还需登记共同的 baseNodeId");
+        validateAssetIdentity(id, asset.data, getNodes.value, refList.value, true);
+      }
+      return startGeneration();
+    },
   },
 });
 </script>

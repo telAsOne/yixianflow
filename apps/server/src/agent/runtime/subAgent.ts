@@ -1,8 +1,9 @@
 import type { Usage } from "@earendil-works/pi-ai";
 import { createAgentSession, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, CreateAgentSessionOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ToolCall } from "@toonflow/tools-scaffold/runtime";
+import type { CanvasContext, ToolCall } from "@toonflow/tools-scaffold/runtime";
 import { createAgentResources } from "@/agent/runtime/resources";
+import { installSkillExecution } from "@/agent/runtime/skillExecution";
 import { getConfiguredModel } from "@/utils/ai";
 import { installRequestBudget } from "@/utils/ai/requestBudget";
 
@@ -29,6 +30,7 @@ export async function runSubAgent(options: SubAgentModel & {
   name: string;
   task: string;
   tools: ToolDefinition[];
+  canvas?: CanvasContext;
   instructions?: string;
   signal?: AbortSignal;
   history?: SessionManager;
@@ -36,7 +38,7 @@ export async function runSubAgent(options: SubAgentModel & {
   onTool?: (tool: ToolCall) => void;
   onProgress?: (message: string) => void;
 }) {
-  const { cwd, name, task, tools, instructions, signal = new AbortController().signal, history, inputRequired, onTool, onProgress, ...modelOptions } = options;
+  const { cwd, name, task, tools, canvas, instructions, signal = new AbortController().signal, history, inputRequired, onTool, onProgress, ...modelOptions } = options;
   const result: SubAgentResult = { name, status: "running", result: "准备执行" };
   const usage = emptyUsage();
   let session: AgentSession | undefined;
@@ -77,6 +79,7 @@ export async function runSubAgent(options: SubAgentModel & {
       customTools: activeTools,
       tools: activeTools.map(tool => tool.name),
     }));
+    installSkillExecution(session, cwd, activeTools, canvas, task, signal);
     installRequestBudget(session, getConfiguredModel(session.model!.provider, session.model!.id).provider);
     signal.throwIfAborted();
     session.agent.shouldStopAfterTurn = () => Boolean(inputRequired?.());

@@ -31,7 +31,8 @@ export function useMediaModels(type: "image" | "video" | "audio", data: Readonly
       models.value = items.filter(item => item.type === type);
       // ACT: 平台统一管理模型，旧偏好或已下架型号回到本类默认值；运行中的任务保留原请求。
       if (!models.value.some(model => JSON.stringify([model.providerId, model.modelId]) === data.value.model)) {
-        const first = models.value.find(model => model.isDefault) ?? models.value[0];
+        const first = (type === "image" ? models.value.find(model => model.modelId === "gpt-image-2.6") : undefined)
+          ?? models.value.find(model => model.isDefault) ?? models.value[0];
         const previous = data.value.model;
         data.value.model = first ? JSON.stringify([first.providerId, first.modelId]) : "";
         if (previous) ElMessage.warning({ grouping: true, duration: 6000, message: first
