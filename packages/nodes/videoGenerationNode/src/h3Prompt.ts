@@ -1,4 +1,4 @@
-import { z, type NodeInputValue, type NodeMediaValue } from "@toonflow/nodes-scaffold/runtime";
+import type { NodeInputValue, NodeMediaValue } from "@toonflow/nodes-scaffold/runtime";
 import { referenceKey } from "@toonflow/node-shared/useNodeReferences";
 import type { ZealmanVoice } from "./zealmanOptions";
 
@@ -8,7 +8,6 @@ export type H3PromptState = {
   audioBindings: Record<string, { subject: number; speaker: number; description: string }>;
   voices: string[];
   attachments: { id: string; name: string; dataType: "IMAGE" | "VIDEO" | "AUDIO"; value: NodeMediaValue; source?: string; sourceHandle?: string }[];
-  model: string;
   editorMode: "tags" | "code";
 };
 export type H3Reference = { id: string; name: string; value: string; category: string; avatar?: string; previewUrl?: string; input?: NodeInputValue; voice?: ZealmanVoice; action?: boolean; hideValue?: boolean };
@@ -65,27 +64,6 @@ export function h3PromptTokens(prompt: string) {
   });
 }
 export type H3CameraPreset = { id: string; name: string };
-const h3CameraPresetsSchema = z.array(z.object({ id: z.string(), name: z.string() }));
-let cameraPresetsRequest: Promise<H3CameraPreset[]> | undefined;
-let cameraPresetsExpiresAt = 0;
-
-// ACT: 画布上的节点共用 60 秒缓存，切换账户后最多沿用 60 秒旧列表；需要即时生效时改为随账户事件清空。
-export function loadCameraPresets() {
-  if (Date.now() >= cameraPresetsExpiresAt) cameraPresetsRequest = undefined;
-  if (!cameraPresetsRequest) {
-    cameraPresetsExpiresAt = Date.now() + 60000;
-    const request = fetch("/api/account/cameraPresets", { headers: { "X-Toonflow-Workspace": "1" }, cache: "no-store", signal: AbortSignal.timeout(30000) })
-      .catch(() => { throw new Error("读取运镜库失败，请检查网络后重试"); })
-      .then(async response => {
-        const body = await response.json().catch(() => undefined);
-        const presets = h3CameraPresetsSchema.safeParse(body?.data);
-        if (!response.ok || body?.code !== 200 || !presets.success) throw new Error(body?.message || "读取运镜库失败");
-        return presets.data;
-      }).catch(error => { if (cameraPresetsRequest === request) cameraPresetsRequest = undefined; throw error; });
-    cameraPresetsRequest = request;
-  }
-  return cameraPresetsRequest;
-}
 export function h3CameraTag(id: string) { return `{{CameraPreset ${id}}}`; }
 export function h3CameraInsertRange(prompt: string, selection?: { anchor: number; focus: number }) {
   const detail = h3DetailPattern.exec(prompt);
@@ -100,10 +78,6 @@ export function h3CameraInsertRange(prompt: string, selection?: { anchor: number
   const at = inside && inside.index + inside.value.length;
   return at === undefined ? { start, end } : { start: at, end: at };
 }
-const h3ResultSchema = z.strictObject({
-  subject_definitions: z.array(z.string()), summary: z.string().min(1), retention_analysis: z.array(z.string()),
-  detailed_description: z.string().min(1), overall_soundscape: z.string(), non_diegetic_music: z.string(),
-});
 
 export function h3References(inputs: NodeInputValue[], state: H3PromptState, voices?: ZealmanVoice[], previews: { id: string; avatar?: string; previewUrl?: string }[] = []) {
   const counts: Record<string, number> = {};
@@ -244,44 +218,4 @@ export function h3Skeleton(prompt: string, references: H3Reference[], state: H3P
     detailed_description: `The target video is in a … style.\n${shots.join("\n")}`,
     overall_soundscape: "…", non_diegetic_music: "N/A",
   } as Record<string, string>)[key]}`).join("\n\n");
-}
-
-export function parseH3Optimization(result: string, original: string, references: H3Reference[], duration: number, maxDuration: number) {
-  const parsed = h3ResultSchema.safeParse(JSON.parse(result.trim()));
-  if (!parsed.success) throw new Error("模型返回的六段 JSON 字段不完整，原提示词已保留，请重试");
-  const data = parsed.data;
-  const prompt = h3Sections.map(([key]) => `${key}:\n${Array.isArray(data[key]) ? data[key].join("\n") : data[key]}`).join("\n\n");
-  const dialogueLines = (text: string) => [...text.matchAll(/<d>([\s\S]*?)<\/d>/g)].map(match => match[1].trim().replace(/[.!?。！？~～\s]+$/, ""));
-  const originalLines = dialogueLines(original);
-  const nextLines = dialogueLines(prompt);
-  if (originalLines.length && (originalLines.length !== nextLines.length || originalLines.some((line, index) => line !== nextLines[index]))) throw new Error("优化结果改动了原有对白，已保留原提示词，请重试");
-  const sortedCameras = (text: string) => (text.match(h3CameraTagPattern) ?? []).toSorted().join("\n");
-  if (sortedCameras(original) !== sortedCameras(prompt)) throw new Error("优化结果改动了运镜标签，原提示词已保留，请重试");
-  const originalDetail = h3SectionText(original, "detailed_description") || original;
-  const originalShots = [...originalDetail.matchAll(/\[Shot\s+(\d+)\]/g)].map(match => match[1]);
-  const nextShots = [...data.detailed_description.matchAll(/\[Shot\s+(\d+)\]/g)].map(match => match[1]);
-  if (!nextShots.length) throw new Error("优化结果缺少分镜，原提示词已保留，请重试");
-  if (originalShots.length && originalShots.join(",") !== nextShots.join(",")) throw new Error("优化结果改变了原有镜头序列，已保留原提示词，请重试");
-  for (const pattern of [/<Subject\s+\d+>\s*\(S\d+(?:,\s*S\d+)*\)/g, /<scenetrans>|<cutoff>/g, h3CameraTagPattern]) {
-    const before: string[] = originalDetail.replace(h3VoiceoverBindingPattern, "").match(pattern) ?? [];
-    const after: string[] = data.detailed_description.match(pattern) ?? [];
-    // ACT: 已有结构按顺序保留；自然语言中的新增对白仍交给原文 Skill 处理。
-    let offset = 0;
-    if (before.some(value => { const index = after.indexOf(value, offset); offset = index + 1; return index < 0; })) throw new Error("优化结果改动了主体、说话人、运镜或对白衔接标签，原提示词已保留，请重试");
-  }
-  const taskPattern = /\[(?:reference generation|video editing|video continuation|audio reuse|audio reference)\]/g;
-  const originalTasks = (h3SectionText(original, "summary") || original).match(taskPattern) ?? [];
-  if (originalTasks.length && originalTasks.join(" ") !== (data.summary.match(taskPattern) ?? []).join(" ")) throw new Error("优化结果改变了任务类型，原提示词已保留，请重试");
-  if (!(data.summary.match(taskPattern)?.length)) throw new Error("优化结果缺少 H3 任务类型，原提示词已保留，请重试");
-  for (const line of original.split("\n").filter(line => /^<Audio \d+> is the voice-timbre reference for /.test(line))) {
-    if (!data.subject_definitions.includes(line)) throw new Error("优化结果改写了音色参考句，原提示词已保留，请重试");
-  }
-  const seconds = Number(/\b(\d+(?:\.\d+)?)\s*[- ]?second\b/i.exec(data.summary)?.[1]) || duration;
-  const cuts = [...data.detailed_description.matchAll(/At\s+(\d{2}):(\d{2})\.(\d{3})/g)].map(match => Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 1000);
-  const nextDuration = Math.ceil(Math.max(duration, seconds, nextShots.length >= 4 ? nextShots.length === 4 ? 12 : 13 : 0, cuts.length ? Math.max(...cuts) + 2.5 : 0));
-  if (nextDuration > maxDuration) throw new Error(`优化结果需要约 ${nextDuration} 秒，超过当前模型的 ${maxDuration} 秒上限；原提示词已保留，请减少镜头或对白`);
-  const issues = h3PromptIssues(prompt, references, nextDuration).filter(issue => !issue.startsWith("分镜正文"));
-  if (issues.length) throw new Error(`优化结果格式不完整，原提示词已保留：${issues.join("；")}`);
-  const summary = data.summary.replace(/\b\d+(?:\.\d+)?\s*[- ]?second\b/i, `${nextDuration}-second`);
-  return { prompt: prompt.replace(`summary:\n${data.summary}`, () => `summary:\n${summary}`), duration: nextDuration };
 }

@@ -1,0 +1,146 @@
+import { computed, onScopeDispose, ref } from "vue";
+import { z } from "@toonflow/nodes-scaffold/nodeTools";
+
+const reviewTargetSchema = z.object({
+  source_id: z.string().max(128), shot_id: z.string().max(128).nullable(), field: z.enum(["content", "context"]),
+  quote: z.string().min(1).max(20000), start_char: z.number().int().nonnegative().max(10000), end_char: z.number().int().positive().max(10000),
+});
+const reviewEditSchema = z.object({
+  source_id: z.string().max(128), shot_id: z.string().max(128).nullable(), field: z.enum(["content", "context"]),
+  original: z.string().min(1).max(20000), replacement: z.string().max(20000),
+});
+const reviewResultSchema = z.object({
+  review_id: z.number().int().positive(), request_id: z.string().max(256), model: z.string().max(200),
+  status: z.enum(["pass", "needs_revision", "needs_clarification"]), summary: z.string().max(20000),
+  issues: z.array(z.object({
+    id: z.string().max(128), category: z.string().max(64), kind: z.enum(["conflict", "risk", "needs_clarification"]),
+    severity: z.enum(["error", "warning"]), next_action: z.enum(["revise", "confirm"]),
+    targets: z.array(reviewTargetSchema).min(1).max(8), reason: z.string().max(20000), impact: z.string().max(20000),
+    suggestion: z.string().max(20000), edits: z.array(reviewEditSchema).max(16),
+  })).max(16),
+});
+const reviewInputSchema = z.object({
+  content: z.string().max(20000), context: z.string().max(20000), editorPrompt: z.string().max(20000),
+  dependencies: z.string().max(100000), durationSeconds: z.number().positive().max(3600).optional(),
+});
+const reviewRecordSchema = z.object({
+  input: reviewInputSchema, finishedAt: z.number(), result: reviewResultSchema.optional(),
+  error: z.string().max(2000).optional(), reviewId: z.number().int().positive().optional(), requestId: z.string().max(256).optional(),
+});
+
+export type PromptReviewInput = z.infer<typeof reviewInputSchema>;
+export type PromptReviewRecord = z.infer<typeof reviewRecordSchema>;
+export type PromptReviewResult = z.infer<typeof reviewResultSchema>;
+export type PromptReviewEdit = z.infer<typeof reviewEditSchema>;
+export type PromptReviewTarget = z.infer<typeof reviewTargetSchema>;
+export type PromptReviewSubmission = { status: string; label: string; reviewId?: number; recordedAt: number };
+
+export function samePromptReviewInput(first: PromptReviewInput, second: PromptReviewInput) {
+  return first.content === second.content && first.context === second.context && first.editorPrompt === second.editorPrompt
+    && first.dependencies === second.dependencies && first.durationSeconds === second.durationSeconds;
+}
+
+export function usePromptReview(options: { input(): PromptReviewInput; record(): unknown; save(record: PromptReviewRecord): void }) {
+  const reviewing = ref(false);
+  const transientError = ref("");
+  let controller: AbortController | undefined;
+  let disposed = false;
+  const record = computed(() => {
+    const parsed = reviewRecordSchema.safeParse(options.record());
+    return parsed.success ? parsed.data : undefined;
+  });
+  const current = computed(() => {
+    try { return !!record.value && samePromptReviewInput(record.value.input, options.input()); }
+    catch { return false; }
+  });
+  const status = computed(() => reviewing.value ? "reviewing" : transientError.value ? "failed" : !record.value ? "unreviewed"
+    : !current.value ? "stale" : record.value.error ? "failed" : record.value.result?.status ?? "unreviewed");
+  const label = computed(() => ({ unreviewed: "未审查", reviewing: "审查中", stale: "内容已变更 · 待重审", failed: "审查未完成",
+    pass: "未发现文字问题", needs_revision: "有待处理项", needs_clarification: "有待确认项" })[status.value]);
+  const error = computed(() => transientError.value || record.value?.error || "");
+
+  async function review(force = false) {
+    if (disposed || reviewing.value) return;
+    if (!force && current.value && record.value?.result && !error.value) return;
+    transientError.value = "";
+    const activeController = new AbortController();
+    controller = activeController;
+    reviewing.value = true;
+    let input: PromptReviewInput | undefined;
+    try {
+      input = reviewInputSchema.parse(options.input());
+      if (!input.content.trim()) throw new Error("请输入需要审查的提示词");
+      if (Array.from(input.content).length + Array.from(input.context).length > 10000) throw new Error("提示词与审查背景合计超过 10000 字，请缩短后再审查；仍可直接生成");
+      const signal = AbortSignal.any([activeController.signal, AbortSignal.timeout(630000)]);
+      const response = await fetch("/api/ai/videoPromptReview", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Toonflow-Workspace": "1" }, cache: "no-store", signal,
+        body: JSON.stringify({ content: input.content, context: input.context, ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}) }),
+      });
+      const body = await response.json();
+      signal.throwIfAborted();
+      if (!response.ok || body?.code !== 200) {
+        const failure = new Error(typeof body?.message === "string" && body.message ? body.message.slice(0, 1800) : "审查暂不可用，仍可直接生成");
+        throw Object.assign(failure, { reviewId: body?.data?.reviewId, requestId: body?.data?.requestId });
+      }
+      const result = reviewResultSchema.parse(body.data);
+      if ((result.status === "pass") !== (result.issues.length === 0)) throw new Error("审查报告的结论与问题列表不一致，请手动重试");
+      for (const issue of result.issues) {
+        for (const target of issue.targets) {
+          const source = input[target.field];
+          if (target.shot_id !== null || Array.from(source).slice(target.start_char, target.end_char).join("") !== target.quote)
+            throw new Error("审查报告的原文定位无效，请手动重试");
+        }
+      }
+      if (!disposed && !activeController.signal.aborted) options.save({ input, result, finishedAt: Date.now() });
+    } catch (failure) {
+      if (disposed || activeController.signal.aborted) return;
+      const message = failure instanceof z.ZodError ? "审查报告或输入格式无效，仍可直接生成"
+        : failure instanceof Error && failure.name === "TimeoutError" ? "审查等待超时，仍可直接生成；请手动重试，重试可能产生费用"
+        : failure instanceof Error ? failure.message : "审查暂不可用，仍可直接生成";
+      const trace = failure as { reviewId?: unknown; requestId?: unknown } | null;
+      const saved: PromptReviewRecord | undefined = input ? { input, error: message.slice(0, 1800), finishedAt: Date.now(),
+        ...(Number.isSafeInteger(trace?.reviewId) && Number(trace?.reviewId) > 0 ? { reviewId: Number(trace?.reviewId) } : {}),
+        ...(typeof trace?.requestId === "string" ? { requestId: trace.requestId.slice(0, 256) } : {}) } : undefined;
+      // 审查和审查记录保存均为辅助操作，失败只反映在审查区。
+      try { if (saved) options.save(saved); else transientError.value = message; }
+      catch { transientError.value = "审查结果未能保存，仍可直接生成"; }
+    } finally {
+      if (controller === activeController) { controller = undefined; reviewing.value = false; }
+    }
+  }
+
+  function cancel() {
+    if (!controller) return;
+    controller.abort();
+    controller = undefined;
+    reviewing.value = false;
+    transientError.value = "已停止等待审查；已发出的请求可能产生费用，仍可直接生成";
+  }
+
+  function submission(): PromptReviewSubmission | undefined {
+    // 只附加提交时的参考信息；任何审查异常都不能抛入视频提交、排队或恢复流程。
+    try { return { status: status.value, label: label.value, reviewId: record.value?.result?.review_id ?? record.value?.reviewId, recordedAt: Date.now() }; }
+    catch { return undefined; }
+  }
+
+  onScopeDispose(() => { disposed = true; controller?.abort(); });
+  return { record, current, reviewing, status, label, error, review, cancel, submission };
+}
+
+export function applyPromptReviewEdits(input: PromptReviewInput, edits: PromptReviewEdit[]) {
+  if (!edits.length) throw new Error("这项建议需要手动确认创作意图");
+  const replacements = edits.map(edit => {
+    const start = input.editorPrompt.indexOf(edit.original);
+    if (edit.field !== "content" || edit.shot_id !== null || start < 0 || input.editorPrompt.indexOf(edit.original, start + 1) >= 0
+      || input.content.indexOf(edit.original) < 0 || input.content.indexOf(edit.original, input.content.indexOf(edit.original) + 1) >= 0)
+      throw new Error("建议涉及连接文本、重复原文或其他来源，请对照引用手动修改");
+    return { start, end: start + edit.original.length, replacement: edit.replacement };
+  }).sort((a, b) => b.start - a.start);
+  let prompt = input.editorPrompt;
+  for (let index = 0; index < replacements.length; index++) {
+    const edit = replacements[index];
+    if (index && edit.end > replacements[index - 1].start) throw new Error("修改建议存在重叠，请对照原文手动修改");
+    prompt = prompt.slice(0, edit.start) + edit.replacement + prompt.slice(edit.end);
+  }
+  return prompt;
+}

@@ -20,10 +20,11 @@
       <header class="topBar">
         <span class="pageTitle">创作工作台</span>
         <nav class="topActions" aria-label="快捷操作">
+          <el-button v-if="webMode" tag="a" href="/" class="chromeButton" text :icon="IconHome">UnionAIGC 主页</el-button>
           <el-button v-if="!webMode" class="chromeButton" text :type="deviceHubEnabled ? 'success' : undefined" :icon="deviceHubEnabled || mobileConnection.mode === 'remote' ? IconDeviceDesktop : IconQrcode" :aria-label="mobileConnectionLabel" @click="mobileConnectVisible = true">
             <span class="chromeLabel">{{ mobileConnectionLabel }}</span>
           </el-button>
-          <el-button v-if="webMode && !webUserId" class="chromeButton" text @click="signInVisible = true">管理员登录</el-button>
+          <el-button v-if="webMode && !webUserId" class="chromeButton" text @click="signInVisible = true">账户登录</el-button>
           <el-badge isDot :hidden="!hasDesktopUpdate" :offset="[-6, 6]">
             <el-button class="chromeButton" text :icon="IconSettings" :aria-label="hasDesktopUpdate ? '设置，有新版本可用' : '设置'" @click="openSettings">
               <span class="chromeLabel">设置</span>
@@ -32,7 +33,7 @@
         </nav>
       </header>
       <main class="pageContent">
-        <section ref="creationPanel" class="creationPanel" aria-label="创建项目">
+        <section class="creationPanel" :class="{ activePanel: activeSection === 'create' }" aria-label="创建项目">
           <div class="hero">
             <span class="heroEyebrow"><icon-sparkles :size="14" />想法不设限，创作有起点</span>
             <h1>让灵感，成为你的下一部作品</h1>
@@ -69,7 +70,7 @@
             </button>
           </div>
         </section>
-        <section ref="projectPanel" class="projectList" aria-labelledby="projectListTitle">
+        <section class="projectList" :class="{ activePanel: activeSection === 'projects' }" aria-labelledby="projectListTitle">
           <div class="sectionHeader">
             <h2 id="projectListTitle">我的项目<span v-if="projectList.length" class="projectCount">{{ projectList.length }}</span></h2>
             <div class="sectionActions">
@@ -91,6 +92,14 @@
                 <span class="projectVisual" aria-hidden="true"><span class="visualGrid" /><icon-layout-dashboard :size="32" /><span class="visualLabel">画布项目</span><span class="openProjectHint"><icon-arrow-up-right :size="18" />打开项目</span></span>
                 <span class="projectName" :title="project.name">{{ project.name }}</span>
                 <span v-if="!webMode" class="projectPath" :title="project.directory">{{ project.directory }}</span>
+                <span class="projectUsage" :title="projectUsageErrors[project.directory] || '按已保存到项目的文件统计，包含上传与生成素材；账户共享素材库不计入单个项目。'">
+                  <template v-if="projectUsages[project.directory]">
+                    <span>素材 {{ formatBytes(projectUsages[project.directory]!.assetBytes) }} · {{ projectUsages[project.directory]!.assetCount }} 个</span>
+                    <span>项目占用 {{ formatBytes(projectUsages[project.directory]!.totalBytes) }}</span>
+                    <span v-if="projectUsages[project.directory]!.recycleBytes">回收站关联 {{ formatBytes(projectUsages[project.directory]!.recycleBytes!) }} · 预计可释放 {{ formatBytes(projectUsages[project.directory]!.reclaimableBytes ?? 0) }}</span>
+                  </template>
+                  <span v-else>{{ projectUsageErrors[project.directory] ? '占用读取失败' : '正在统计占用…' }}</span>
+                </span>
                 <span class="projectTime" :title="new Date(project.lastOpenedAt).toLocaleString(locale, { hour12: false })"><icon-clock :size="13" />{{ dateFormatter.format(project.lastOpenedAt) }}</span>
               </button>
               <div class="projectActions">
@@ -109,7 +118,7 @@
         </section>
       </main>
     </div>
-    <settings v-model="settingsVisible" />
+    <settings v-model="settingsVisible" :panel="settingsPanel" />
     <mobileConnect v-if="!webMode" v-model="mobileConnectVisible" />
     <workspacePicker ref="relocationPicker" hideTrigger />
   </div>
@@ -119,10 +128,11 @@
 import { locale, translate } from "@toonflow/i18n/vue";
 import axios from "axios";
 import { storeToRefs } from "pinia";
-import { computed, defineAsyncComponent, nextTick, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, defineAsyncComponent, nextTick, onMounted, onWatcherCleanup, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type InputInstance } from "element-plus";
 import {
+  IconHome,
   IconSettings, IconQrcode, IconDeviceDesktop,
   IconArrowUpRight, IconLayoutGrid, IconList, IconSortDescending,
   IconSortAscending, IconFolder, IconEdit, IconSparkles, IconInfoCircle,
@@ -137,16 +147,31 @@ import { useWorkspaceStore, type Project } from "@/stores/workspace";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { accountView, signInVisible } from "@/stores/account";
 import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib/mobile";
-import useWorkspaceFiles from "@/lib/workspaceFiles";
+import useWorkspaceFiles, { type WorkspaceUsage } from "@/lib/workspaceFiles";
 import settings from "@/components/settings/index.vue";
 import workspacePicker from "./workspacePicker.vue";
 import api, { errorMessage } from "@/lib/api";
 import { webMode, webUserId } from "@/lib/webRuntime";
 
 const settingsVisible = ref(false);
+const settingsPanel = ref<string>();
 const mobileConnectVisible = ref(false);
 const mobileConnect = defineAsyncComponent(() => import("@/components/mobileConnect.vue"));
 const router = useRouter();
+const route = useRoute();
+watch([() => route.query.localHelper, webUserId], ([requested, userId]) => {
+  if (!webMode.value) return;
+  let pending = requested === "1";
+  try {
+    if (pending) sessionStorage.setItem("localHelperSetup", "1");
+    else pending = sessionStorage.getItem("localHelperSetup") === "1";
+    if (pending && userId) sessionStorage.removeItem("localHelperSetup");
+  } catch { /* 浏览器禁用存储时，仍处理当前页面的登录与绑定入口。 */ }
+  if (!pending) return;
+  if (!userId) { signInVisible.value = true; return; }
+  settingsPanel.value = "localHelper";
+  settingsVisible.value = true;
+}, { immediate: true });
 const creating = ref(false);
 const opening = ref(false);
 const relocationPicker = ref<InstanceType<typeof workspacePicker>>();
@@ -160,8 +185,6 @@ const directoryHint = computed(() => workspaceDirectory.value ? "新项目将保
 const hasPrompt = computed(() => !!prompt.value.trim() || !!promptAttachments.value.length);
 const promptPlaceholder = computed(() => translate("描述你想创作的故事、角色或镜头，AI 助手会和你一起搭建画布…"));
 const activeSection = ref("create");
-const creationPanel = ref<HTMLElement>();
-const projectPanel = ref<HTMLElement>();
 const projectSearch = ref("");
 const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }));
 
@@ -169,9 +192,45 @@ const selectedModel = ref("");
 const reasoningEffort = ref("");
 const sortDescending = ref(true);
 const viewMode = ref("grid");
-onMounted(() => {
-  if (webMode.value && webUserId.value) void workspaceStore.loadProjects().catch(error => ElMessage.error(errorMessage(error, "读取项目失败")));
+const projectUsages = ref<Record<string, WorkspaceUsage | undefined>>({});
+const projectUsageErrors = ref<Record<string, string>>({});
+const usageReady = ref(false);
+onMounted(async () => {
+  try {
+    if (webMode.value && webUserId.value) await workspaceStore.loadProjects();
+    usageReady.value = true;
+  } catch (error) {
+    const message = errorMessage(error, "读取项目失败");
+    projectUsageErrors.value = Object.fromEntries(projectList.value.map(project => [project.directory, message]));
+    ElMessage.error(message);
+  }
 });
+
+watch(() => usageReady.value && (!webMode.value || webUserId.value) ? projectList.value.map(project => project.directory) : [], async directories => {
+  const controller = new AbortController();
+  onWatcherCleanup(() => controller.abort());
+  projectUsages.value = {};
+  projectUsageErrors.value = {};
+  const pending = [...directories];
+  // ACT: 同时读取至多四个项目，避免项目较多时集中扫描磁盘；离开页面取消剩余统计。
+  await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
+    while (pending.length && !controller.signal.aborted) {
+      const directory = pending.shift()!;
+      try {
+        const usage = await useWorkspaceFiles(directory).getUsage(controller.signal);
+        if (!controller.signal.aborted) projectUsages.value[directory] = usage;
+      } catch (error) {
+        if (!controller.signal.aborted) projectUsageErrors.value[directory] = errorMessage(error, "读取项目占用失败");
+      }
+    }
+  }));
+});
+
+function formatBytes(bytes: number) {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const index = Math.min(Math.floor(Math.log(Math.max(1, bytes)) / Math.log(1024)), units.length - 1);
+  return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: index ? 1 : 0 }).format(bytes / 1024 ** index)} ${units[index]}`;
+}
 
 function openSettings() {
   if (webMode.value && !webUserId.value) { signInVisible.value = true; return; }
@@ -185,14 +244,15 @@ const filteredProjects = computed(() => {
   return query ? sortedProjects.value.filter(item => `${item.name}\n${item.directory}`.toLocaleLowerCase(locale.value).includes(query)) : sortedProjects.value;
 });
 
-function showSection(section: "create" | "projects") {
+async function showSection(section: "create" | "projects") {
   activeSection.value = section;
-  (section === "create" ? creationPanel : projectPanel).value?.scrollIntoView({ block: "start" });
+  await nextTick();
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
 
-function focusPrompt() {
-  showSection("create");
-  promptInput.value?.focus();
+async function focusPrompt() {
+  await showSection("create");
+  promptInput.value?.textarea?.focus({ preventScroll: true });
 }
 
 function pasteText(event: ClipboardEvent) {
@@ -463,10 +523,13 @@ async function createProject(fromPrompt = true) {
     margin: 0 auto;
     padding: 0 clamp(20px, 4vw, 56px) 56px;
 
+    @media (min-width: 761px) {
+      > section:not(.activePanel) { display: none; }
+    }
+
     .creationPanel {
       max-width: 960px;
       margin: clamp(28px, 5vh, 64px) auto 44px;
-      scroll-margin-top: 88px;
 
       .hero {
         display: flex;
@@ -633,8 +696,7 @@ async function createProject(fromPrompt = true) {
     }
 
     .projectList {
-      margin: 0 auto;
-      scroll-margin-top: 88px;
+      margin: clamp(28px, 5vh, 64px) auto 0;
 
       .sectionHeader {
         display: flex;
@@ -750,7 +812,7 @@ async function createProject(fromPrompt = true) {
           .projectEntry {
             display: grid;
             grid-template-columns: minmax(0, 1fr);
-            grid-template-areas: "visual" "name" "path" "time";
+            grid-template-areas: "visual" "name" "path" "usage" "time";
             align-items: center;
             gap: 2px 12px;
             width: 100%;
@@ -816,6 +878,20 @@ async function createProject(fromPrompt = true) {
               line-height: 18px;
             }
 
+            .projectUsage {
+              grid-area: usage;
+              display: flex;
+              flex-wrap: wrap;
+              gap: 4px 12px;
+              margin-top: 8px;
+              color: var(--el-text-color-regular);
+              font-size: 12px;
+              line-height: 18px;
+              font-variant-numeric: tabular-nums;
+
+              > span { white-space: nowrap; }
+            }
+
             .projectTime {
               grid-area: time;
               display: flex;
@@ -872,13 +948,18 @@ async function createProject(fromPrompt = true) {
             }
 
             .projectEntry {
-              grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
-              grid-template-areas: "name path time";
-              gap: 16px;
+              grid-template-columns: minmax(0, 1fr) auto auto;
+              grid-template-areas: "name usage time" "path usage time";
+              gap: 2px 16px;
               padding: 10px 84px 10px 8px;
 
               .projectVisual { display: none; }
               .projectName { padding-inline-end: 0; }
+
+              .projectUsage {
+                flex-direction: column;
+                margin: 0;
+              }
 
               .projectTime {
                 margin: 0;
@@ -894,7 +975,7 @@ async function createProject(fromPrompt = true) {
           @media (max-width: 720px) {
             .projectCard .projectEntry {
               grid-template-columns: minmax(0, 1fr);
-              grid-template-areas: "name" "path" "time";
+              grid-template-areas: "name" "path" "usage" "time";
               gap: 2px 12px;
             }
           }

@@ -1,5 +1,5 @@
 const rules = [
-  { type: "input", field: "apiKey" as const, title: "API Key", value: "", props: { type: "password", showPassword: true, autocomplete: "off" }, validate: [{ required: true, message: "请登录逸仙账户" }] },
+  { type: "input", field: "apiKey" as const, title: "API Key", value: "", props: { type: "password", showPassword: true, autocomplete: "off" }, validate: [{ required: true, message: "请登录 UnionAIGC 账户" }] },
   { type: "input", field: "apiUrl" as const, title: "API 地址", value: "https://yixian.lol" },
 ];
 
@@ -14,18 +14,53 @@ type YixianResponse = {
 };
 type YixianSnapshot = { base: string; body: { model: string; parameters: Record<string, unknown> } };
 
+export const commonImageRatios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+const imageSizePixels = new Map([["1K", "1024x1024"], ["2K", "2048x2048"], ["4K", "3840x2160"]]);
+const imageSizeLabels = new Map([...imageSizePixels.keys()].flatMap(size => commonImageRatios.map(ratio => [resolveImageSize(size, ratio)!, size] as const)));
+
+export function normalizeImageModel<T extends ProviderModel>(model: T): T {
+  if (model.type !== "image" || !/^gpt-image-2(?:[.-]|$)/i.test(model.id)) return model;
+  return { ...model,
+    imageSizes: model.imageSizes ? [...new Set(model.imageSizes.map(size => imageSizeLabels.get(size) ?? size))] : undefined,
+    defaultImageSize: model.defaultImageSize ? imageSizeLabels.get(model.defaultImageSize) ?? model.defaultImageSize : undefined,
+  };
+}
+
+export function resolveImageSize(size: string | undefined, ratio: string | undefined) {
+  if (!size) return size;
+  const pixels = imageSizePixels.get(size) ?? size;
+  if (!ratio) return pixels;
+  const dimensions = /^(\d+)x(\d+)$/.exec(pixels);
+  if (!dimensions) return size;
+  let [width = 0, height = 0] = ratio.split(":").map(Number);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || width / height < 1 / 3 || width / height > 3)
+    throw new Error("GPT 图片比例须在 1:3～3:1 之间");
+  let divisor = width;
+  let remainder = height;
+  while (remainder) [divisor, remainder] = [remainder, divisor % remainder];
+  width /= divisor;
+  height /= divisor;
+  // ACT: 以档位像素量为预算，保持精确比例并对齐 16 像素；不放大或裁剪返回图片。
+  const scale = Math.min(Math.sqrt(Math.min(Number(dimensions[1]) * Number(dimensions[2]), 8294400) / (width * height)), 3840 / Math.max(width, height));
+  const unit = Math.floor(scale / 16) * 16;
+  width *= unit;
+  height *= unit;
+  if (width * height < 655360) throw new Error("当前图片尺寸无法满足所选比例，请选择更高分辨率");
+  return `${width}x${height}`;
+}
+
 async function readBytes(response: Response, limit: number) {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error(`逸仙接口返回空正文（HTTP ${response.status}）`);
+  if (!reader) throw new Error(`UnionAIGC 接口返回空正文（HTTP ${response.status}）`);
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
-    if (Number(response.headers.get("content-length")) > limit) throw new Error("逸仙接口响应超过接收上限");
+    if (Number(response.headers.get("content-length")) > limit) throw new Error("UnionAIGC 接口响应超过接收上限");
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > limit) throw new Error("逸仙接口响应超过接收上限");
+      if (size > limit) throw new Error("UnionAIGC 接口响应超过接收上限");
       chunks.push(value);
     }
   } finally { await reader.cancel(); }
@@ -37,19 +72,19 @@ async function apiRequest(context: ProviderContext, url: string, headers: Record
   const bytes = await readBytes(response, 1024 * 1024);
   let value: YixianResponse;
   try { value = JSON.parse(bytes.toString("utf8")); }
-  catch { throw new Error(`逸仙接口未返回有效 JSON（HTTP ${response.status}），请保留原任务核查`); }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("逸仙接口返回的数据格式无效");
+  catch { throw new Error(`UnionAIGC 接口未返回有效 JSON（HTTP ${response.status}），请保留原任务核查`); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("UnionAIGC 接口返回的数据格式无效");
   return { response, value };
 }
 
 function responseMessage(context: ProviderContext, response: Response, value: YixianResponse) {
-  return context.tool.errorMessage(`逸仙 HTTP ${response.status}：${context.tool.errorMessage(value) || "接口未返回有效结果"}`);
+  return context.tool.errorMessage(`UnionAIGC HTTP ${response.status}：${context.tool.errorMessage(value) || "接口未返回有效结果"}`);
 }
 
 function modelFor(context: ProviderContext, id: string, type: ModelType) {
   const model = context.models.find(model => model.id === id && model.type === type);
   if (!model) throw new Error("模型不可用，请选择其他模型");
-  return model;
+  return normalizeImageModel(model);
 }
 
 async function createSnapshot(context: ProviderContext, base: string, headers: Record<string, string>, request: VideoRequest): Promise<YixianSnapshot> {
@@ -100,7 +135,7 @@ async function createSnapshot(context: ProviderContext, base: string, headers: R
     ["first_frame", request.firstFrame], ["last_frame", request.lastFrame],
   ] as [string, MediaInput | undefined][]) {
     if (!input) continue;
-    if (input.type !== "url" || !input.assetId) throw new Error("参考素材尚未上传到逸仙平台");
+    if (input.type !== "url" || !input.assetId) throw new Error("参考素材尚未上传到 UnionAIGC 平台");
     parameters[field] = { asset_id: input.assetId };
   }
   return { base, body: { model: request.model, parameters } };
@@ -113,10 +148,12 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
   if (!request.prompt.trim()) throw new Error("请输入生成提示词");
   if (!modes.some(mode => mode === "text" && images.length === 0 || mode === "singleImage" && images.length === 1
     || mode === "multiReference" && images.length >= Math.max(1, model.minReferenceImages ?? 0))) throw new Error("参考图片不符合模型声明的生成模式");
-  const size = request.size ?? model.defaultImageSize;
+  const requestedSize = request.size ?? model.defaultImageSize;
+  const flexibleSize = /^gpt-image-2(?:[.-]|$)/i.test(request.model);
+  const size = requestedSize && flexibleSize ? imageSizeLabels.get(requestedSize) ?? requestedSize : requestedSize;
   const ratio = request.ratio ?? model.defaultImageRatio;
-  if (size !== undefined && !model.imageSizes?.includes(size)) throw new Error("图片尺寸不在模型声明的范围内");
-  if (ratio !== undefined && !model.imageRatios?.includes(ratio)) throw new Error("画面比例不在模型声明的范围内");
+  if (size !== undefined && !model.imageSizes?.includes(size)) throw new Error(`当前模型不支持图片尺寸 ${size}，size 可选：${model.imageSizes?.join("、") || "未声明，请省略 size"}；请按 listMediaModels 或节点 getConfig 返回的能力填写，本次未提交生成`);
+  if (ratio !== undefined && !model.imageRatios?.includes(ratio)) throw new Error(`当前模型不支持画面比例 ${ratio}，ratio 可选：${model.imageRatios?.join("、") || "未声明，请省略 ratio"}；本次未提交生成`);
   const n = request.n ?? 1;
   if (!Number.isSafeInteger(n) || n < 1) throw new Error("图片数量无效");
   if (/^(gemini-|nano-banana)/i.test(request.model)) {
@@ -141,7 +178,8 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
     if (!matches.length) throw new Error("Gemini 未返回图片，请检查提示词或平台生成记录后再重试");
     return matches.map(match => ({ type: "base64", data: match[2]!, mimeType: match[1]!, mediaType: "image" }));
   }
-  const fields = { model: request.model, prompt: request.prompt, n, ...(size ? { size } : {}), ...(ratio ? { aspect_ratio: ratio } : {}) };
+  const outputSize = flexibleSize ? resolveImageSize(size, ratio) : size;
+  const fields = { model: request.model, prompt: request.prompt, n, ...(outputSize ? { size: outputSize } : {}), ...(ratio ? { aspect_ratio: ratio } : {}) };
   const headers: Record<string, string> = { Authorization: `Bearer ${this.config.apiKey}` };
   let body: RequestInit["body"];
   if (images.length) {
@@ -158,18 +196,18 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
   });
   const bytes = await readBytes(response, 150 * 1024 * 1024);
   const result = JSON.parse(bytes.toString("utf8")) as { data?: { url?: string; b64_json?: string }[]; error?: unknown };
-  if (!response.ok || !Array.isArray(result.data) || !result.data.length) throw new Error(this.tool.errorMessage(result) || `逸仙图像生成失败（HTTP ${response.status}）`);
+  if (!response.ok || !Array.isArray(result.data) || !result.data.length) throw new Error(this.tool.errorMessage(result) || `UnionAIGC 图像生成失败（HTTP ${response.status}）`);
   return result.data.map(item => {
     if (typeof item.b64_json === "string" && item.b64_json) return { type: "base64", data: item.b64_json, mimeType: "image/png", mediaType: "image" };
     if (typeof item.url === "string" && /^https:\/\//.test(item.url)) return { type: "url", url: item.url, mediaType: "image" };
-    throw new Error("逸仙未返回有效图片");
+    throw new Error("UnionAIGC 未返回有效图片");
   });
 }
 
 async function wait(context: ProviderContext, milliseconds: number) {
   context.signal?.throwIfAborted();
   await context.videoTask!.update({ retryAt: Date.now() + milliseconds });
-  if (milliseconds > 60000) throw new Error(`逸仙接口要求等待 ${Math.ceil(milliseconds / 1000)} 秒，请稍后恢复原任务`);
+  if (milliseconds > 60000) throw new Error(`UnionAIGC 接口要求等待 ${Math.ceil(milliseconds / 1000)} 秒，请稍后恢复原任务`);
   await new Promise<void>((resolve, reject) => {
     const abort = () => { clearTimeout(timer); reject(context.signal?.reason); };
     const timer = setTimeout(() => { context.signal?.removeEventListener("abort", abort); resolve(); }, milliseconds);
@@ -180,30 +218,30 @@ async function wait(context: ProviderContext, milliseconds: number) {
 
 export default {
   id: "yixianVideo",
-  label: "逸仙",
+  label: "UnionAIGC",
   version: "2.0.0",
   apiUrl: "https://yixian.lol",
-  readme: "模型及能力由逸仙平台统一管理。",
+  readme: "模型及能力由 UnionAIGC 平台统一管理。",
   rules,
   models: [],
   generateImage,
   async generateVideo(request: VideoRequest): Promise<MediaAsset[]> {
     const task = this.videoTask;
-    if (!task) throw new Error("逸仙视频需要持久化任务支持，请从视频节点或媒体生成工具使用");
+    if (!task) throw new Error("UnionAIGC 视频需要持久化任务支持，请从视频节点或媒体生成工具使用");
     const apiKey = this.config.apiKey.trim().replace(/^Bearer\s+/i, "").trim();
-    if (!apiKey) throw new Error("请填写逸仙 API Key");
+    if (!apiKey) throw new Error("请填写 UnionAIGC API Key");
     const url = new URL(this.config.apiUrl.trim());
-    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !["/", "/v1", "/v1/"].includes(url.pathname)) throw new Error("逸仙 API 地址须为 HTTPS 站点根地址或 /v1 地址");
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !["/", "/v1", "/v1/"].includes(url.pathname)) throw new Error("UnionAIGC API 地址须为 HTTPS 站点根地址或 /v1 地址");
     const base = url.origin;
     const headers = { Authorization: `Bearer ${apiKey}` };
-    if (task.state.phase === "failed") throw new Error(task.state.error || "逸仙原任务已失败，请确认后发起新生成");
+    if (task.state.phase === "failed") throw new Error(task.state.error || "UnionAIGC 原任务已失败，请确认后发起新生成");
     if (task.state.retryAt && task.state.retryAt > Date.now()) await wait(this, task.state.retryAt - Date.now());
     if (!task.state.taskId) {
-      if (task.state.phase !== "prepared") throw new Error("逸仙提交受理状态尚未确认且没有任务编号，请到视频专栏核查；恢复不会重新提交生成");
+      if (task.state.phase !== "prepared") throw new Error("UnionAIGC 提交受理状态尚未确认且没有任务编号，请到视频专栏核查；恢复不会重新提交生成");
       const snapshot: YixianSnapshot = task.requestSaved ? JSON.parse(await task.readRequest()) : await createSnapshot(this, base, headers, request);
-      if (snapshot.base !== base) throw new Error("恢复任务须使用原逸仙 API 地址");
+      if (snapshot.base !== base) throw new Error("恢复任务须使用原 UnionAIGC API 地址");
       if (!task.requestSaved) await task.saveRequest(JSON.stringify(snapshot));
-      // ACT: 逸仙未提供提交幂等查询；提交前持久化状态，回执丢失时停止，避免重复付费生成。
+      // ACT: UnionAIGC 未提供提交幂等查询；提交前持久化状态，回执丢失时停止，避免重复付费生成。
       this.signal?.throwIfAborted();
       await task.update({ phase: "submitting", retryAt: undefined, error: undefined });
       const { response, value } = await apiRequest(this, `${base}/v1/videos`, headers, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot.body) });
@@ -220,7 +258,7 @@ export default {
     let failures = 0;
     while (task.state.phase !== "downloading") {
       this.signal?.throwIfAborted();
-      if (Date.now() >= deadline) throw new Error("逸仙本地等待已满 60 分钟，请恢复原任务继续查询");
+      if (Date.now() >= deadline) throw new Error("UnionAIGC 本地等待已满 60 分钟，请恢复原任务继续查询");
       let result: Awaited<ReturnType<typeof apiRequest>>;
       try { result = await apiRequest(this, taskUrl, headers); }
       catch (error) {
@@ -241,14 +279,14 @@ export default {
         throw new Error(responseMessage(this, response, value));
       }
       failures = 0;
-      if (value.id !== task.state.taskId) throw new Error("逸仙返回的任务编号不匹配，已保留原任务");
+      if (value.id !== task.state.taskId) throw new Error("UnionAIGC 返回的任务编号不匹配，已保留原任务");
       if (value.status === "failed") {
-        const error = this.tool.errorMessage(value) || "逸仙视频生成失败";
+        const error = this.tool.errorMessage(value) || "UnionAIGC 视频生成失败";
         await task.update({ phase: "failed", error, retryAt: undefined });
         throw new Error(error);
       }
       if (value.status === "completed") { await task.update({ phase: "downloading", progress: 100, retryAt: undefined, error: undefined }); break; }
-      if (!["queued", "in_progress"].includes(value.status ?? "")) throw new Error("逸仙返回未知任务状态，已保留原任务，请稍后恢复查询");
+      if (!["queued", "in_progress"].includes(value.status ?? "")) throw new Error("UnionAIGC 返回未知任务状态，已保留原任务，请稍后恢复查询");
       const progress = typeof value.progress === "number" && Number.isFinite(value.progress) && value.progress >= 0 && value.progress <= 100 ? value.progress : undefined;
       await task.update({ phase: value.status === "queued" ? "queued" : "in_progress", progress, retryAt: undefined, error: undefined });
       await wait(this, 5000);

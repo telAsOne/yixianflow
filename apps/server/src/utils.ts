@@ -1,6 +1,7 @@
 import * as assets from "@/utils/assets";
 import * as canvasIndex from "@/utils/workspace/canvasIndex";
 import * as canvasSync from "@/utils/workspace/canvasSync";
+import * as recycleBin from "@/utils/workspace/recycleBin";
 import * as mediaAccess from "@/utils/workspace/mediaAccess";
 import * as mediaPreviews from "@/utils/media/previews";
 import * as browser from "@/utils/browser";
@@ -47,6 +48,7 @@ export default {
   assets,
   canvasIndex,
   canvasSync,
+  recycleBin,
   mediaAccess,
   mediaPreviews,
   browser,

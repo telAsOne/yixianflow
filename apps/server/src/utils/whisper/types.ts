@@ -1,6 +1,6 @@
-export const whisperModels = ["tiny", "base", "small", "medium", "large", "turbo"] as const;
+export const whisperModels = ["auto", "tiny", "base", "small", "medium", "large", "turbo"] as const;
 export type WhisperModel = typeof whisperModels[number];
-export type WhisperTaskPhase = "preparing" | "downloadingModel" | "transcribing" | "writing" | "completed" | "failed" | "cancelled";
+export type WhisperTaskPhase = "preparing" | "downloadingModel" | "transcribing" | "reviewing" | "writing" | "completed" | "failed" | "cancelled";
 
 export type WhisperTask = {
   operationId: string;
@@ -10,6 +10,8 @@ export type WhisperTask = {
   output?: string;
   error?: string;
   updatedAt: number;
+  progress?: number;
+  review?: { state: string; changed: number; issueCount: number; error?: string };
 };
 
 export type WhisperStartInput = {
@@ -18,7 +20,6 @@ export type WhisperStartInput = {
   outputPath: string;
   model: WhisperModel;
   language?: string;
-  pythonPath?: string;
 };
 
 export type WhisperRequest = {
@@ -50,4 +51,7 @@ export type WhisperCheckResult = {
   cacheDirectory: string;
   ready: boolean;
   errors: string[];
+  execution?: "localHelper";
+  localDevice?: { id: string; name: string };
+  cachedModels?: readonly WhisperModel[];
 };

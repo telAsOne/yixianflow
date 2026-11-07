@@ -12,13 +12,15 @@ export async function createLocalComputerTools(): Promise<ToolDefinition[]> {
     promptGuidelines: [
       ...localComputerGuidelines,
       "服务器工作区文件使用原工作区工具；只有用户明确要求在本机和网页项目之间传输时，才使用 upload/download。",
-      "软件安装优先 install，先确认准确包名。不能规避本机确认或权限边界。网页断开会取消本机调用，只按工具实际结果报告成功。",
+      "软件安装优先 install，先确认准确包名。不能规避本机确认或权限边界。普通文件调用随网页断开取消；subtitleStart 提交后的后台任务独立执行，只按工具实际结果报告成功。",
     ],
     parameters: localComputerParameters,
     executionMode: "sequential",
     async execute(_id, params, signal, onUpdate) {
       onUpdate?.({ content: [{ type: "text", text: `等待本地电脑 ${device.name} 执行；需要确认时请查看 Windows 托盘。` }], details: {} });
-      const details = await callDevice(device, localComputerRequest.parse(params), signal);
+      const operation = localComputerRequest.parse(params);
+      signal?.throwIfAborted();
+      const details = await callDevice(device, operation, operation.action === "subtitleStart" ? undefined : signal);
       return { content: [{ type: "text", text: JSON.stringify(details) }], details };
     },
   }];

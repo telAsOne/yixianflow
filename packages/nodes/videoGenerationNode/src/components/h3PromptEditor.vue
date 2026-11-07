@@ -19,24 +19,10 @@
       <p v-if="references.length" class="referenceHint">给图片或视频中的主体取名；点「换位置」或拖到同类素材上交换，正文引用会跟着更新。</p>
       <div class="stepTitle">2 · 编写提示词</div>
       <div class="promptTools">
-        <el-button type="primary" size="small" :icon="IconSparkles" :loading="optimizing" :disabled="disabled || !prompt.trim() || !selectedModel" @click="optimize">Skill 优化提示词</el-button>
-        <el-button v-if="optimizing" size="small" @click="optimizationController?.abort()">停止优化</el-button>
-        <el-popover trigger="click" placement="bottom-start" :width="300">
-          <template #reference><el-button size="small" :icon="IconSettings" aria-label="提示词优化设置" /></template>
-          <div class="optimizerSettings">
-            <label>优化使用的文本模型</label>
-            <el-select v-model="state.model" filterable :loading="modelsLoading" :disabled="optimizing" aria-label="提示词优化模型" @visibleChange="(opened: boolean) => opened && loadModels()">
-              <el-option v-for="item in models" :key="JSON.stringify([item.providerId, item.modelId])" :value="JSON.stringify([item.providerId, item.modelId])" :label="`${item.providerLabel} / ${item.label}`" />
-            </el-select>
-            <span>沿用 Toonflow 中配置的文本模型；参考图分析需要模型支持看图。</span>
-            <el-button text size="small" @click="skillVisible = true">查看内置 Skill 原文</el-button>
-          </div>
-        </el-popover>
         <el-button size="small" :disabled="editingDisabled" @click="openDialogue()">插入对白</el-button>
         <el-button size="small" :icon="IconVideo" :disabled="editingDisabled" @mousedown.prevent @click="openCameraLibrary">运镜</el-button>
         <el-button size="small" :disabled="editingDisabled" @click="insertSkeleton">插入骨架</el-button>
       </div>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" />
       <el-collapse v-if="voices || references.some(item => item.category === 'audio')" class="referenceSettings">
         <el-collapse-item title="音色与说话人设置" name="voices">
           <div v-if="voices" class="voiceLibrary">
@@ -96,9 +82,8 @@
         </el-form>
         <template #footer><el-button @click="dialogueVisible = false">取消</el-button><el-button type="primary" :disabled="!dialogue.text.trim()" @click="applyDialogue">{{ editingDialogue ? '更新对白' : '插入对白' }}</el-button></template>
       </el-dialog>
-      <el-dialog v-model="skillVisible" title="内置 H3 Skill 原文" width="min(960px, 94vw)" appendToBody><el-input :modelValue="h3PromptSkill" type="textarea" :rows="22" readonly aria-label="内置 H3 Skill 原文" /></el-dialog>
       <el-dialog v-model="helpVisible" title="主体与对白写法" width="min(620px, 92vw)" appendToBody>
-        <ol class="dialogueHelp"><li>在素材卡下方给图片或视频中的主体取名，同一个人物的多个素材使用同一名称。</li><li>点“换位置”或把素材拖到同类素材上交换，提示词中的编号自动更新。</li><li>在提示词中输入 @，可以插入主体、素材、说话人、镜头和任务类型。</li><li>点击“插入对白”，选择主体、语言和发声方式；多选主体生成齐声编号，例如 (S1,S2)。</li><li>音频可绑定主体和说话人；内置音色和上传音频一起按音频顺序编号。</li><li>“代码”展示实际 H3 标签；“复制”复制完整提交文本。“撤销”可恢复优化前的内容。</li></ol>
+        <ol class="dialogueHelp"><li>在素材卡下方给图片或视频中的主体取名，同一个人物的多个素材使用同一名称。</li><li>点“换位置”或把素材拖到同类素材上交换，提示词中的编号自动更新。</li><li>在提示词中输入 @，可以插入主体、素材、说话人、镜头和任务类型。</li><li>点击“插入对白”，选择主体、语言和发声方式；多选主体生成齐声编号，例如 (S1,S2)。</li><li>音频可绑定主体和说话人；内置音色和上传音频一起按音频顺序编号。</li><li>“代码”展示实际 H3 标签；“复制”复制完整提交文本。“撤销”可恢复之前编辑的内容。</li></ol>
       </el-dialog>
       <el-dialog :modelValue="!!previewReference" :title="previewReference?.name" width="min(760px, 92vw)" appendToBody destroyOnClose @close="previewReference = undefined">
         <div class="referencePreview">
@@ -108,7 +93,6 @@
           <mediaPreviewStatus :preview="referencePreview" />
         </div>
       </el-dialog>
-      <el-dialog v-model="resultVisible" title="优化结果（原内容已保留）" width="min(900px, 94vw)" appendToBody><p>优化期间内容或素材发生了变化，请对照后取用，避免覆盖正在编辑的内容。</p><el-input :modelValue="pendingResult" type="textarea" :rows="18" readonly aria-label="未应用的优化结果" /></el-dialog>
     </section>
   </teleport>
   <el-dialog v-model="expanded" class="h3EditorDialog" title="视频创作 · 素材与提示词" fullscreen appendToBody :closeOnClickModal="false">
@@ -117,24 +101,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onScopeDispose, reactive, ref, watch } from "vue";
-import { ElAlert, ElButton, ElCheckbox, ElCollapse, ElCollapseItem, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage, ElOption, ElPopover, ElSegmented, ElSelect } from "element-plus";
-import { IconSettings, IconSparkles, IconMaximize, IconMinimize, IconVideo } from "@tabler/icons-vue";
-import { type useNode, type NodeAiModel } from "@toonflow/nodes-scaffold/runtime";
+import { computed, nextTick, onMounted, onScopeDispose, reactive, ref, watch } from "vue";
+import { ElAlert, ElButton, ElCheckbox, ElCollapse, ElCollapseItem, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage, ElOption, ElSegmented, ElSelect } from "element-plus";
+import { IconMaximize, IconMinimize, IconVideo } from "@tabler/icons-vue";
 import promptInput from "@toonflow/node-shared/promptInput";
 import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
 import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import h3ReferenceList from "./h3ReferenceList.vue";
 import h3CodeEditor from "./h3CodeEditor.vue";
-import h3PromptSkill from "../h3PromptSkill.txt?raw";
-import { h3CameraInsertRange, h3CameraTag, h3DetailPattern, h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, loadCameraPresets, parseH3Optimization, type H3CameraPreset, type H3PromptState, type H3Reference } from "../h3Prompt";
+import { h3CameraInsertRange, h3DetailPattern, h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, type H3PromptState, type H3Reference } from "../h3Prompt";
+import { getCameraPresets, type CameraPreset } from "../cameraPresets";
 import type { ZealmanVoice } from "../zealmanOptions";
 
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 type PromptSelection = { anchor: number; focus: number };
-const props = defineProps<{ references: H3Reference[]; ai: ReturnType<typeof useNode>["ai"]; files: ReturnType<typeof useNode>["files"]; maxDuration: number; voices?: ZealmanVoice[]; remoteLibrary?: boolean; disabled?: boolean }>();
+const props = defineProps<{ references: H3Reference[]; voices?: ZealmanVoice[]; remoteLibrary?: boolean; disabled?: boolean }>();
 const emit = defineEmits<{
-  upload: []; clearReferences: []; replaceReference: [item: H3Reference]; removeReference: [item: H3Reference]; busy: [value: boolean]; openLibrary: [];
+  upload: []; clearReferences: []; replaceReference: [item: H3Reference]; removeReference: [item: H3Reference]; openLibrary: [];
   swapReferences: [first: H3Reference, second: H3Reference]; referencePreview: [item: H3Reference, url: string, original: string];
 }>();
 const state = defineModel<H3PromptState>({ required: true });
@@ -146,17 +129,13 @@ const codeEditor = ref<InstanceType<typeof h3CodeEditor>>();
 const expanded = ref(false);
 const expandedTarget = ref<HTMLElement>();
 const activeReferenceId = ref("");
-const models = ref<NodeAiModel[]>([]);
-const modelsLoading = ref(false);
-const cameraPresets = ref<H3CameraPreset[]>();
+const cameraPresets = ref<CameraPreset[]>();
 const cameraVisible = ref(false);
 const cameraLoading = ref(false);
 const cameraError = ref("");
 let cameraSelection: PromptSelection | undefined;
 let cameraSelectionText = "";
-const optimizing = ref(false);
-const error = ref("");
-const skillVisible = ref(false);
+let cameraController: AbortController | undefined;
 const helpVisible = ref(false);
 const previewReference = ref<H3Reference>();
 const previewMedia = computed(() => {
@@ -166,12 +145,7 @@ const previewMedia = computed(() => {
 });
 const referencePreview = useMediaPreview(previewMedia);
 const previewSource = referencePreview.url;
-const resultVisible = ref(false);
-const pendingResult = ref("");
-const editingDisabled = computed(() => props.disabled || optimizing.value);
-const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === state.value.model));
-const preferences = inject<Pick<Storage, "getItem" | "setItem">>("nodePreferences");
-let optimizationController: AbortController | undefined;
+const editingDisabled = computed(() => props.disabled);
 const history = ref<{ text: string; selection?: PromptSelection }[]>([{ text: prompt.value }]);
 const historyIndex = ref(0);
 let historyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -204,7 +178,7 @@ const referenceGroups = [
 const mentions = computed<H3Reference[]>((previous) => {
   const byId = new Map(props.references.map(item => [item.id, item]));
   const subjects = state.value.subjects.filter(subject => subject.references.some(id => byId.has(id))).toSorted((a, b) => a.id - b.id);
-  const values: H3Reference[] = [...props.references, ...(cameraPresets.value ?? []).map(preset => ({ id: `camera:${preset.id}`, name: preset.name, value: h3CameraTag(preset.id), category: "camera", hideValue: true })), ...subjects.map(subject => {
+  const values: H3Reference[] = [...props.references, ...(cameraPresets.value ?? []).map(preset => ({ id: `camera:${preset.id}`, name: preset.name, value: preset.tag, category: "camera", hideValue: true })), ...subjects.map(subject => {
     const preview = subject.references.map(id => byId.get(id)).find(item => item?.avatar);
     return { id: `subject:${subject.id}`, name: subject.name, value: `<Subject ${subject.id}>`, category: "subject", avatar: preview?.avatar, previewUrl: preview?.previewUrl };
   })];
@@ -232,9 +206,13 @@ const mentions = computed<H3Reference[]>((previous) => {
 async function refreshCameraPresets() {
   cameraLoading.value = true;
   cameraError.value = "";
-  try { cameraPresets.value = await loadCameraPresets(); }
-  catch (cause) { cameraError.value = cause instanceof Error ? cause.message : "读取运镜库失败"; }
-  finally { cameraLoading.value = false; }
+  cameraPresets.value = undefined;
+  cameraController = new AbortController();
+  try {
+    cameraPresets.value = await getCameraPresets(cameraController.signal);
+  } catch (cause) {
+    if (!cameraController.signal.aborted) cameraError.value = cause instanceof Error ? cause.message : "读取运镜库失败";
+  } finally { cameraLoading.value = false; }
 }
 function openCameraLibrary() {
   remember();
@@ -243,11 +221,11 @@ function openCameraLibrary() {
   cameraVisible.value = true;
   void refreshCameraPresets();
 }
-async function insertCameraPreset(preset: H3CameraPreset) {
+async function insertCameraPreset(preset: CameraPreset) {
   if (editingDisabled.value) return;
   // 弹窗打开期间提示词可能被引用同步改写，原选区失效后退回默认位置。
   const { start, end } = h3CameraInsertRange(prompt.value, cameraSelectionText === prompt.value ? cameraSelection : undefined);
-  const token = h3CameraTag(preset.id);
+  const token = preset.tag;
   replacePrompt(`${prompt.value.slice(0, start)}${token}${prompt.value.slice(end)}`);
   cameraVisible.value = false;
   await nextTick();
@@ -447,75 +425,6 @@ async function applyDialogue() {
   dialogueVisible.value = false;
 }
 
-async function loadModels() {
-  if (modelsLoading.value) return;
-  modelsLoading.value = true;
-  try {
-    models.value = await props.ai.getModels();
-    if (!selectedModel.value && !optimizing.value) {
-      let preferred = "";
-      try { preferred = JSON.parse(preferences?.getItem("toonflow:generation:text") ?? "{}").model ?? ""; } catch { /* 旧模型偏好无效时由已配置模型列表选择。 */ }
-      const choice = models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === preferred)
-        ?? models.value.find(item => item.isDefault) ?? models.value[0];
-      state.value.model = choice ? JSON.stringify([choice.providerId, choice.modelId]) : "";
-    }
-    if (!models.value.length) error.value = "请登录逸仙账户并刷新模型，再使用 Skill 优化";
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : "文本模型读取失败"; }
-  finally { modelsLoading.value = false; }
-}
-async function optimize() {
-  const choice = selectedModel.value;
-  if (!choice || editingDisabled.value || !prompt.value.trim()) return;
-  optimizationController = new AbortController();
-  const signal = optimizationController.signal;
-  const original = finalPrompt.value;
-  const readSnapshot = () => JSON.stringify([prompt.value, props.references.map(item => [item.id, item.value, item.input?.value]), state.value.subjects, state.value.audioBindings, duration.value]);
-  const snapshot = readSnapshot();
-  const inputReferences = props.references.map(item => ({ ...item, input: item.input ? JSON.parse(JSON.stringify(item.input)) : undefined }));
-  const originalDuration = duration.value ?? 10;
-  optimizing.value = true;
-  emit("busy", true);
-  error.value = "";
-  try {
-    const references = inputReferences.filter(item => item.input?.value !== undefined && ["IMAGE", "STRING"].includes(String(item.input?.dataType)));
-    const directory = props.files.getWorkspaceDirectory();
-    const workspace = props.files.getWorkspaceFiles();
-    const aiReferences = await Promise.all(references.map(async item => {
-      if (item.input!.dataType === "STRING") return { dataType: "STRING" as const, value: String(item.input!.value) };
-      let value = { ...(item.input!.value as { url: string; mimeType: string }) };
-      if (/^https:\/\//i.test(value.url)) {
-        if (!workspace.importImage) throw new Error("当前应用不支持导入公网图片，请先把图片上传到节点再优化");
-        const imported = await workspace.importImage(value.url);
-        value = { url: imported.path, mimeType: imported.mimeType };
-      }
-      return { dataType: "IMAGE" as const, value };
-    }));
-    signal.throwIfAborted();
-    const result = await props.ai.generate({
-      providerId: choice.providerId, modelId: choice.modelId, systemPrompt: h3PromptSkill, signal,
-      directory,
-      prompt: JSON.stringify({ request: original, durationSeconds: originalDuration, maxDurationSeconds: props.maxDuration,
-        referenceLabels: references.map((item, index) => ({ attachment: `{{ref ${index + 1}}}`, h3Tag: item.value })),
-        materials: inputReferences.map(item => ({ tag: item.value, name: item.name })), subjects: state.value.subjects,
-        cameraPresets: (cameraPresets.value ?? []).filter(preset => original.includes(h3CameraTag(preset.id))).map(preset => ({ tag: h3CameraTag(preset.id), name: preset.name })),
-      }),
-      references: aiReferences,
-    });
-    signal.throwIfAborted();
-    const next = parseH3Optimization(result.text, original, inputReferences, originalDuration, props.maxDuration);
-    if (snapshot !== readSnapshot()) {
-      pendingResult.value = next.prompt;
-      resultVisible.value = true;
-      return;
-    }
-    replacePrompt(next.prompt);
-    duration.value = next.duration;
-    ElMessage.success("已按内置 Skill 优化，可撤销恢复原提示词");
-  } catch (cause) {
-    if (!signal.aborted) error.value = cause instanceof SyntaxError ? "模型没有返回规范的六段 JSON，原提示词已保留，请重试" : cause instanceof Error ? /^No API key/.test(cause.message) ? "请在设置 → 文本模型中填写所选模型的 API Key，原提示词已保留" : cause.message : "提示词优化失败";
-  } finally { optimizing.value = false; emit("busy", false); }
-}
-
 watch(() => props.references.map(item => ({ id: item.id, value: item.value })), (current, previous) => {
   if (!previous) return;
   const nextById = new Map(current.map(item => [item.id, item.value]));
@@ -528,8 +437,8 @@ watch(() => props.references.map(item => ({ id: item.id, value: item.value })), 
   }));
 }, { flush: "pre" });
 watch(() => state.value.editorMode, () => { remember(); syncCodeModel(); });
-onMounted(async () => { void refreshCameraPresets(); await loadModels(); await nextTick(); const normalized = h3GenerationPrompt(prompt.value, props.references, state.value); if (normalized !== prompt.value) replacePrompt(normalized); });
-onScopeDispose(() => { clearTimeout(historyTimer); optimizationController?.abort(); emit("busy", false); });
+onMounted(() => { void refreshCameraPresets(); const normalized = h3GenerationPrompt(prompt.value, props.references, state.value); if (normalized !== prompt.value) replacePrompt(normalized); });
+onScopeDispose(() => { clearTimeout(historyTimer); cameraController?.abort(); });
 </script>
 
 <style scoped lang="scss">
@@ -573,7 +482,6 @@ onScopeDispose(() => { clearTimeout(historyTimer); optimizationController?.abort
 }
 :global(.dark .h3PromptEditor) { --h3MediaColor: #67e8f9; --h3SubjectColor: #6ee7b7; --h3SpecColor: #7dd3fc; --h3DialogueColor: #fdba74; }
 .h3ExpandedTarget { min-width: 0; }
-.optimizerSettings { display: grid; gap: 8px; > span { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; } }
 .cameraLibrary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; :deep(.el-button) { margin: 0; } }
 .dialogueForm { .dialogueRow { display: flex; flex-wrap: wrap; gap: 16px; > * { flex: 1; } } }
 .dialogueHelp { padding-left: 22px; line-height: 1.8; li { margin-bottom: 8px; } }

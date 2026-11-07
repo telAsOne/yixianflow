@@ -3,6 +3,10 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./whisperModels": "./src/whisperModels.ts",
+    "./whisperRuntime": "./src/whisperRuntime.ts"
+  },
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",

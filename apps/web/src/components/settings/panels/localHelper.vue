@@ -36,30 +36,31 @@
       </el-radio-group>
     </section>
 
+    <ffmpeg v-if="status?.selectedId" :visible="visible" />
+
     <p class="permissionInfo">批量读取、上传和下载每次最多 20 个文件；传输单文件最多 100 MiB、整批最多 200 MiB，已有文件不覆盖。本机确认连接后，按需读取的内容用于 AI 对话；写入、传输、删除、命令和安装默认逐次确认，可在托盘开启本次运行的自动执行，随时暂停或解除绑定。</p>
     <el-alert v-if="notice" :title="notice" type="success" :closable="false" showIcon />
-    <el-alert v-if="failure" :title="failure" type="error" :closable="false" showIcon />
+    <el-alert v-if="failure || statusFailure" :title="failure || statusFailure" type="error" :closable="false" showIcon />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onScopeDispose, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { ElMessageBox } from "element-plus";
 import api, { errorMessage } from "@/lib/api";
 import { appBasePath } from "@/lib/appPath";
-import type { LocalHelperDevice, LocalHelperStatus } from "@toonflow/local-helper/protocol";
+import useLocalHelper from "@/stores/localHelper";
+import type { LocalHelperDevice } from "@toonflow/local-helper/protocol";
+import ffmpeg from "./localHelper/ffmpeg.vue";
 
 const props = defineProps<{ visible: boolean }>();
-const status = ref<LocalHelperStatus>();
 const pairCode = ref("");
 const busy = ref(false);
-const loading = ref(false);
+const { status, loading, failure: statusFailure, refresh: refreshStatus } = useLocalHelper(() => props.visible);
 const failure = ref("");
 const notice = ref("");
 const validCode = computed(() => /^[a-f\d]{12}$/i.test(pairCode.value.replace(/[\s-]/g, "")));
 const downloadUrl = `${appBasePath}/api/localHelper/download`;
-let interval: ReturnType<typeof setInterval> | undefined;
-let pending: AbortController | undefined;
 
 function deviceLabel(device: LocalHelperDevice) {
   if (!device.online) return "离线";
@@ -68,22 +69,13 @@ function deviceLabel(device: LocalHelperDevice) {
 }
 
 async function refresh() {
-  if (pending) return;
-  const controller = new AbortController();
-  pending = controller;
-  loading.value = true;
-  try {
-    const response = await api.get<{ data: LocalHelperStatus }>("/api/localHelper/status", { signal: controller.signal, timeout: 15000 });
-    status.value = response.data.data;
-    failure.value = "";
-  } catch (error) {
-    if (!controller.signal.aborted) failure.value = errorMessage(error, "无法读取本地助手状态");
-  } finally { if (pending === controller) pending = undefined; loading.value = false; }
+  await refreshStatus();
+  if (!statusFailure.value) failure.value = "";
 }
 
 async function bind() {
   if (busy.value || !validCode.value) return;
-  busy.value = true; notice.value = "";
+  busy.value = true; notice.value = ""; failure.value = "";
   try {
     await api.post("/api/localHelper/bind", { code: pairCode.value.replace(/[\s-]/g, "").toUpperCase() });
     pairCode.value = "";
@@ -95,7 +87,7 @@ async function bind() {
 
 async function select(value: string | number | boolean | undefined) {
   if (busy.value) return;
-  busy.value = true; notice.value = "";
+  busy.value = true; notice.value = ""; failure.value = "";
   try {
     await api.put("/api/localHelper/select", { id: value || null });
     await refresh();
@@ -106,21 +98,13 @@ async function select(value: string | number | boolean | undefined) {
 async function revoke(device: LocalHelperDevice) {
   try { await ElMessageBox.confirm(`解除 ${device.name} 的绑定并取消其正在运行的本机任务？`, "解除绑定", { type: "warning", confirmButtonText: "解除绑定", cancelButtonText: "取消" }); }
   catch { return; }
-  busy.value = true; notice.value = "";
+  busy.value = true; notice.value = ""; failure.value = "";
   try {
     await api.delete("/api/localHelper/revoke", { data: { id: device.id } });
     await refresh();
   } catch (error) { failure.value = errorMessage(error, "解除绑定失败"); }
   finally { busy.value = false; }
 }
-
-watch(() => props.visible, visible => {
-  clearInterval(interval);
-  if (!visible) { pending?.abort(); return; }
-  void refresh();
-  interval = setInterval(() => { if (!busy.value) void refresh(); }, 5000);
-}, { immediate: true });
-onScopeDispose(() => { clearInterval(interval); pending?.abort(); });
 </script>
 
 <style scoped lang="scss">

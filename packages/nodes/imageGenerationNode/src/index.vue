@@ -69,7 +69,7 @@
             :disabled="generating || deleting || pendingTask"
             placeholder="选择模型"
             aria-label="生成模型"
-            noDataText="请登录逸仙账户并刷新模型"
+            noDataText="请登录 UnionAIGC 账户并刷新模型"
             @change="rememberPreferences"
             placement="top-start"
             @visibleChange="(visible: boolean) => visible && loadModels().catch((error) => showNodeError(error, '模型读取失败'))">
@@ -138,7 +138,7 @@
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer } from "element-plus";
 import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown } from "@tabler/icons-vue";
-import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle, type NodeImageRequest, type NodeImageResult, type ImageTaskStatus } from "@toonflow/nodes-scaffold/runtime";
+import { nodeSkeleton, useNode, z, type NodeHandle, type NodeImageRequest, type NodeImageResult, type ImageTaskStatus } from "@toonflow/nodes-scaffold/runtime";
 import { registerGenerationTools } from "@toonflow/node-shared/generationTools";
 import { useMediaModels } from "@toonflow/node-shared/useMediaModels";
 import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
@@ -412,6 +412,7 @@ nodeEvent.on("save", (reason) => {
   if (reason === "reload" && (generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
 });
 nodeEvent.on("delete", async () => {
+  if (generating.value) throw new Error("请先停止等待再删除节点；已经提交的生成任务和素材记录会保留");
   if (uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
   deleting.value = true;
   generationController?.abort();
@@ -475,22 +476,18 @@ registerGenerationTools({
   promptDescription: "修改此节点的普通图片生成提示词，支持 {{ref 1}} 等参考标记；不修改局部重绘提示词，不启动生成",
   loadModels, getConfig,
   setPrompt(value) {
-    if (deleting.value) throw new Error("节点正在删除，请稍后修改");
+    if (generating.value || deleting.value || pendingTask.value) throw new Error("节点存在未完成任务，请先查询或恢复原图片任务，不能修改原任务提示词");
     data.value.prompt = value;
     data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
   },
-});
-
-nodeTools.register({
-  name: "setConfig",
-  description: "修改此图片生成节点的模型、分辨率或比例；先用 getConfig 查询可选能力，providerId 与 modelId 必须同时提供；不修改提示词、不启动生成",
-  parameters: z.strictObject({
+  updateDescription: "修改此图片生成节点的模型、分辨率或比例；先用 getConfig 查询可选能力，providerId 与 modelId 必须同时提供；不修改提示词、不启动生成",
+  configSchema: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     size: z.string().min(1).optional(),
     ratio: z.string().min(1).optional(),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
-  async execute(args, { signal }) {
+  async setConfig(args, signal) {
     signal?.throwIfAborted();
     if (generating.value || deleting.value || pendingTask.value) throw new Error("节点存在未完成任务，请先恢复原图片任务");
     await loadModels();
@@ -508,17 +505,10 @@ nodeTools.register({
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
     return getConfig();
   },
-});
-
-
-
-nodeTools.register({
-  name: "generateImage",
-  description: "启动此节点的后台普通图片生成，使用普通生成提示词、模型、分辨率、比例和参考图片；局部重绘模式下须先退出；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 停止生成",
-  parameters: z.strictObject({}),
-  execute(_args, { signal }) {
-    signal?.throwIfAborted();
-    return startGeneration();
+  generate: {
+    name: "generateImage",
+    description: "启动此节点的后台普通图片生成，使用普通生成提示词、模型、分辨率、比例和参考图片；局部重绘模式下须先退出；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 停止生成",
+    execute: () => generating.value ? { status: "generating" } : startGeneration(),
   },
 });
 </script>

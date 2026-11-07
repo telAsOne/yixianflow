@@ -3,7 +3,6 @@ import * as vue from "vue";
 import * as elementPlus from "element-plus";
 import * as i18n from "@toonflow/i18n/vue";
 import { saveSettings, settings } from "@/stores/settings";
-import { resolveAppUrl } from "@/lib/appPath";
 import { defineExt, type ExtDefinition, type ExtResource } from "@toonflow/ext-scaffold/runtime";
 
 export type InstalledExtension = Omit<ExtDefinition, "load"> & { name: string; enabled: boolean; url: string; version: string; revision?: string; loadError?: string; config?: Record<string, unknown> };
@@ -89,10 +88,11 @@ function loadExtension(extension: InstalledExtension) {
       if (requestedRevision !== revision) throw new Error("文件扩展已更新，请重新打开");
       return new Promise<ExtDefinition>((resolve, reject) => {
         const script = document.createElement("script");
-        // 脚本标签不经过宿主的 fetch 适配，子路径部署需显式补全基础路径。
-        script.src = resolveAppUrl(url).href;
+        const objectUrl = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+        script.src = objectUrl;
         script.onload = () => {
           script.remove();
+          URL.revokeObjectURL(objectUrl);
           try {
             if (requestedRevision !== revision) throw new Error("文件扩展已更新，请重新打开");
             const definition = host.toonflowExts?.[extension.id];
@@ -100,7 +100,7 @@ function loadExtension(extension: InstalledExtension) {
             resolve(defineExt(definition));
           } catch (error) { reject(error); }
         };
-        script.onerror = () => { script.remove(); reject(new Error(`扩展加载失败：${extension.displayName}`)); };
+        script.onerror = () => { script.remove(); URL.revokeObjectURL(objectUrl); reject(new Error(`扩展加载失败：${extension.displayName}`)); };
         delete host.toonflowExts?.[extension.id];
         document.head.append(script);
       });

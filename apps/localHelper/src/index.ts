@@ -3,13 +3,24 @@ import { createInterface } from "node:readline";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { mkdir, readFile, rm, writeAtomic } from "@toonflow/file";
+import { existsSync, mkdir, readFile, rm, writeAtomic } from "@toonflow/file";
 import { z } from "zod";
-import { helperVersion, helperChatMessage, helperChatRequest, localComputerRequest, type HelperChatMessage, type LocalComputerRequest, type LocalHelperJob, type LocalHelperPoll, type LocalHelperResult } from "./protocol";
+import { helperVersion, helperChatMessage, helperChatRequest, localComputerRequest, localHelperRequest, type LocalHelperRequest, type LocalComputerRequest, type LocalHelperJob, type LocalHelperPoll, type LocalHelperResult } from "./protocol";
 import { operate } from "./operations";
 import { deviceRequest } from "./connection";
 import { remoteFiles } from "./files";
+import { getMediaStatus, runMedia } from "./media";
 import { dataDirectory, initializeLogs, logEvent, logError, flushLogs, nativeDiagnosticSchema, type LogContext } from "./logger";
+import { recordChat, resetChat, sendSnapshot, setChatRunning, updateApproval, updateEnvironment, updateRuntime, updateTask } from "./activity";
+import { controlCommand, type HelperTask, type HelperSnapshot } from "./controlProtocol";
+import { conversations } from "./conversations";
+import { createUpdates } from "./updates";
+import { acknowledgeUpdate, applyUpdate } from "./applyUpdate";
+import { createSubtitleTasks } from "./subtitleTasks";
+import { receiveSubtitleInput } from "./subtitleRemote";
+
+const updateIndex = process.argv.indexOf("--applyUpdate");
+if (updateIndex >= 0) { await applyUpdate(process.argv[updateIndex + 1] ?? ""); process.exit(0); }
 
 const diagnosticIndex = process.argv.indexOf("--nativeDiagnostic");
 await initializeLogs(diagnosticIndex >= 0 ? "tray" : "worker");
@@ -49,15 +60,41 @@ const approvals = new Map<string, (allowed: boolean) => void>();
 let operationQueue = Promise.resolve();
 let chatController: AbortController | undefined;
 let chatDone = Promise.resolve();
-let chatHistory: HelperChatMessage[] = [];
+let chatSaving = Promise.resolve();
+let chatSwitching = false;
+let workerReady = false;
+let controlReady = false;
 let connected = false;
 let heartbeatAt = 0;
 let fatalStopping = false;
+let statusMessage = "正在连接平台";
+const runningTasks = new Map<string, { controller: AbortController; source: "web" | "tray" }>();
+function exclusiveOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const pending = operationQueue.then(operation);
+  operationQueue = pending.then(() => {}, () => {});
+  return pending;
+}
+const subtitles = createSubtitleTasks({ send, exclusive: exclusiveOperation,
+  account: () => authorizedOwner === undefined ? "local" : `${server.origin}:${authorizedOwner}`,
+  async review(messages, signal) {
+    if (authorizedOwner === undefined || !connected || !state) throw new Error("当前未连接绑定账户，已跳过 AI 审查并继续合成");
+    const reply = await deviceRequest<{ message: { content?: string; tool_calls?: unknown[] } }>(server, state.token, "subtitleReview",
+      { text: messages.filter(message => message.role === "user").map(message => message.content).join("\n\n") }, signal);
+    if (reply.message.tool_calls?.length || !reply.message.content) throw new Error("审查未返回有效文本结果，已保留当前字幕");
+    return reply.message.content;
+  },
+});
+await subtitles.initialize();
+const updates = createUpdates(server, () => authorizedOwner !== undefined ? state?.token : undefined, () => !active && !chatController && !chatSwitching && !resetting && !runningTasks.size && !subtitles.busy() && !existsSync(resultPath));
+await updates.initialize();
+const updateTimer = globalThis.setInterval(() => { void updates.tick().catch(error => { void logError("automaticUpdateFailed", error); }); }, 60000);
+updateTimer.unref();
 
 async function stopOnFatal(error: unknown) {
   if (fatalStopping) return;
   fatalStopping = true;
   lifetime.abort(); active?.controller.abort(); chatController?.abort();
+  await subtitles.shutdown();
   await Promise.race([logError("helperFatal", error).then(flushLogs), setTimeout(2000)]);
   process.exit(1);
 }
@@ -68,20 +105,42 @@ function stopHelper(reason: string) {
   if (lifetime.signal.aborted) return;
   void logEvent("info", "shutdownRequested", { reason });
   lifetime.abort(); active?.controller.abort(); chatController?.abort();
+  void subtitles.shutdown();
 }
 
-function send(message: Record<string, unknown>) { process.stdout.write(JSON.stringify(message) + "\n"); }
-function status(message: string) { send({ type: "status", message, code: state?.code, server: server.href, owner: ownerName, paused, autoExecute }); }
+function send(message: Record<string, unknown>) {
+  if (message.type === "chat" && typeof message.text === "string") {
+    const role = message.role as "assistant" | "tool" | "error";
+    const text = message.text;
+    if (conversations.isLoaded()) chatSaving = chatSaving.then(() => conversations.append(role, text)).catch(chatStorageFailed);
+    else recordChat(role, text);
+  }
+  if (message.type === "chatState") setChatRunning(message.running === true);
+  if (message.type === "chatReset") { resetChat(); return; }
+  process.stdout.write(JSON.stringify(message) + "\n");
+}
+function chatStorageFailed(error: unknown) {
+  chatController?.abort();
+  void logError("chatStorageFailed", error);
+  send({ type: "notice", message: `历史会话未能保存，已停止当前对话。请检查磁盘空间和目录权限：${error instanceof Error ? error.message : error}` });
+}
+function status(message = statusMessage) {
+  statusMessage = message;
+  updateRuntime({ message, code: state?.code, server: server.href, owner: ownerName, paused, autoExecute, connected,
+    approved: authorizedOwner !== undefined, version: helperVersion, computer: hostname(), deviceId: state?.id });
+}
 
 async function confirm(title: string, detail: string, signal: AbortSignal, context: Record<string, unknown> = {}) {
   signal.throwIfAborted();
   const id = crypto.randomUUID();
+  const approval = { id, title, detail, taskId: typeof context.taskId === "string" ? context.taskId : undefined, expiresAt: Date.now() + 150000 };
   return new Promise<boolean>(resolveApproval => {
     const finish = (allowed: boolean, reason = "user") => {
       if (!approvals.delete(id)) return;
       clearTimeout(timer);
       signal.removeEventListener("abort", abort);
       send({ type: "dismiss", id });
+      updateApproval(approval, true);
       void logEvent("info", "approvalCompleted", { ...context, approvalId: id, allowed, reason });
       resolveApproval(allowed);
     };
@@ -90,6 +149,7 @@ async function confirm(title: string, detail: string, signal: AbortSignal, conte
     approvals.set(id, finish);
     signal.addEventListener("abort", abort, { once: true });
     send({ type: "confirm", id, title, detail });
+    updateApproval(approval);
     void logEvent("info", "approvalRequested", { ...context, approvalId: id });
   });
 }
@@ -98,23 +158,70 @@ const controls = createInterface({ input: process.stdin });
 controls.on("line", line => {
   try {
     const message = JSON.parse(line) as { type?: string; id?: string; allowed?: boolean; value?: boolean; text?: string } & Partial<z.infer<typeof nativeDiagnosticSchema>>;
+    if (message.type?.startsWith("subtitle")) {
+      if (updates.installing()) throw new Error("程序更新中，请稍后处理字幕任务");
+      void subtitles.command(message).catch(error => {
+        void logError("subtitleControlFailed", error);
+        send({ type: "notice", message: error instanceof Error ? error.message : String(error) });
+      });
+      return;
+    }
+    if (["snapshot", "taskCancel", "tools", "chatNew", "chatSelect", "chatDelete", "chatRename", "updateCheck", "updateDownload", "updateInstall", "updatePreferences"].includes(message.type ?? "")) {
+      const command = controlCommand.parse(message);
+      if (command.type.startsWith("update")) {
+        void (async () => {
+          if (command.type === "updateCheck") await updates.check();
+          if (command.type === "updateDownload") await updates.download();
+          if (command.type === "updateInstall") { await chatSaving; await conversations.flush(); await updates.install(); }
+          if (command.type === "updatePreferences") await updates.preferences({ autoCheck: command.autoCheck, autoInstall: command.autoInstall });
+        })().catch(error => { void logError("updateControlFailed", error); send({ type: "notice", message: error instanceof Error ? error.message : String(error) }); });
+        return;
+      }
+      if (["chatNew", "chatSelect", "chatDelete", "chatRename"].includes(command.type)) {
+        if (chatController || chatSwitching || resetting || authorizedOwner === undefined) throw new Error("请先完成本机授权，并停止当前对话后再管理历史会话");
+        chatSwitching = true;
+        void (async () => {
+          await chatSaving;
+          if (!conversations.isLoaded()) await conversations.load(authorizedOwner!, server.href);
+          if (command.type === "chatNew") await conversations.create();
+          if (command.type === "chatSelect") await conversations.select(command.id);
+          if (command.type === "chatDelete") await conversations.remove(command.id);
+          if (command.type === "chatRename") await conversations.rename(command.id, command.title);
+        })().catch(error => { void logError("chatHistoryFailed", error); send({ type: "notice", message: error instanceof Error ? error.message : String(error) }); })
+          .finally(() => { chatSwitching = false; });
+        return;
+      }
+      if (command.type === "snapshot") { controlReady = true; status(); sendSnapshot(); subtitles.snapshot(); if (workerReady) void acknowledgeUpdate(); }
+      if (command.type === "taskCancel") {
+        const task = runningTasks.get(command.id);
+        task?.controller.abort();
+        if (task?.source === "tray") chatController?.abort();
+        void logEvent("info", "taskCancelRequested", { taskId: command.id, source: "tray" });
+      }
+      if (command.type === "tools") void operate({ action: "status" }, lifetime.signal)
+        .then(result => updateEnvironment(result as NonNullable<HelperSnapshot["environment"]>))
+        .catch(error => { void logError("environmentReadFailed", error); send({ type: "notice", message: "无法检测本机工具，请查看日志。" }); });
+      return;
+    }
     if (message.type === "diagnostic") {
       const { event, ...fields } = nativeDiagnosticSchema.parse({ event: message.event, errorType: message.errorType, systemCode: message.systemCode, exitCode: message.exitCode, length: message.length, pid: message.pid });
       void logEvent(message.errorType || message.exitCode ? "error" : "info", event, { source: "tray", ...fields });
     }
+    if (message.type === "updateRejected" && typeof message.text === "string") updates.rejectInstall(message.text);
     if (message.type === "approval" && message.id) approvals.get(message.id)?.(message.allowed === true);
     if (message.type === "pause") {
       paused = message.value === true;
       void logEvent("info", "pauseChanged", { paused });
       active?.controller.abort();
       chatController?.abort();
+      if (paused) void subtitles.pause();
+      else void subtitles.command({ type: "subtitlePause", paused: false });
       status(paused ? "已暂停接收，本机运行任务已取消" : "正在连接平台");
     }
     if (message.type === "automatic") { autoExecute = message.value === true; void logEvent("info", "automaticChanged", { autoExecute }); status("本次运行的执行权限已更新"); }
     if (message.type === "chat" && typeof message.text === "string") startChat(message.text);
     if (message.type === "chatCancel") chatController?.abort();
-    if (message.type === "chatReset" && !chatController) { chatHistory = []; send({ type: "chatReset" }); }
-    if (message.type === "reset") { void logEvent("info", "bindingResetRequested", { deviceId: state?.id }); resetting = true; authorizedOwner = undefined; autoExecute = false; active?.controller.abort(); chatController?.abort(); chatHistory = []; send({ type: "chatReset" }); }
+    if (message.type === "reset") { void logEvent("info", "bindingResetRequested", { deviceId: state?.id }); resetting = true; authorizedOwner = undefined; autoExecute = false; active?.controller.abort(); chatController?.abort(); void subtitles.pause(); }
     if (message.type === "shutdown") stopHelper("trayExit");
   } catch (error) { void logError("nativeControlInvalid", error); status("托盘控制消息无效"); }
 });
@@ -125,43 +232,83 @@ async function request<T>(path: string, body: unknown): Promise<T> {
   return deviceRequest(server, state.token, path, body, AbortSignal.any([lifetime.signal, AbortSignal.timeout(30000)]));
 }
 
-function runOperation(request: LocalComputerRequest, signal: AbortSignal, context: LogContext) {
+function runOperation(request: LocalHelperRequest, signal: AbortSignal, context: LogContext, job?: LocalHelperJob) {
   const queuedAt = Date.now();
+  const controller = new AbortController();
+  signal = AbortSignal.any([signal, controller.signal]);
+  const task: HelperTask = { id: context.taskId ?? crypto.randomUUID(), chatId: context.chatId,
+    source: context.source === "web" ? "web" : "tray", action: request.action, state: "queued", createdAt: queuedAt };
+  runningTasks.set(task.id, { controller, source: task.source });
+  updateTask(task);
   void logEvent("info", "operationQueued", { ...context, action: request.action });
-  const pending = operationQueue.then(async () => {
+  const executeOperation = async () => {
     const started = Date.now();
     try {
       signal.throwIfAborted();
-      const operation = localComputerRequest.parse(request);
+      const operation = localHelperRequest.parse(request);
+      task.startedAt = started;
       void logEvent("info", "operationStarted", { ...context, action: operation.action, fileCount: "files" in operation ? operation.files.length : undefined, waitMs: started - queuedAt });
-      if (!["status", "list", "read", "readBatch", "projects"].includes(operation.action) && !autoExecute) {
+      if (!["status", "list", "read", "readBatch", "projects", "ffmpegStatus", "ffmpeg", "subtitleEnvironment", "subtitleScan", "subtitleStatus", "subtitleTranscribe", "subtitleCancel"].includes(operation.action) && !autoExecute) {
+        task.state = "approval"; updateTask(task);
         const detail = operation.action === "execute" ? `PowerShell\n目录：${operation.cwd || "用户主目录"}\n\n${operation.command}`
           : operation.action === "install" ? `通过 Windows winget 安装软件：${operation.packageId}\n范围：当前 Windows 用户`
+          : operation.action === "ffmpegInstall" ? "下载并安装本地助手私有目录中的 FFmpeg 和 ffprobe"
             : JSON.stringify(operation, null, 2);
         const allowed = await confirm("确认本机操作", `请求账户：${ownerName}\n来源：${server.href}\n\n${detail}\n\n是否允许这一次操作？`, signal, { ...context, action: operation.action, kind: "operation" });
-        if (!allowed) throw new Error("本机用户拒绝、取消或未及时确认操作");
+        if (!allowed) { task.state = "cancelled"; throw new Error("本机用户拒绝、取消或未及时确认操作"); }
       }
       signal.throwIfAborted();
+      task.state = "running"; updateTask(task);
       status(`正在本机执行：${operation.action}`);
-      const result = operation.action === "projects" || operation.action === "upload" || operation.action === "download"
+      const result = operation.action === "subtitleTranscribe"
+        ? await subtitles.acceptRemote(operation, await receiveSubtitleInput(operation, server, state.token, signal))
+        : operation.action === "subtitleEnvironment" || operation.action === "subtitleScan" || operation.action === "subtitleStart"
+          || operation.action === "subtitleStatus" || operation.action === "subtitleCancel" || operation.action === "subtitleRender"
+        ? await subtitles.operation(operation)
+        : operation.action === "ffmpeg" || operation.action === "ffmpegStatus" || operation.action === "ffmpegInstall"
+        ? await runMedia(operation, server, state.token, job, signal, context)
+        : operation.action === "projects" || operation.action === "upload" || operation.action === "download"
         ? await remoteFiles(operation, server, state.token, AbortSignal.any([signal, AbortSignal.timeout(15 * 60000)]), context)
         : await operate(operation, signal);
       const summary = result as { completed?: number; failed?: number; remaining?: number; cancelled?: boolean; exitCode?: number; truncated?: boolean } | null;
       void logEvent(summary?.failed || summary?.exitCode ? "warn" : "info", "operationCompleted", { ...context, action: operation.action, durationMs: Date.now() - started,
         completed: summary?.completed, failed: summary?.failed, remaining: summary?.remaining, cancelled: summary?.cancelled, exitCode: summary?.exitCode, truncated: summary?.truncated });
+      Object.assign(task, { state: summary?.cancelled ? "cancelled" : summary?.failed || summary?.exitCode || summary?.remaining ? "failed" : "completed",
+        completed: summary?.completed, failed: summary?.failed, exitCode: summary?.exitCode, truncated: summary?.truncated, finishedAt: Date.now() });
+      updateTask(task);
       return result;
     } catch (error) {
       void logError("operationFailed", error, { ...context, action: request.action, durationMs: Date.now() - started, cancelled: signal.aborted });
+      task.state = signal.aborted || task.state === "cancelled" ? "cancelled" : "failed";
+      task.finishedAt = Date.now(); task.error = (error instanceof Error ? error.message : String(error)).slice(0, 4000);
+      updateTask(task);
       throw error;
+    } finally {
+      runningTasks.delete(task.id);
     }
-  });
-  operationQueue = pending.then(() => {}, () => {});
+  };
+  // 字幕控制动作短时入队即可；进度／取消不等待正在识别的设备执行锁。
+  const pending = request.action.startsWith("subtitle") ? executeOperation() : exclusiveOperation(executeOperation);
   return pending;
 }
 
 function startChat(text: string) {
-  if (chatController) return;
-  if (paused || resetting || authorizedOwner === undefined || !state) {
+  if (/字幕|转写|识别/.test(text)) {
+    const paths = [...text.matchAll(/["“]([a-z]:[\\/][^"”\r\n]+)["”]/gi)].map(match => match[1]);
+    if (paths.length) {
+      if (updates.installing() || chatController || chatSwitching) { send({ type: "notice", message: "请等待当前回复或程序更新完成后再创建字幕任务" }); send({ type: "chatState", running: !!chatController }); return; }
+      const source = text;
+      void (async () => {
+        if (conversations.isLoaded()) await conversations.append("user", source);
+        else recordChat("user", source);
+        const ids = await subtitles.fromChat(paths, /递归|子目录|子文件夹|--recursive/.test(source));
+        send({ type: "chat", role: "assistant", text: `已创建或找到 ${ids.length} 个本地字幕任务：\n${ids.join("\n")}\n请在“批量字幕”查看进度。关闭聊天后任务继续。`, done: true });
+      })().catch(error => { send({ type: "chat", role: "error", text: error instanceof Error ? error.message : String(error), done: true }); });
+      return;
+    }
+  }
+  if (chatController || chatSwitching || updates.installing()) { send({ type: "chatState", running: !!chatController }); send({ type: "notice", message: "当前正在处理对话或程序更新，请稍后再发送。" }); return; }
+  if (paused || resetting || authorizedOwner === undefined || !state || !conversations.isLoaded()) {
     send({ type: "chat", role: "error", text: "请先在网页绑定本机，在托盘确认连接并继续接收任务。", done: true });
     return;
   }
@@ -173,11 +320,13 @@ function startChat(text: string) {
   chatController = controller;
   const signal = AbortSignal.any([controller.signal, lifetime.signal]);
   chatDone = (async () => {
-    const messages = [...chatHistory, parsed.data];
+    const messages = [...conversations.messages(), parsed.data];
     const calls = new Set<string>();
     send({ type: "chatState", running: true });
     void logEvent("info", "chatStarted", { source: "tray", chatId, messageCount: messages.length });
     try {
+      await conversations.append("user", parsed.data.content!);
+      await conversations.saveMessages(messages);
       let count = 0;
       for (let round = 0; round < 21; round++) {
         signal.throwIfAborted();
@@ -188,7 +337,9 @@ function startChat(text: string) {
         if (message.role !== "assistant") throw new Error("平台未返回智能体回复");
         messages.push(message);
         if (message.content) send({ type: "chat", role: "assistant", text: message.content, model: reply.model });
-        if (!message.tool_calls?.length) { chatHistory = messages; return; }
+        await chatSaving;
+        await conversations.saveMessages(messages);
+        if (!message.tool_calls?.length) return;
         for (const call of message.tool_calls) {
           let result: unknown;
           try {
@@ -198,7 +349,7 @@ function startChat(text: string) {
             if (++count > 20) throw new Error("本轮已达到 20 次工具调用上限，请核对结果后再继续");
             const operation = localComputerRequest.parse(JSON.parse(call.function.arguments));
             send({ type: "chat", role: "tool", text: `正在执行：${operation.action}` });
-            result = await runOperation(operation, signal, { source: "tray", taskId: call.id, chatId });
+            result = await runOperation(operation, signal, { source: "tray", taskId: `${chatId}:${call.id}`, chatId });
             const detail = JSON.stringify(result);
             send({ type: "chat", role: "tool", text: `执行结果：${detail.slice(0, 24000)}${detail.length > 24000 ? "\n（窗口仅显示前 24000 字符）" : ""}` });
           } catch (error) {
@@ -208,7 +359,8 @@ function startChat(text: string) {
           }
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
         }
-        chatHistory = messages;
+        await chatSaving;
+        await conversations.saveMessages(messages);
         if (count > 20) throw new Error("本轮工具调用已达上限，请核对已完成的操作");
       }
       throw new Error("智能体已达到本轮操作上限，请核对结果后再继续");
@@ -216,6 +368,8 @@ function startChat(text: string) {
       void logError("chatFailed", error, { source: "tray", chatId, cancelled: signal.aborted });
       send({ type: "chat", role: "error", text: signal.aborted ? "本次回复已停止，请核对停止前已完成的操作。" : error instanceof Error ? error.message : String(error) });
     } finally {
+      await chatSaving;
+      await conversations.saveMessages(messages).catch(chatStorageFailed);
       chatController = undefined;
       void logEvent("info", "chatEnded", { source: "tray", chatId, durationMs: Date.now() - started, cancelled: signal.aborted });
       send({ type: "chatState", running: false });
@@ -237,9 +391,9 @@ async function execute(job: LocalHelperJob) {
   const result: LocalHelperResult = { id: job.id, nonce: job.nonce };
   let action = "invalid";
   try {
-    const operation = localComputerRequest.parse(job.request);
+    const operation = localHelperRequest.parse(job.request);
     action = operation.action;
-    result.result = await runOperation(operation, controller.signal, { source: "web", taskId: job.id });
+    result.result = await runOperation(operation, controller.signal, { source: "web", taskId: job.id }, job);
   } catch (error) { void logError("webTaskFailed", error, { source: "web", taskId: job.id, action }); result.error = (error instanceof Error ? error.message : String(error)).slice(0, 4000); }
   // 先落盘再回报；重连只重传结果，永不重新执行命令。
   await writeAtomic(resultPath, JSON.stringify(result));
@@ -273,13 +427,15 @@ try {
 }
 
 let retryDelay = 1000;
+workerReady = true;
+if (controlReady) await acknowledgeUpdate();
 while (!lifetime.signal.aborted) {
   try {
     if (!state) await register();
     if (resetting) {
       await active?.done;
       await chatDone;
-      chatHistory = []; send({ type: "chatReset" });
+      await chatSaving; await conversations.detach(); send({ type: "chatReset" });
       await request("revoke", {}).catch((error: { status?: number }) => { if (error.status !== 401) throw error; });
       await rm(statePath, { force: true });
       await rm(resultPath, { force: true });
@@ -287,23 +443,37 @@ while (!lifetime.signal.aborted) {
       await register();
     }
     await flushResult();
+    if (authorizedOwner !== undefined && !paused) await subtitles.synchronize(report => deviceRequest(server, state.token, "subtitleEvent", report,
+      AbortSignal.any([lifetime.signal, AbortSignal.timeout(20000)])));
     const poll = await request<LocalHelperPoll>("poll", { activeId: active?.job.id, approved: authorizedOwner !== undefined,
-      paused, autoExecute, version: helperVersion });
-    if (!connected) { connected = true; void logEvent("info", "connectionReady", { deviceId: state.id, server: server.origin }); }
+      paused: paused || updates.installing(), autoExecute, version: helperVersion, media: await getMediaStatus(), subtitleTasks: subtitles.remoteIds() });
+    if (!connected) { connected = true; void logEvent("info", "connectionReady", { deviceId: state.id, server: server.origin }); status(authorizedOwner !== undefined ? "本地助手已连接" : "等待绑定与本机授权"); }
     if (Date.now() - heartbeatAt >= 60000) {
       heartbeatAt = Date.now();
       void logEvent("info", "heartbeat", { ownerId: poll.owner?.id, approved: authorizedOwner !== undefined, paused, autoExecute, taskId: active?.job.id });
     }
     retryDelay = 1000;
     for (const id of poll.cancelled) if (active?.job.id === id) { void logEvent("warn", "webTaskCancelled", { source: "web", taskId: id }); active.controller.abort(); }
+    for (const id of poll.subtitleCancelled || []) await subtitles.command({ type: "subtitleCancel", id });
     if (poll.owner && authorizedOwner !== poll.owner.id && !paused) {
+      if (authorizedOwner !== undefined) {
+        active?.controller.abort(); chatController?.abort();
+        await active?.done; await chatDone; await chatSaving;
+        await conversations.detach(); authorizedOwner = undefined; autoExecute = false;
+        await subtitles.pause();
+      }
       ownerName = poll.owner.name;
-      const allowed = await confirm("连接本地电脑", `${server.href}\n\n账户：${ownerName}\n\n允许 UnionFlow AI 读取当前 Windows 用户可访问的本机文件。读取的内容会发送到平台并用于 AI 对话。\n写入、上传下载、删除、执行命令和安装软件仍逐次确认；可在托盘中开启本次运行的自动执行。\n\n是否允许连接？`, lifetime.signal, { kind: "connection", ownerId: poll.owner.id });
-      if (allowed) { authorizedOwner = poll.owner.id; status("本地助手已连接"); }
+      status("等待本机确认账户连接");
+      const allowed = await confirm("连接本地电脑", `${server.href}\n\n账户：${ownerName}\n\n允许 UnionFlow AI 和 FFmpeg 按当前 Windows 用户权限读取本机素材。读取的内容会发送到平台并用于 AI 对话。\n网页媒体任务可下载工作区素材到助手缓存并回传结果，也可直接读取本机路径、保存指定的本机输出。\n其他用户文件写入、手动上传下载、删除、执行命令和安装软件仍逐次确认；可在托盘中开启本次运行的自动执行。\n\n是否允许连接？`, lifetime.signal, { kind: "connection", ownerId: poll.owner.id });
+      if (allowed) {
+        await conversations.load(poll.owner.id, server.href);
+        authorizedOwner = poll.owner.id; status("本地助手已连接");
+        subtitles.snapshot();
+      }
       else { paused = true; status("连接未授权，已暂停"); }
     }
     if (!poll.owner && !active && Date.now() - state.registeredAt > 9 * 60000) { await request("revoke", {}); await register(); }
-    if (poll.job && !active && !paused && authorizedOwner === poll.owner?.id) {
+    if (poll.job && !active && !paused && !updates.installing() && authorizedOwner === poll.owner?.id) {
       active = { job: poll.job, controller: new AbortController(), done: Promise.resolve() };
       void logEvent("info", "webTaskReceived", { source: "web", taskId: poll.job.id });
       active.done = execute(poll.job).catch(error => { void logError("resultSaveFailed", error, { source: "web", taskId: poll.job!.id }); paused = true; status(`无法保存执行记录，已暂停：${error instanceof Error ? error.message : error}`); });
@@ -318,8 +488,9 @@ while (!lifetime.signal.aborted) {
       chatController?.abort();
       await active?.done;
       await chatDone;
-      chatHistory = []; send({ type: "chatReset" });
+      await chatSaving; await conversations.detach(); send({ type: "chatReset" });
       authorizedOwner = undefined; autoExecute = false; active = undefined; ownerName = "";
+      await subtitles.pause();
       await rm(resultPath, { force: true });
       await rm(statePath, { force: true });
       state = undefined!;
@@ -333,6 +504,10 @@ active?.controller.abort();
 chatController?.abort();
 await active?.done;
 await chatDone;
+await chatSaving;
+await conversations.flush();
+await subtitles.shutdown();
+clearInterval(updateTimer);
 await logEvent("info", "helperStopped");
 await flushLogs();
 controls.close();

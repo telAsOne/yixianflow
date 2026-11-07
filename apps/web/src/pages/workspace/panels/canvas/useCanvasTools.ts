@@ -47,7 +47,7 @@ export function useCanvasTools(options: {
 
   function findNode(nodeId: string) {
     const node = flow.findNode(nodeId);
-    if (!node) throw new Error(`节点不存在：${nodeId}`);
+    if (!node) throw new Error(`节点已不存在：${nodeId}。请先用 findCanvasNodes 重新查询当前节点，不要继续使用旧编号`);
     return node;
   }
 
@@ -87,6 +87,10 @@ export function useCanvasTools(options: {
           return await Promise.race([
             Promise.resolve().then(async () => {
               canvasSignal.throwIfAborted();
+              const shouldSave = !isCanvasRead(request.name) && request.name !== "selectNodes";
+              if (shouldSave) await options.flushSave();
+              callSignal.throwIfAborted();
+              canvasSignal.throwIfAborted();
               let result = await execute(request, callSignal, id);
               callSignal.throwIfAborted();
               if (changesCanvas) {
@@ -102,7 +106,7 @@ export function useCanvasTools(options: {
                 canvasSignal = binding.signal;
                 result = await execute({ name: "getCanvas", args: {} }, callSignal, id);
               }
-              if (!isCanvasRead(request.name) && request.name !== "selectNodes") await options.flushSave();
+              if (shouldSave) await options.flushSave();
               callSignal.throwIfAborted();
               canvasSignal.throwIfAborted();
               return result;

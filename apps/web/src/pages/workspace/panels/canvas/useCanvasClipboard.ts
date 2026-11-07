@@ -9,7 +9,7 @@ import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { generalSettings } from "@/stores/settings";
 import { copyNodeToClipboard, copyNodesToClipboard, nodeClipboardCommand, readClipboardNodes } from "./nodeClipboard";
 import { remapNodeReferences } from "./canvasFiles";
-import { getClipboardMediaFiles, importCanvasFiles } from "./canvasDrop";
+import { getClipboardMediaFiles, importCanvasFiles, type CanvasFileImport } from "./canvasDrop";
 import { getSelectionTree } from "./selectionNodes";
 
 const isDesktop = new URLSearchParams(window.location.search).get("desktop") === "1";
@@ -24,6 +24,7 @@ export function useCanvasClipboard(flow: ReturnType<typeof useVueFlow>, options:
   pointer: () => XYPosition | undefined;
   signal: () => AbortSignal;
   availableNodes: Ref<{ type: string; label: string }[]>;
+  imports: Map<string, CanvasFileImport>;
   batchHistory: (action: () => Promise<void>) => Promise<void>;
 }) {
   const { addNodes, addEdges, findNode, toObject, screenToFlowCoordinate } = flow;
@@ -147,7 +148,7 @@ export function useCanvasClipboard(flow: ReturnType<typeof useVueFlow>, options:
     if (!directory) return false;
     const canvasSignal = options.signal();
     try {
-      await options.batchHistory(() => importCanvasFiles(files, position, { directory, availableNodes: options.availableNodes.value, signal: canvasSignal, flow }));
+      await options.batchHistory(() => importCanvasFiles(files, position, { directory, availableNodes: options.availableNodes.value, signal: canvasSignal, imports: options.imports, flow }));
       return true;
     } catch (error) {
       if (!canvasSignal.aborted) ElMessage.error(error instanceof Error ? error.message : "剪贴板内容导入失败");

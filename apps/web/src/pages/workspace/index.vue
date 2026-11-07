@@ -25,7 +25,7 @@
         :saveNode="saveDocumentNode" />
     </keep-alive>
     <header ref="headerElement" class="workspaceChrome">
-      <workspaceMenu class="workspaceMenu" :exporting="exporting" :exportDisabled="refreshing || !workspaceStore.project" @exportProject="exportProject" @openSettings="settingsVisible = true" />
+      <workspaceMenu class="workspaceMenu" :exporting="exporting" :exportDisabled="refreshing || !workspaceStore.project" @exportProject="exportProject" @openSettings="openSettings()" @openRecycleBin="recycleVisible = true" />
       <div v-show="activePanel === 'canvas'" ref="menuTarget" class="canvasMenuTarget" :inert="refreshing" />
       <div class="workspaceActions">
         <el-segmented :modelValue="activePanel" class="panelSwitcher" :options="panelOptions" aria-label="切换面板" @change="switchPanel">
@@ -44,7 +44,9 @@
           :refreshing="refreshing"
           :saveError="canvasPanelRef?.saveError"
           @resolveSave="canvasPanelRef?.showSaveConflict()"
-          @refresh="refreshProject" />
+          @refresh="refreshProject">
+          <localHelperStatus v-if="webMode" @openSettings="openSettings('localHelper')" />
+        </workspacePresence>
         <el-tooltip content="AI 助手" placement="bottom-end" :showArrow="false" :hideAfter="0">
           <el-button
             class="agentButton"
@@ -64,7 +66,8 @@
       </div>
     </header>
     <floatingAgent v-if="agentMounted" :key="workspaceStore.project?.directory" v-model="agentVisible" v-model:layout="agentLayout" :topOffset="headerHeight" :maxDockedWidth="agentMaxWidth" :inert="refreshing" />
-    <settings v-model="settingsVisible" />
+    <settings v-model="settingsVisible" :panel="settingsPanel" />
+    <recycleBin v-if="workspaceStore.project" :key="workspaceStore.project.directory" v-model="recycleVisible" :directory="workspaceStore.project.directory" :flushSave="flushSave" :preparePurge="prepareRecyclePurge" :afterRestore="refreshProject" />
   </main>
 </template>
 
@@ -77,6 +80,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import settings from "@/components/settings/index.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { flushSettings } from "@/stores/settings";
+import { webMode } from "@/lib/webRuntime";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import saveFile from "@/lib/saveFile";
 import { registerWorkspaceControl, waitForControlValue } from "@/lib/mcpControl";
@@ -84,12 +88,19 @@ import canvasPanel from "./panels/canvas/canvasHost.vue";
 import type { DocumentNodeOptions } from "./panels/canvas/canvasFiles";
 import workspaceMenu from "./components/workspaceMenu.vue";
 import workspacePresence from "./components/workspacePresence.vue";
+import localHelperStatus from "./components/localHelperStatus.vue";
+import recycleBin from "./components/recycleBin.vue";
 import { workspaceLayoutKey } from "./workspaceLayout";
 import { useWorkspaceView } from "./useWorkspaceView";
 const floatingAgent = defineAsyncComponent(() => import("./components/floatingAgent.vue"));
 const documentPanel = defineAsyncComponent(() => import("./panels/document/index.vue"));
 
 const workspaceStore = useWorkspaceStore();
+const recycleVisible = ref(false);
+async function prepareRecyclePurge(directory: string) {
+  if (workspaceStore.project?.directory !== directory) throw new Error("项目已切换，请重新打开回收站");
+  await canvasPanelRef.value?.clearHistory();
+}
 const { activePanel, agentVisible, inspectorVisible, inspectorWidth, agent: agentLayout } = toRefs(useWorkspaceView(() => workspaceStore.project?.directory));
 watch(() => workspaceStore.pendingAgentMessage, message => {
   if (message && message.directory === workspaceStore.project?.directory) agentVisible.value = true;
@@ -127,6 +138,11 @@ onMounted(() => {
   onScopeDispose(() => observer.disconnect());
 });
 const settingsVisible = ref(false);
+const settingsPanel = ref<string>();
+function openSettings(panel?: string) {
+  settingsPanel.value = panel;
+  settingsVisible.value = true;
+}
 const refreshing = ref(false);
 const exporting = ref(false);
 provide("workspaceRefreshing", refreshing);

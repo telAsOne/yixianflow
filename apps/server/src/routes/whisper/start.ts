@@ -27,6 +27,6 @@ export default router.post("/", validateFields(inputSchema.shape), async (req, r
   const output = await u.workspaceFile.resolveWorkspacePath(directory, input.output);
   res.json(success(await u.whisper.startWhisper({
     directory, sourcePath: source.path, outputPath: output.path,
-    model: input.model ?? config.defaultModel, language: input.language, pythonPath: config.pythonPath,
+    model: input.model ?? config.defaultModel, language: input.language,
   })));
 });

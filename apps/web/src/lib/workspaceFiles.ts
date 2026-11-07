@@ -3,9 +3,11 @@ import { isMobile, isRemoteConnection } from "./mobile";
 import { toValue, type MaybeRefOrGetter } from "vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { registerApiLanguage } from "@/lib/i18n";
-import type { CanvasChange, CanvasSnapshot } from "@toonflow/server/canvasMerge";
+import type { CanvasChange, CanvasSnapshot, CanvasElement } from "@toonflow/server/canvasMerge";
+import type { RecycleOverview } from "@toonflow/server/recycleTypes";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
+export type WorkspaceUsage = { totalBytes: number; fileCount: number; assetBytes: number; assetCount: number; recycleBytes?: number; reclaimableBytes?: number };
 export type TextSnapshot = { text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" };
 export type CanvasUpdate = { path?: string; ready?: boolean; revision?: string };
 const client = axios.create({ baseURL: "/api/workspaces/files", headers: { "x-toonflow-workspace": "1" } });
@@ -65,9 +67,30 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return path;
   }
 
-  async function saveCanvasChanges(path: string, revision: string, changes: CanvasChange[]) {
-    const { data } = await client.post<{ data: { revision: string; baseRevision: string; changes: CanvasChange[]; canvas?: CanvasSnapshot } }>("../canvas/save", { directory: getDirectory(), path, revision, changes });
+  async function saveCanvasChanges(path: string, revision: string, changes: CanvasChange[], deletedNodes?: CanvasElement[], deletedEdges?: CanvasElement[]) {
+    const { data } = await client.post<{ data: { revision: string; baseRevision: string; changes: CanvasChange[]; canvas?: CanvasSnapshot } }>("../canvas/save", { directory: getDirectory(), path, revision, changes, deletedNodes, deletedEdges });
     return data.data;
+  }
+
+  async function getRecycleBin() {
+    const { data } = await client.get<{ data: RecycleOverview }>("../recycleBin/list", { params: { directory: getDirectory() } });
+    return data.data;
+  }
+
+  async function restoreRecycleEntry(id: string) {
+    const directory = getDirectory();
+    const { data } = await client.post<{ data: { path: string } }>("../recycleBin/restore", { directory, id });
+    invalidateUrls(directory, "");
+    return data.data;
+  }
+
+  async function purgeRecycleEntries(ids: string[]) {
+    const { data } = await client.delete<{ data: { freedBytes: number; retainedCount: number } }>("../recycleBin/purge", { data: { directory: getDirectory(), ids } });
+    return data.data;
+  }
+
+  async function protectRecycleHistory(sessionId: string, roots: string[]) {
+    await client.put("../recycleBin/protect", { directory: getDirectory(), sessionId, roots });
   }
 
   async function saveCanvasRecovery(path: string, base: CanvasSnapshot, local: CanvasSnapshot) {
@@ -145,6 +168,11 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
       offset = data.data.nextOffset;
     } while (offset !== undefined);
     return entries;
+  }
+
+  async function getUsage(signal?: AbortSignal) {
+    const { data } = await client.get<{ data: WorkspaceUsage }>("/usage", { params: { directory: getDirectory() }, signal });
+    return data.data;
   }
 
   async function read(path: string) {
@@ -241,9 +269,11 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return data.data.revision;
   }
 
-  async function write(path: string, content: string | Blob | ArrayBuffer, exclusive = false, signal?: AbortSignal) {
+  async function write(path: string, content: string | Blob | ArrayBuffer, exclusive = false, signal?: AbortSignal, onUploadProgress?: (loaded: number, total?: number) => void) {
     const directory = getDirectory();
-    await client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" } });
+    await client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" },
+      onUploadProgress: onUploadProgress && (event => onUploadProgress(event.loaded, event.total)),
+    });
     invalidateUrls(directory, path);
   }
 
@@ -281,6 +311,7 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
   }
 
   // ACT: 当前目录逐次读取；跨 await 或防抖的操作传入目录字符串，固定本次目标。
-  return { list, canvasEntries, read, exportZip, importImage, acquireUrl, getMediaInfo, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir,
-    saveCanvasChanges, saveCanvasRecovery, getCanvasRecovery, removeCanvasRecovery, watchCanvases };
+  return { list, canvasEntries, getUsage, read, exportZip, importImage, acquireUrl, getMediaInfo, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir,
+    saveCanvasChanges, saveCanvasRecovery, getCanvasRecovery, removeCanvasRecovery, watchCanvases,
+    getRecycleBin, restoreRecycleEntry, purgeRecycleEntries, protectRecycleHistory };
 }

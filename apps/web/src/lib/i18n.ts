@@ -46,6 +46,7 @@ export function registerApiLanguage(client: AxiosInstance) {
     // ACT: 仅本应用 API 接收界面语言，不改变供应商等外部请求。
     if (target.origin === window.location.origin && target.pathname.startsWith(`${appBasePath}/api/`)) {
       config.headers.set("Accept-Language", locale.value);
+      if (webMode.value) config.headers.set("x-toonflow-workspace", "1");
       if (webMode.value && webUserId.value) config.headers.set("x-yixianflow-user", String(webUserId.value));
     }
     return config;

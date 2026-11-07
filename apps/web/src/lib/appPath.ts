@@ -23,11 +23,13 @@ export function assetFileUrl(path: string) {
     const source = input instanceof Request ? input.url : input;
     const target = resolveAppUrl(source);
     const apiRequest = target.origin === location.origin && target.pathname.startsWith(`${appBasePath}/api/`);
-    const userId = webMode.value && apiRequest ? webUserId.value : undefined;
+    const webRequest = webMode.value && apiRequest;
+    const userId = webRequest ? webUserId.value : undefined;
     const rewritten = target.href !== new URL(source, location.href).href;
-    if (!rewritten && !userId) return originalFetch(input, init);
+    if (!rewritten && !webRequest) return originalFetch(input, init);
     const headers = new Headers(input instanceof Request ? input.headers : undefined);
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+    if (webRequest) headers.set("x-toonflow-workspace", "1");
     if (userId) headers.set("x-yixianflow-user", String(userId));
     if (input instanceof Request) return originalFetch(rewritten ? new Request(target, input) : input, { ...init, headers });
     return originalFetch(target, { ...init, headers });

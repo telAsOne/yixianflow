@@ -32,6 +32,7 @@
                 </template>
               </el-tree>
             </el-scrollbar>
+            <el-button v-if="activeCanvasId" text type="danger" :disabled="pickerBusy" @click="clearCurrentCanvas">清空当前画布</el-button>
             <el-text v-if="renameError" type="danger" role="alert">{{ renameError }}</el-text>
           </div>
         </el-popover>
@@ -70,7 +71,7 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { settingsStorage } from "@/stores/settings";
 import useWorkspaceFiles, { type TextSnapshot } from "@/lib/workspaceFiles";
 import { useTreeExpansion } from "@/lib/useTreeExpansion";
-import { getCanvasAssetDirectories } from "@/pages/workspace/canvasFile";
+import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import type { CanvasSnapshot } from "@toonflow/server/canvasMerge";
 
 const props = defineProps<{
@@ -101,7 +102,7 @@ async function saveProjectName(event: Event) {
 
 type Canvas = { id: string; name: string; flow?: Pick<FlowExportObject, "nodes" | "edges" | "viewport">; snapshot?: Pick<TextSnapshot, "revision" | "encoding"> };
 const canvases = inject<ShallowRef<Canvas[]>>("canvasList", shallowRef<Canvas[]>([]));
-const getRetainedNodes = inject<(id: string) => { id: string; data?: unknown }[]>("canvasAssetNodes", () => []);
+const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", async action => action());
 const performFileAction = inject<(directory: string, action: "copy" | "rename" | "move" | "delete", path: string, target?: string, entryType?: "canvas" | "directory") => Promise<void>>("performWorkspaceFileAction");
 const boundCanvas = shallowRef<Canvas>();
 const activeCanvasId = defineModel<string>("canvasId", { default: "" });
@@ -117,7 +118,8 @@ const newCanvasId = ref<string | null>(null);
 const nameInput = ref<InputInstance>();
 const canvasName = ref("");
 const renameError = ref("");
-const { toObject, setNodes, setEdges } = useVueFlow();
+const flow = useVueFlow();
+const { toObject, setNodes, setEdges } = flow;
 type CanvasEntry = { path: string; name: string; type: "file" | "directory"; children?: CanvasEntry[]; empty?: boolean; draft?: boolean };
 const folders = shallowRef<CanvasEntry[]>([]);
 const canvasPicker = ref<HTMLElement>();
@@ -360,6 +362,36 @@ async function handleSwitchCanvas(canvasId: string) {
   }
 }
 
+async function clearCurrentCanvas() {
+  if (busy.value || !props.directory || !activeCanvasId.value) return;
+  const directory = props.directory;
+  const id = activeCanvasId.value;
+  const confirmed = await ElMessageBox.confirm("画布内容将作为一批移入回收站，当前画布保留。可通过撤销或回收站恢复。", "清空画布", {
+    type: "warning", confirmButtonText: "清空画布", cancelButtonText: "取消", closeOnClickModal: false,
+  }).then(() => true, () => false);
+  if (!confirmed) return;
+  busy.value = true;
+  try {
+    await props.flushSave();
+    checkCanvasDirectory(directory);
+    if (id !== activeCanvasId.value) throw new Error("画布已切换，请重新操作");
+    const nodes = [...flow.getNodes.value];
+    if (nodes.some(node => node.deletable === false) || flow.getEdges.value.some(edge => edge.deletable === false)) throw new Error("画布中存在不允许删除的内容");
+    await batchHistory(async () => {
+      for (const node of nodes) await useNodeEvent(node.id, flow).emit("delete");
+      checkCanvasDirectory(directory);
+      if (id !== activeCanvasId.value || nodes.some(node => flow.findNode(node.id) !== node)) throw new Error("画布内容已变化，请重新操作");
+      setEdges([]);
+      setNodes([]);
+    });
+    await nextTick();
+    await props.flushSave();
+    canvasListVisible.value = false;
+    ElMessage.success("画布内容已移入回收站");
+  } catch (error) { ElMessage.error(errorMessage(error, "清空画布失败")); }
+  finally { busy.value = false; }
+}
+
 async function removeCanvas(canvas: Canvas) {
   if (busy.value || editingId.value !== null || !props.directory) return;
   const directory = props.directory;
@@ -367,7 +399,7 @@ async function removeCanvas(canvas: Canvas) {
   busy.value = true;
   canvasListVisible.value = false;
   try {
-    const confirmed = await ElMessageBox.confirm(`确定删除“${canvas.name}”？对应的 ${id} 文件及独占的节点素材也会被删除，其他画布共用的素材会保留。此操作不可撤销。`, "删除画布", {
+    const confirmed = await ElMessageBox.confirm(`确定删除“${canvas.name}”？画布与节点将移入项目回收站，可在保留期内恢复。其他画布共用的素材会保留。`, "删除画布", {
       type: "warning", confirmButtonText: "删除", cancelButtonText: "取消", closeOnClickModal: false,
     }).then(() => true, () => false);
     if (!confirmed) return;
@@ -375,18 +407,9 @@ async function removeCanvas(canvas: Canvas) {
     const nextCanvas = canvases.value.find(item => item.id !== id);
     if (nextCanvas && activeCanvasId.value === id) await applyCanvas(nextCanvas.id, directory);
     const files = useWorkspaceFiles(directory);
-    const readNodes = async (canvasId: string) => {
-      const data = await files.readJson<{ toonflowCanvas?: boolean; nodes?: { id: string; data?: unknown }[] }>(canvasId);
-      if (data?.toonflowCanvas !== true || !Array.isArray(data.nodes) || data.nodes.some(node => !node || typeof node.id !== "string")) {
-        throw new Error(`无法确认 ${canvasId} 的素材引用`);
-      }
-      return [...data.nodes, ...getRetainedNodes(canvasId)];
-    };
-    let removedNodes: { id: string; data?: unknown }[] = [];
     await props.flushSave(async () => {
       checkCanvasDirectory(directory);
       if (canvas.id !== id || !canvases.value.includes(canvas)) throw new Error("画布已变更，请重新选择");
-      removedNodes = await readNodes(id);
       if (!performFileAction) {
         await files.remove(id);
         checkCanvasDirectory(directory);
@@ -394,20 +417,8 @@ async function removeCanvas(canvas: Canvas) {
         await nextTick();
       }
     });
-    // coordinator 自己进入保存临界区，必须在上一次 flush 完成后调用，避免重入保存队列。
     if (performFileAction) await performFileAction(directory, "delete", id);
-    await props.flushSave(async () => {
-      checkCanvasDirectory(directory);
-      const retainedNodes = (await Promise.all((await listCanvases(directory)).canvases.map(canvas => readNodes(canvas.id)))).flat();
-      const assetDirectories = getCanvasAssetDirectories(removedNodes, retainedNodes);
-      checkCanvasDirectory(directory);
-      const results = await Promise.allSettled(assetDirectories.map(path => files.remove(path, true).catch(error => {
-        if (!axios.isAxiosError<{ data?: { code?: string } }>(error) || error.response?.data.data?.code !== "ENOENT") throw error;
-      })));
-      const failed = results.flatMap((result, index) => result.status === "rejected" ? [assetDirectories[index]] : []);
-      if (failed.length) throw new Error(`画布已删除，但 ${failed.length} 个素材目录清理失败：${failed.join("、")}`);
-    });
-    if (props.directory === directory) ElMessage.success("画布已删除");
+    if (props.directory === directory) ElMessage.success("画布已移入回收站");
   } catch (err) {
     if (props.directory === directory) ElMessage.error(errorMessage(err, "删除画布失败"));
   } finally {

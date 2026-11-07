@@ -47,20 +47,23 @@
       </div>
       <mediaPreviewStatus :preview="mediaPreview" />
     </div>
+    <div class="promptReviewStatusRow nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
+      <el-button text size="small" :type="reviewStatus === 'pass' ? 'success' : ['needs_revision', 'needs_clarification'].includes(reviewStatus) ? 'warning' : 'info'" :title="`编辑稿 · ${reviewLabel}`" @click.stop="reviewPanelVisible = true"><span class="reviewBadgeText">编辑稿 · {{ reviewLabel }}</span></el-button>
+    </div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
         <referenceItem
           v-if="refList.length && !isH3Prompt"
           v-model="refList"
-          :disabled="promptOptimizing || uploadingReferences || zealmanEnqueuing"
+          :disabled="uploadingReferences || zealmanEnqueuing"
           @preview="setReferencePreview"
           @remove="removeReference" />
         <div v-if="frameMode" class="referenceHint">
           {{ selectedMode === "startFrameOptional" ? "仅一张图片时作为尾帧；两张图片按顺序作为首帧、尾帧" : "图片引用按顺序作为首帧、尾帧" }}<template v-if="selectedModel?.referenceImageInput === 'url'">，图片节点在前、下方链接在后</template>
         </div>
         <h3PromptEditor v-if="isH3Prompt" v-model="data.h3Prompt" v-model:prompt="data.prompt" v-model:promptModel="data.promptModel" v-model:duration="data.duration"
-          :references="h3ReferenceList" :ai="ai" :files="files" :maxDuration="h3MaxDuration" :voices="isZealmanU06 ? zealmanOptions?.voices : undefined" :remoteLibrary="isZealmanU06"
-          :disabled="deleting || uploadingReferences || taskChecking || zealmanEnqueuing || (!isZealmanU06 && generating)" @busy="promptOptimizing = $event"
+          :references="h3ReferenceList" :voices="isZealmanU06 ? zealmanOptions?.voices : undefined" :remoteLibrary="isZealmanU06"
+          :disabled="deleting || uploadingReferences || taskChecking || zealmanEnqueuing || (!isZealmanU06 && generating)"
           @upload="uploadReferences()" @replaceReference="uploadReferences" @clearReferences="clearReferences" @openLibrary="libraryVisible = true"
           @swapReferences="swapH3References" @removeReference="removeH3Reference" @referencePreview="(item, url, original) => item.input && setReferencePreview(item.input, url, original)" />
         <promptInput v-else-if="selectedModel || !data.model" v-model="data.promptModel" v-model:text="data.prompt" :references="referenceMentions" expandable />
@@ -78,9 +81,15 @@
           @refresh="ensureZealmanOptions(true).catch(error => showNodeError(error, '面板选项读取失败'))" />
         <template v-if="selectedModel?.referenceImageInput === 'url'">
           <div class="referenceHint">本地图片连线会通过「设置 → 素材存储」中的阿里云 OSS 自动上传；也可在下方每行填写一个 HTTPS 图片直链。<template v-if="frameMode">先按上方图片顺序，再按链接顺序作为首帧、尾帧，{{ selectedMode === "startEndRequired" ? "合计必须为两张" : "合计最多两张" }}。</template><template v-else>先按上方图片顺序，再按链接顺序对应 @Image1、@Image2，合计最多 9 张。</template><template v-if="selectedModel.mode?.includes('text')">没有图片和链接时为文生视频。</template></div>
-          <el-input v-model="data.referenceImageUrlsText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" :disabled="generating || deleting || pendingTask || taskChecking || promptOptimizing || uploadingReferences" placeholder="https://example.com/reference.png" aria-label="参考图片 HTTPS 直链" />
+          <el-input v-model="data.referenceImageUrlsText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" :disabled="generating || deleting || pendingTask || taskChecking || uploadingReferences" placeholder="https://example.com/reference.png" aria-label="参考图片 HTTPS 直链" />
         </template>
         <div v-if="selectedModel?.referenceAudioInput === 'url'" class="referenceHint">连接音频节点作为参考音频，按上方音频引用顺序使用；本地音频会通过「设置 → 素材存储」中的阿里云 OSS 自动上传。</div>
+        <div class="promptReviewTools" role="status" aria-live="polite">
+          <el-button text size="small" @click="reviewPanelVisible = true">编辑稿 · {{ reviewLabel }}</el-button>
+          <el-button v-if="reviewing" size="small" @click="cancelPromptReview">停止等待审查</el-button>
+          <el-button v-else size="small" :disabled="deleting || !generationPrompt.trim()" @click="openPromptReview">审查</el-button>
+          <span>按用量计费 · 可直接生成</span>
+        </div>
         <p v-if="data.model && !selectedModel && !modelsLoading" role="alert">模型不可用，请选择其他模型</p>
         <div class="promptFooter">
           <el-select
@@ -88,10 +97,10 @@
             class="modelSelect"
             filterable
             :loading="modelsLoading"
-            :disabled="generating || deleting || pendingTask || taskChecking || zealmanLoading || zealmanEnqueuing || promptOptimizing || uploadingReferences || !!data.zealmanQueue.length"
+            :disabled="generating || deleting || pendingTask || taskChecking || zealmanLoading || zealmanEnqueuing || uploadingReferences || !!data.zealmanQueue.length"
             placeholder="选择模型"
             aria-label="生成模型"
-            noDataText="请登录逸仙账户并刷新模型"
+            noDataText="请登录 UnionAIGC 账户并刷新模型"
             @change="rememberPreferences"
             placement="top-start"
             @visibleChange="(visible: boolean) => visible && loadModels().catch((error) => showNodeError(error, '模型读取失败'))">
@@ -126,20 +135,20 @@
               v-if="!isZealmanU06"
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="deleting || uploading || uploadingReferences || promptOptimizing || taskChecking || (!generating && submissionUnconfirmed) || (!generating && !pendingTask && (!generationPrompt || !selectedModel))"
+              :disabled="deleting || uploading || uploadingReferences || taskChecking || (!generating && submissionUnconfirmed) || (!generating && !pendingTask && (!generationPrompt || !selectedModel))"
               :title="generating ? '停止本地等待' : submissionUnconfirmed ? '提交状态待核查，可在新节点继续' : pendingTask ? '恢复原视频任务' : '生成视频'"
               :aria-label="generating ? '停止本地等待' : submissionUnconfirmed ? '提交状态待核查' : pendingTask ? '恢复原视频任务' : '生成视频'"
               @click="generating ? stopGeneration() : startGeneration().catch((error) => showNodeError(error, '视频生成失败'))">{{ generating ? '停止等待' : submissionUnconfirmed ? '待核查' : pendingTask ? '恢复任务' : '生成' }}</el-button>
             <template v-else>
               <el-button v-if="generating || activeQueueId" @click="stopGeneration">停止等待</el-button>
               <el-button v-else-if="pendingTask || data.zealmanQueue.length" :disabled="taskChecking || deleting" @click="continueZealmanQueue().catch(error => showNodeError(error, '恢复队列失败'))">{{ pendingTask ? '恢复任务' : '继续队列' }}</el-button>
-              <el-button class="sendButton" :icon="IconArrowUp" :disabled="deleting || uploading || uploadingReferences || promptOptimizing || taskChecking || !generationPrompt || zealmanEnqueuing" :loading="zealmanEnqueuing" @click="startGeneration().catch(error => showNodeError(error, '加入队列失败'))">{{ generating || pendingTask || data.zealmanQueue.length ? `加入队列 (${data.zealmanQueue.length})` : '生成' }}</el-button>
+              <el-button class="sendButton" :icon="IconArrowUp" :disabled="deleting || uploading || uploadingReferences || taskChecking || !generationPrompt || zealmanEnqueuing" :loading="zealmanEnqueuing" @click="startGeneration().catch(error => showNodeError(error, '加入队列失败'))">{{ generating || pendingTask || data.zealmanQueue.length ? `加入队列 (${data.zealmanQueue.length})` : '生成' }}</el-button>
             </template>
           </div>
         </div>
         <div v-if="isZealmanU06 && data.zealmanQueue.length" class="queuedItems" aria-label="U06 生成队列">
           <div v-for="item in data.zealmanQueue" :key="item.input.operationId" class="queuedItem">
-            <span>{{ item.input.operationId === videoTask?.operationId || item.input.operationId === activeQueueId ? '当前任务' : '等待中' }} · {{ item.title }}</span>
+            <span :title="item.promptReview ? `提交时编辑稿审查：${item.promptReview.label}` : '提交时未记录编辑稿审查'">{{ item.input.operationId === videoTask?.operationId || item.input.operationId === activeQueueId ? '当前任务' : '等待中' }} · {{ item.title }}<template v-if="item.promptReview"> · {{ item.promptReview.label }}</template></span>
             <el-button v-if="item.input.operationId !== videoTask?.operationId && item.input.operationId !== activeQueueId" text size="small" @click="data.zealmanQueue = data.zealmanQueue.filter(entry => entry !== item)">移除</el-button>
           </div>
         </div>
@@ -158,7 +167,7 @@
         <el-button
           v-if="duplicateCanvasNode && (generating || pendingTask || taskStatusError)"
           :loading="creatingGeneration"
-          :disabled="deleting || uploadingReferences || promptOptimizing"
+          :disabled="deleting || uploadingReferences"
           title="复制配置和参考连线到新节点，保留原任务；点击生成后才会提交新任务"
           @click="createNewGeneration().catch(error => showNodeError(error, '创建新节点失败'))">在新节点继续</el-button>
       </el-card>
@@ -166,12 +175,14 @@
   </nodeSkeleton>
   <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="generating || deleting || uploading" />
   <h3MediaLibrary v-if="isZealmanU06" v-model="libraryVisible" :importReferences="importPanelReferences" />
+  <promptReviewPanel v-model="reviewPanelVisible" :record="reviewRecord" :current="reviewCurrent" :reviewing="reviewing" :status="reviewStatus" :label="reviewLabel" :error="reviewError"
+    :editable="reviewEditable" :canReview="!deleting && !!generationPrompt.trim()" @review="force => reviewPrompt(force)" @cancel="cancelPromptReview" @apply="applyReviewEdits" />
 </template>
 
 <script setup lang="ts">
 import { validateReferenceSelection } from "@toonflow/node-shared/mediaLimits";
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
-import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem, ElInput } from "element-plus";
+import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem, ElInput, ElMessage, ElMessageBox } from "element-plus";
 import { IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle, type VideoTaskStatus, type NodeInputValue } from "@toonflow/nodes-scaffold/runtime";
 import { registerGenerationTools } from "@toonflow/node-shared/generationTools";
@@ -193,7 +204,10 @@ import generationSettings from "./components/generationSettings.vue";
 import zealmanSettings from "./components/zealmanSettings.vue";
 import h3PromptEditor from "./components/h3PromptEditor.vue";
 import h3MediaLibrary from "./components/h3MediaLibrary.vue";
-import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, loadCameraPresets, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
+import promptReviewPanel from "./components/promptReviewPanel.vue";
+import { usePromptReview, samePromptReviewInput, applyPromptReviewEdits, type PromptReviewInput, type PromptReviewRecord, type PromptReviewEdit, type PromptReviewSubmission } from "./promptReview";
+import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
+import { getCameraPresets } from "./cameraPresets";
 import { loadZealmanOptions, validateZealmanSettings, zealmanAssetUrl, type ZealmanOptions, type ZealmanAsset } from "./zealmanOptions";
 
 defineOptions({
@@ -211,7 +225,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals,
 const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
 const creatingGeneration = ref(false);
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string }[]; h3Prompt: H3PromptState });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; submittedPromptReview?: PromptReviewSubmission });
 const rememberPreferences = useGenerationPreferences("video", () => data.value);
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
@@ -223,8 +237,7 @@ data.value.ratio ??= "9:16";
 data.value.referenceImageUrlsText ??= "";
 data.value.zealmanSettings ??= {};
 data.value.zealmanQueue ??= [];
-data.value.h3Prompt ??= { subjects: [], audioBindings: {}, voices: [], attachments: [], model: "", editorMode: "tags" };
-const promptOptimizing = ref(false);
+data.value.h3Prompt ??= { subjects: [], audioBindings: {}, voices: [], attachments: [], editorMode: "tags" };
 const uploadingReferences = ref(false);
 const libraryVisible = ref(false);
 const zealmanOptions = ref<ZealmanOptions>();
@@ -375,19 +388,55 @@ const generationPrompt = computed(() => {
   return isH3Prompt.value ? h3GenerationPrompt(prompt, h3ReferenceList.value, data.value.h3Prompt) : prompt;
 });
 
+const reviewPanelVisible = ref(false);
+const reviewInput = computed<PromptReviewInput>(() => ({
+  content: generationPrompt.value,
+  editorPrompt: data.value.prompt,
+  context: ["审查范围：当前视频节点的编辑稿。未提供图片、视频或音频的实际内容，只核对可见文字及素材约束。",
+    `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；生成声音：${selectedModel.value?.audio === 'optional' ? data.value.generateAudio : selectedModel.value?.audio === true}。`,
+    `素材数量：图片 ${mediaCounts.value.image}，视频 ${mediaCounts.value.video}，音频 ${mediaCounts.value.audio}。`,
+    ...(isH3Prompt.value ? [`引用名称与标签：${JSON.stringify(h3ReferenceList.value.map(item => ({ name: item.name, tag: item.value, category: item.category })))}`] : []),
+    "CameraPreset 运镜标签由后端展开，本次未提供其隐藏指令，不推断隐藏内容；后端可能继续优化提示词。"].join("\n"),
+  ...(data.value.duration ? { durationSeconds: data.value.duration } : {}),
+  dependencies: JSON.stringify({ model: data.value.model, mode: data.value.mode, resolution: data.value.resolution,
+    referenceImageUrlsText: data.value.referenceImageUrlsText, references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, value: item.value })),
+    voices: data.value.h3Prompt.voices }),
+}));
+const { record: reviewRecord, current: reviewCurrent, reviewing, status: reviewStatus, label: reviewLabel, error: reviewError,
+  review: reviewPrompt, cancel: cancelPromptReview, submission: promptReviewSubmission } = usePromptReview({
+    input: () => reviewInput.value, record: () => data.value.promptReview, save: record => { data.value.promptReview = record; },
+  });
+const reviewEditable = computed(() => !deleting.value && !uploadingReferences.value && !zealmanEnqueuing.value && (isZealmanU06.value || !generating.value && !pendingTask.value));
+
+function openPromptReview() { reviewPanelVisible.value = true; }
+
+async function applyReviewEdits(edits: PromptReviewEdit[]) {
+  try {
+    if (!reviewCurrent.value || !reviewRecord.value || !reviewEditable.value || reviewing.value) throw new Error("当前编辑稿已变化或正在处理，请稍后核对并重新审查");
+    const input = reviewRecord.value.input;
+    const prompt = applyPromptReviewEdits(input, edits);
+    await ElMessageBox.confirm("将采用详情中展示的这组局部修改。请确认符合创作意图，采用后审查状态会变为待重审。", "确认修改提示词", { confirmButtonText: "采用修改", cancelButtonText: "保留原文", type: "warning" });
+    if (!reviewCurrent.value || !reviewEditable.value || reviewing.value || !samePromptReviewInput(input, reviewInput.value)) throw new Error("确认期间编辑稿已变化，请重新核对修改建议");
+    data.value.prompt = prompt;
+    data.value.promptModel = prompt.split("\n").map(text => [{ type: "Write", text }]);
+  } catch (failure) {
+    if (failure !== "cancel" && failure !== "close") ElMessage.warning(failure instanceof Error ? failure.message : "未能采用修改，请手动修改提示词");
+  }
+}
+
 function removeReference(item: NodeInputValue) {
-  if (promptOptimizing.value || uploadingReferences.value) return;
+  if (uploadingReferences.value) return;
   data.value.h3Prompt.attachments = data.value.h3Prompt.attachments.filter(attachment => (attachment.source ?? `h3:${attachment.id}`) !== item.source || (attachment.sourceHandle ?? "out") !== item.sourceHandle);
   disconnectReference(item);
 }
 function removeH3Reference(item: H3Reference) {
-  if (promptOptimizing.value || uploadingReferences.value || deleting.value || zealmanEnqueuing.value) return;
+  if (uploadingReferences.value || deleting.value || zealmanEnqueuing.value) return;
   if (item.id.startsWith("voice:")) data.value.h3Prompt.voices = data.value.h3Prompt.voices.filter(path => `voice:${path}` !== item.id);
   else if (h3ReferenceGroup(item).endsWith(":url")) data.value.referenceImageUrlsText = referenceUrls(selectedModel.value).filter(url => `url:${url}` !== item.input!.source).join("\n");
   else if (item.input) removeReference(item.input);
 }
 function swapH3References(first: H3Reference, second: H3Reference) {
-  if (promptOptimizing.value || uploadingReferences.value || deleting.value || zealmanEnqueuing.value) return;
+  if (uploadingReferences.value || deleting.value || zealmanEnqueuing.value) return;
   const current = h3ReferenceList.value;
   const left = current.find(item => item.id === first.id);
   const right = current.find(item => item.id === second.id);
@@ -435,7 +484,7 @@ async function validateReferenceFiles(uploads: { type: string; size: number }[],
 }
 
 async function importPanelReferences(source: "input" | "output", items: ZealmanAsset[], signal: AbortSignal) {
-  if (uploadingReferences.value || promptOptimizing.value || deleting.value) throw new Error("节点正在处理，请稍后导入素材");
+  if (uploadingReferences.value || deleting.value) throw new Error("节点正在处理，请稍后导入素材");
   await validateReferenceFiles(items.map(item => ({ type: item.mimeType, size: item.size })));
   const directory = files.getWorkspaceDirectory();
   uploadingReferences.value = true;
@@ -459,7 +508,7 @@ async function importPanelReferences(source: "input" | "output", items: ZealmanA
 }
 
 function uploadReferences(replacement?: H3Reference) {
-  if (uploadingReferences.value || promptOptimizing.value || deleting.value) return;
+  if (uploadingReferences.value || deleting.value) return;
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = !replacement;
@@ -524,7 +573,7 @@ onScopeDispose(() => {
 
 
 async function startGeneration() {
-  if (promptOptimizing.value || uploadingReferences.value) throw new Error("请等待提示词优化或素材上传完成");
+  if (uploadingReferences.value) throw new Error("请等待素材上传完成");
   if (zealmanEnqueuing.value) throw new Error("正在加入队列，请稍候");
   const shouldResume = pendingTask.value && !isZealmanU06.value;
   if (!generating.value) await refreshVideoTask();
@@ -537,7 +586,7 @@ async function startGeneration() {
   if (!choice) throw new Error("请先选择视频模型");
   if (!generationPrompt.value) throw new Error("请输入生成提示词");
   if (isH3Prompt.value) {
-    const cameraPresets = h3CameraTagLike.test(generationPrompt.value) ? await loadCameraPresets().catch(() => undefined) : undefined;
+    const cameraPresets = h3CameraTagLike.test(generationPrompt.value) ? await getCameraPresets().catch(() => undefined) : undefined;
     const issues = h3PromptIssues(generationPrompt.value, h3ReferenceList.value, data.value.duration ?? 10, cameraPresets).filter(issue => !issue.startsWith("分镜正文"));
     if (issues.length) throw new Error(issues.join("；"));
   } else if (h3CameraTagLike.test(generationPrompt.value)) throw new Error("运镜标签仅支持 H3 模型，请删除后再生成");
@@ -579,6 +628,7 @@ async function startGeneration() {
     videos: refList.value.flatMap((item) => item.dataType === "VIDEO" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []),
     audios: refList.value.flatMap((item) => item.dataType === "AUDIO" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []),
   };
+  const reviewAtSubmission = promptReviewSubmission();
   if (isZealmanU06.value) {
     if (zealmanEnqueuing.value) throw new Error("正在加入队列，请稍候");
     const limit = zealmanOptions.value!.queueLimit;
@@ -597,12 +647,13 @@ async function startGeneration() {
       if (disposed || deleting.value) throw new Error("节点已关闭或正在删除");
       if (originalDirectory !== files.getWorkspaceDirectory()) throw new Error("工作区已切换，任务没有加入队列");
       const saved = JSON.parse(JSON.stringify({ ...input, directory })) as NodeVideoRequest;
-      data.value.zealmanQueue.push({ input: saved, title: `${saved.duration} 秒 · ${saved.prompt.replace(/\s+/g, " ").slice(0, 50)}` });
+      data.value.zealmanQueue.push({ input: saved, title: `${saved.duration} 秒 · ${saved.prompt.replace(/\s+/g, " ").slice(0, 50)}`, promptReview: reviewAtSubmission });
       if (!generating.value && !pendingTask.value && data.value.zealmanQueue.length === 1) { queuePaused = false; await runNextZealmanTask(); }
       return { status: "queued", count: data.value.zealmanQueue.length };
     } finally { zealmanEnqueuing.value = false; }
   }
   const { directory } = await files.getWorkspaceFiles().list();
+  data.value.submittedPromptReview = reviewAtSubmission;
   return runVideoInput({ ...input, directory }, choice.taskRecovery === true);
 }
 
@@ -738,13 +789,14 @@ function stopGeneration() {
 async function createNewGeneration() {
   if (!duplicateCanvasNode) throw new Error("当前画布不支持创建副本");
   if (disposed || deleting.value) throw new Error("节点已关闭或正在删除");
-  if (creatingGeneration.value || uploadingReferences.value || promptOptimizing.value) throw new Error("节点正在处理，请稍后创建");
+  if (creatingGeneration.value || uploadingReferences.value) throw new Error("节点正在处理，请稍后创建");
   creatingGeneration.value = true;
   try {
     const nodeId = await duplicateCanvasNode(id, {
       outputs: {},
       generationTiming: undefined,
       appliedVideoTaskId: undefined,
+      submittedPromptReview: undefined,
       zealmanQueue: [],
     });
     return { status: "ready", nodeId, message: "已保留原节点和任务，新节点可编辑并生成；尚未提交新的视频生成" };
@@ -754,10 +806,11 @@ async function createNewGeneration() {
 }
 
 nodeEvent.on("save", (reason) => {
-  if (reason === "reload" && (generating.value || uploading.value || deleting.value || uploadingReferences.value || promptOptimizing.value)) throw new Error("视频或提示词处理中，请完成后再刷新节点");
+  if (reason === "reload" && (generating.value || uploading.value || deleting.value || uploadingReferences.value)) throw new Error("视频处理中，请完成后再刷新节点");
 });
 nodeEvent.on("delete", async () => {
-  if (uploading.value || uploadingReferences.value || promptOptimizing.value) throw new Error("素材或提示词正在处理，请完成或停止后再删除节点");
+  if (generating.value) throw new Error("请先停止等待再删除节点；已经提交的生成任务和素材记录会保留");
+  if (uploading.value || uploadingReferences.value) throw new Error("素材正在处理，请完成后再删除节点");
   deleting.value = true;
   stopGeneration();
   try {
@@ -793,28 +846,51 @@ async function getConfig() {
       referenceImageUrls: referenceUrls(selectedModel.value),
     },
     models: models.value,
+    cameraLibrary: { supported: isH3Prompt.value, queryTool: "node:getCameraPresets" },
     ...(isZealmanU06.value ? { videoOptions: zealmanOptions.value } : {}),
     ratios: ratioOptions.value,
     matchingModes: matchingModes.value,
   };
 }
 
-registerGenerationTools({
-  configDescription: "读取视频节点配置、模型能力、比例和引用模式，不含密钥；U06 另返回面板 videoOptions（主模型、CLIP、LoRA、默认值和时长限制），专属参数位于 config.other",
-  promptDescription: "修改此节点的视频生成提示词，支持 {{ref 1}} 等参考标记；只修改提示词，不启动生成",
-  loadModels, getConfig,
-  setPrompt(value) {
-    if (deleting.value) throw new Error("节点正在删除，请稍后修改");
-    if (promptOptimizing.value) throw new Error("提示词正在优化，请稍后修改");
-    data.value.prompt = value;
-    data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
+nodeTools.register({
+  name: "getCameraPresets",
+  description: "读取当前账户真实可用的运镜库，返回每项 id、name 和可直接写入提示词的 tag（{{CameraPreset ID}}），无需先选择模型。向用户展示 name；使用前通过 getConfig 确认 cameraLibrary.supported 为 true，按名称选择并用 setPrompt 将原样 tag 放入 detailed_description 对应镜头。目录为空或读取失败时如实说明，不猜 ID，不获取或展开服务端私有运镜提示词；查询和写入提示词均不启动视频生成",
+  parameters: z.strictObject({}),
+  execute(_args, { signal }) {
+    return getCameraPresets(signal);
   },
 });
 
 nodeTools.register({
-  name: "setConfig",
-  description: "修改视频节点配置，不启动生成。先用 getConfig 查询能力，providerId 与 modelId 同时提供。seed 为非负安全整数，0 有效，null 使用随机值；U06 支持 other 中的 modelKey、clipKey、loraKey、loraStrength、extraLoraKey、extraLoraStrength、accelerated、steps、upscale、forceVramCleanupBeforeVae，选项键取自 videoOptions。referenceImageInput 为 url 的模型支持 referenceImageUrls；mode 使用 getConfig 返回的原始值，须匹配引用",
-  parameters: z.strictObject({
+  name: "reviewPrompt",
+  description: "仅在用户要求审查时启动当前视频节点编辑稿的辅助审查，按文本模型用量计费，不启动视频生成、不修改原文。返回 reviewing 后可继续其他工作，按需用 getPromptReview 查询；同一内容已有有效结果时复用，force=true 会重新计费审查。审查失败或未通过均不妨碍 generateVideo、排队和恢复原任务，不循环重试",
+  parameters: z.strictObject({ force: z.boolean().optional() }),
+  execute({ force }) {
+    if (deleting.value) throw new Error("节点正在删除，请稍后审查");
+    void reviewPrompt(force).catch(() => {});
+    return { status: reviewStatus.value, label: reviewLabel.value };
+  },
+});
+nodeTools.register({
+  name: "getPromptReview",
+  description: "按需读取当前编辑稿的辅助审查状态、报告及原文快照。current=false 表示报告已失效；未发现文字问题也不保证生成效果。reviewing 时继续其他工作，不循环查询，不会启动审查或视频生成",
+  parameters: z.strictObject({}),
+  execute: () => ({ status: reviewStatus.value, label: reviewLabel.value, current: reviewCurrent.value, error: reviewError.value || undefined, record: reviewRecord.value }),
+});
+
+registerGenerationTools({
+  configDescription: "读取视频节点配置、模型能力、比例、引用模式和运镜库支持状态 cameraLibrary，不含密钥；运镜目录使用 getCameraPresets 查询。U06 另返回面板 videoOptions（主模型、CLIP、LoRA、默认值和时长限制），专属参数位于 config.other",
+  promptDescription: "修改此节点的视频生成提示词，支持 {{ref 1}} 等参考标记；cameraLibrary.supported 为 true 时可使用运镜库，先用 getCameraPresets 查询并逐字保留返回的 tag，放在 detailed_description 对应镜头中，不猜测 ID 或展开私有提示词；只修改提示词，不启动生成",
+  loadModels, getConfig,
+  setPrompt(value) {
+    if (deleting.value) throw new Error("节点正在删除，请稍后修改");
+    if (!isZealmanU06.value && (generating.value || pendingTask.value)) throw new Error("节点存在未完成任务，请先查询或恢复原视频任务；其他创作可使用 createNewGeneration");
+    data.value.prompt = value;
+    data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
+  },
+  updateDescription: "修改视频节点配置，不启动生成。先用 getConfig 查询能力，providerId 与 modelId 同时提供。seed 为非负安全整数，0 有效，null 使用随机值；U06 支持 other 中的 modelKey、clipKey、loraKey、loraStrength、extraLoraKey、extraLoraStrength、accelerated、steps、upscale、forceVramCleanupBeforeVae，选项键取自 videoOptions。referenceImageInput 为 url 的模型支持 referenceImageUrls；mode 使用 getConfig 返回的原始值，须匹配引用",
+  configSchema: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     duration: z.number().positive().optional(),
@@ -830,12 +906,12 @@ nodeTools.register({
     }).optional(),
     referenceImageUrls: z.array(z.string().min(1).max(8192)).max(9).optional(),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
-  async execute(args, { signal }) {
+  async setConfig(args, signal) {
     signal?.throwIfAborted();
-    if (generating.value || deleting.value || pendingTask.value || taskChecking.value || promptOptimizing.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
+    if (generating.value || deleting.value || pendingTask.value || taskChecking.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
     await loadModels();
     signal?.throwIfAborted();
-    if (generating.value || deleting.value || pendingTask.value || taskChecking.value || promptOptimizing.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
+    if (generating.value || deleting.value || pendingTask.value || taskChecking.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
     const choice = args.modelId === undefined ? selectedModel.value
       : models.value.find((item) => item.providerId === args.providerId && item.modelId === args.modelId);
     if (!choice) throw new Error("请选择 getConfig 返回的有效视频模型");
@@ -845,7 +921,7 @@ nodeTools.register({
     if (u06 && args.seed != null && args.seed < 0) throw new Error("U06 种子须为非负安全整数");
     const options = u06 ? await loadZealmanOptions() : undefined;
     signal?.throwIfAborted();
-    if (generating.value || deleting.value || pendingTask.value || taskChecking.value || promptOptimizing.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
+    if (generating.value || deleting.value || pendingTask.value || taskChecking.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
     const initialU06 = options && Object.keys(data.value.zealmanSettings).length === 0;
     const other = options ? { ...zealmanDefaults(options), ...data.value.zealmanSettings, ...args.other } : undefined;
     if (options && other) {
@@ -864,7 +940,13 @@ nodeTools.register({
     const resolutions = options ? options.resolutions.map(value => `${value}MP`) : getResolutions(choice, duration);
     if (args.resolution !== undefined && !resolutions.includes(args.resolution)) throw new Error(`当前时长不支持分辨率 ${args.resolution}，可选：${resolutions.join("、")}`);
     const resolution = args.resolution ?? (initialU06 ? "0.98MP" : resolutions.includes(data.value.resolution) ? data.value.resolution : resolutions.includes(choice.defaultResolution!) ? choice.defaultResolution! : resolutions[0] ?? "");
-    if (args.mode !== undefined && !getMatchingModes(choice, urls).some((item) => JSON.stringify(item) === JSON.stringify(args.mode))) throw new Error("所选模式不受当前模型支持或不适用于当前引用，请根据模型能力及已连接素材选择");
+    let mode = args.mode;
+    if (typeof mode === "string" && mode.trim().startsWith("[")) {
+      try { mode = z.array(z.string().min(1)).min(1).parse(JSON.parse(mode)); }
+      catch { throw new Error("mode 数组格式无效，请使用 getConfig 返回的 matchingModes 中的原始值"); }
+    }
+    const modes = getMatchingModes(choice, urls);
+    if (mode !== undefined && !modes.some(item => JSON.stringify(item) === JSON.stringify(mode))) throw new Error(`当前素材不支持所选 mode，可选：${modes.map(item => JSON.stringify(item)).join("、") || "无，请先调整参考素材"}`);
     if (args.generateAudio !== undefined && choice.audio !== "optional" && args.generateAudio !== (choice.audio === true)) throw new Error("当前模型不支持切换声音，请查看 getConfig 返回的 audio 能力");
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
     if (options && other) {
@@ -876,22 +958,15 @@ nodeTools.register({
     data.value.duration = duration;
     data.value.resolution = resolution;
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
-    if (args.mode !== undefined) data.value.mode = JSON.stringify(args.mode);
+    if (mode !== undefined) data.value.mode = JSON.stringify(mode);
     if (args.generateAudio !== undefined) data.value.generateAudio = args.generateAudio;
     if (args.seed !== undefined) data.value.seed = args.seed;
     return getConfig();
   },
-});
-
-
-
-nodeTools.register({
-  name: "generateVideo",
-  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 仅停止本地等待，不能保证取消远端任务或费用。有旧任务时恢复原任务；如用户要继续其他创作，可用 createNewGeneration 在新节点继续",
-  parameters: z.strictObject({}),
-  execute(_args, { signal }) {
-    signal?.throwIfAborted();
-    return startGeneration();
+  generate: {
+    name: "generateVideo",
+    description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，默认不轮询等待。提示词审查为可选辅助，无需先审查，审查失败或有问题也可生成。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 仅停止本地等待，不能保证取消远端任务或费用。有旧任务时恢复原任务；如用户要继续其他创作，可用 createNewGeneration 在新节点继续",
+    execute: () => generating.value && !isZealmanU06.value ? { status: "generating" } : startGeneration(),
   },
 });
 if (duplicateCanvasNode) nodeTools.register({
@@ -906,6 +981,16 @@ if (duplicateCanvasNode) nodeTools.register({
 </script>
 
 <style scoped lang="scss">
+.promptReviewStatusRow {
+  display: flex; min-width: 0; padding-top: 4px;
+  :deep(.el-button) { max-width: 100%; margin: 0; }
+  .reviewBadgeText { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.promptReviewTools {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0;
+  :deep(.el-button + .el-button) { margin-left: 0; }
+  > span { color: var(--el-text-color-secondary); font-size: 12px; }
+}
 .videoContent {
   position: relative;
   display: grid;

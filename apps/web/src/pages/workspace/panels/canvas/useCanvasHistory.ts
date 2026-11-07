@@ -12,6 +12,10 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
   const applying = ref(false);
   const grouping = ref(0);
   const nodeReferences = new Map<string, Node>();
+  const pendingDeletions = new Map<string, { node: Node; version: number; edges: Edge[] }>();
+  let previousNodeIds = new Set<string>();
+  let previousEdges: Edge[] = [];
+  let deletionVersion = 0;
   const edgeReferences = new Map<string, Edge>();
   const nodeRuntimeFields = new Set(["data", "computedPosition", "handleBounds", "selected", "dimensions", "isParent", "resizing", "dragging", "events", "initialized"]);
   const edgeRuntimeFields = new Set(["data", "selected", "sourceNode", "targetNode", "sourceX", "sourceY", "targetX", "targetY", "events", "initialized"]);
@@ -22,6 +26,15 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
   const busy = computed(() => applying.value || grouping.value > 0);
 
   function capture(): CanvasSnapshot {
+    const nodeIds = new Set(flow.getNodes.value.map(node => node.id));
+    for (const id of previousNodeIds) {
+      const node = nodeReferences.get(id);
+      if (!nodeIds.has(id) && node) pendingDeletions.set(id, { node, version: ++deletionVersion,
+        edges: previousEdges.filter(edge => edge.source === id || edge.target === id) });
+    }
+    for (const id of nodeIds) pendingDeletions.delete(id);
+    previousNodeIds = nodeIds;
+    previousEdges = [...flow.getEdges.value];
     flow.getNodes.value.forEach(node => nodeReferences.set(node.id, node));
     flow.getEdges.value.forEach(edge => edgeReferences.set(edge.id, edge));
     const fields = (element: Node | Edge, runtimeFields: Set<string>) => Object.fromEntries(
@@ -183,20 +196,34 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
     commit();
   });
 
-  watch(binding, value => {
+  function reset() {
     revision++;
     record.cancel();
     snapshots.value = [];
     cursor.value = -1;
     nodeReferences.clear();
+    pendingDeletions.clear();
+    previousNodeIds.clear();
+    previousEdges = [];
     edgeReferences.clear();
     applying.value = false;
     grouping.value = 0;
     dragging = false;
-    if (value) commit();
-  }, { immediate: true, flush: "sync" });
+    if (binding()) commit();
+  }
+  watch(binding, reset, { immediate: true, flush: "sync" });
   onScopeDispose(() => { revision++; record.cancel(); });
 
-  const getRetainedNodes = () => [...nodeReferences.values(), ...flow.getNodes.value];
-  return { canUndo, canRedo, busy, record, commit, undo, redo, batch, applyRemote, getRetainedNodes };
+  const getRetainedNodes = () => [...nodeReferences.values(), ...[...pendingDeletions.values()].map(entry => entry.node), ...flow.getNodes.value];
+  function getDeletedNodes() {
+    capture();
+    return [...pendingDeletions.values()].map(({ node, version, edges }) => ({ version,
+      node: JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(node).filter(([key]) => key === "data" || !nodeRuntimeFields.has(key))))) as Node,
+      edges: edges.map(edge => JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(edge).filter(([key]) => !edgeRuntimeFields.has(key))))) as Edge),
+    }));
+  }
+  function acknowledgeDeletions(entries: ReturnType<typeof getDeletedNodes>) {
+    for (const entry of entries) if (pendingDeletions.get(entry.node.id)?.version === entry.version) pendingDeletions.delete(entry.node.id);
+  }
+  return { canUndo, canRedo, busy, record, commit, undo, redo, batch, applyRemote, getRetainedNodes, reset, getDeletedNodes, acknowledgeDeletions };
 }

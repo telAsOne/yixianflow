@@ -1,21 +1,29 @@
 import { $ } from "bun";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
-import { copyFile, existsSync, mkdir, readFile, writeAtomic } from "@toonflow/file";
+import { copyFile, existsSync, mkdir, readFile, readdir, writeAtomic } from "@toonflow/file";
 import { getToolStatus, installFfmpeg } from "@toonflow/ffmpeg";
+import { build } from "vite";
 import { helperVersion } from "../src/protocol";
 
 if (process.platform !== "win32" || process.arch !== "x64") throw new Error("请在 Windows x64 使用仓库固定的 Bun 构建");
 const root = resolve(import.meta.dirname, "../../..");
+const sdkDirectory = join(root, "build/localHelperSdk/webView2");
+const webViewFiles = ["Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll", "WebView2Loader.dll"];
+if (webViewFiles.some(name => !existsSync(join(sdkDirectory, name))) || !existsSync(join(sdkDirectory, "webView2License.txt")))
+  throw new Error("请先显式准备 SDK：bun apps/localHelper/scripts/prepareWindows.ts");
 const destination = resolve(process.argv[2] || join(root, "build/localHelper"));
 if (existsSync(destination)) throw new Error("产物目录已存在，请传入新的目录以保留历史产物");
 const bundle = join(destination, "unionFlfowHelper");
 await mkdir(bundle, { recursive: true });
+process.env.helperUiOutput = join(bundle, "ui");
+await build({ configFile: join(root, "apps/localHelper/vite.config.ts") });
+for (const name of webViewFiles) await copyFile(join(sdkDirectory, name), join(bundle, name));
 const windowsDirectory = process.env.SystemRoot || "C:\\Windows";
 const powershell = join(windowsDirectory, "System32/WindowsPowerShell/v1.0/powershell.exe");
 const csc = join(windowsDirectory, "Microsoft.NET/Framework64/v4.0.30319/csc.exe");
 
-// 沿用 UnionAigc 图标的 96×96 几何图形，通过系统绘图库生成 ICO，不增加构建依赖。
+// 沿用 UnionAIGC 图标的 96×96 几何图形，通过系统绘图库生成 ICO，不增加构建依赖。
 const iconScript = `Add-Type -AssemblyName System.Drawing
 $bitmap = New-Object System.Drawing.Bitmap(96,96)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -43,7 +51,7 @@ icon.writeUInt16LE(1, 2); icon.writeUInt16LE(1, 4); icon[6] = 96; icon[7] = 96;
 icon.writeUInt16LE(1, 10); icon.writeUInt16LE(32, 12); icon.writeUInt32LE(png.length, 14); icon.writeUInt32LE(22, 18); png.copy(icon, 22);
 const iconPath = join(bundle, "unionIcon.ico");
 await writeAtomic(iconPath, icon);
-await $`${csc} /nologo /codepage:65001 /target:winexe /platform:x64 /optimize+ /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll /win32icon:${iconPath} /out:${join(bundle, "unionFlfowHelper.exe")} ${join(root, "apps/localHelper/native/tray.cs")}`;
+await $`${csc} /nologo /codepage:65001 /target:winexe /platform:x64 /optimize+ /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll /reference:${join(sdkDirectory, "Microsoft.Web.WebView2.Core.dll")} /reference:${join(sdkDirectory, "Microsoft.Web.WebView2.WinForms.dll")} /win32icon:${iconPath} /out:${join(bundle, "unionFlfowHelper.exe")} ${join(root, "apps/localHelper/native/tray.cs")}`;
 await $`${process.execPath} build ${join(root, "apps/localHelper/src/index.ts")} --compile --target=bun-windows-x64 --minify --outfile ${join(bundle, "localWorker.exe")}`.cwd(root);
 
 console.log("准备内置 FFmpeg 和 ffprobe 6.1.1（下载时校验固定 SHA-256）");
@@ -55,6 +63,7 @@ await installFfmpeg(join(bundle, "tools"), "npmmirror", AbortSignal.timeout(15 *
 const versions = await getToolStatus(join(bundle, "tools"), "download");
 if (Object.values(versions).some(tool => !tool.version || tool.error)) throw new Error("内置媒体工具无法运行");
 await mkdir(join(bundle, "licenses"));
+await copyFile(join(sdkDirectory, "webView2License.txt"), join(bundle, "licenses/webView2License.txt"));
 for (const [name, url] of [
   ["ffmpegLicense.txt", "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.LICENSE"],
   ["ffmpegReadme.txt", "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/win32-x64.README"],
@@ -69,7 +78,9 @@ for (const [name, url] of [
 await copyFile(join(root, "LICENSE"), join(bundle, "licenses/projectLicense.txt"));
 await copyFile(join(dirname(Bun.resolveSync("fflate", import.meta.dirname)), "../LICENSE"), join(bundle, "licenses/fflateLicense.txt"));
 await copyFile(join(root, "docs/localHelperWindows.md"), join(bundle, "readme.md"));
-const files = ["unionFlfowHelper.exe", "localWorker.exe", "tools/ffmpeg.exe", "tools/ffprobe.exe"];
+const files = ["unionFlfowHelper.exe", "localWorker.exe", "tools/ffmpeg.exe", "tools/ffprobe.exe", ...webViewFiles,
+  "unionIcon.ico", "readme.md", "ui/index.html", ...(await readdir(join(bundle, "ui/assets"))).map(name => `ui/assets/${name}`),
+  ...(await readdir(join(bundle, "licenses"))).map(name => `licenses/${name}`)];
 const hashes = Object.fromEntries(await Promise.all(files.map(async path => [path, createHash("sha256").update(await readFile(join(bundle, path))).digest("hex")])));
 await writeAtomic(join(bundle, "manifest.json"), JSON.stringify({ version: helperVersion, platform: "windowsX64", bunVersion: Bun.version,
   ffmpegVersion: "6.1.1", server: "https://yixian.lol/flow/", hashes }, null, 2));

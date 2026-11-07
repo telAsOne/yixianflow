@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="登录 UnionAigc" width="420px" alignCenter appendToBody :showClose="!starting" :closeOnClickModal="!starting" :closeOnPressEscape="!starting" @close="waiting && cancel()" @closed="stopWaiting">
+  <el-dialog v-model="visible" title="登录 UnionAIGC" width="420px" alignCenter appendToBody :showClose="!starting" :closeOnClickModal="!starting" :closeOnPressEscape="!starting" @close="waiting && cancel()" @closed="stopWaiting">
     <div class="signIn">
       <p>登录或注册以开始。</p>
       <p v-if="waiting" role="status">等待浏览器完成授权…</p>
