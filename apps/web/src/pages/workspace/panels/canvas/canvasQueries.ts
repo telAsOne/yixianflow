@@ -146,7 +146,7 @@ export function createCanvasQueries(source: {
   const sessionId = crypto.randomUUID();
   function findNode(id: string) {
     const node = source.findNode(id);
-    if (!node) throw new Error(`节点不存在：${id}`);
+    if (!node) throw new Error(`节点已不存在：${id}。请先用 findCanvasNodes 重新查询当前节点，不要继续使用旧编号`);
     return node;
   }
 

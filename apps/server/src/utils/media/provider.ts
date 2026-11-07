@@ -274,7 +274,7 @@ async function directory(create = false) {
 }
 
 async function readProvider(path: string, fileName: string) {
-  if (fileName !== "yixianVideo.ts") invalid("仅支持逸仙提供方", 403);
+  if (fileName !== "yixianVideo.ts") invalid("仅支持 UnionAIGC 提供方", 403);
   const file = join(path, fileName);
   const info = await lstat(file);
   if (info.isSymbolicLink() || !info.isFile()) invalid("供应商文件不能是符号链接或目录", 403);
@@ -334,14 +334,14 @@ export async function saveMediaProvider(fileName: string, models: z.infer<typeof
 }
 
 export function getMediaProviderApiKey(id: string) {
-  if (id !== "yixianVideo") invalid("仅支持逸仙提供方");
+  if (id !== "yixianVideo") invalid("仅支持 UnionAIGC 提供方");
   return getApiKey();
 }
 
 export async function loadMediaProviderSource(source: string, config: Record<string, unknown> = {}, signal?: AbortSignal, fetchRequest: typeof fetch = Object.assign(platformFetch, { preconnect: fetch.preconnect }), cwd?: string, videoTask?: VideoTaskContext, imageTask?: ImageTaskContext) {
   signal?.throwIfAborted();
   const { id } = parseProvider(source);
-  if (id !== "yixianVideo") invalid("仅支持逸仙提供方");
+  if (id !== "yixianVideo") invalid("仅支持 UnionAIGC 提供方");
   // ACT: VM 只隔离可信供应商的全局上下文；不可信代码需要独立进程等更强隔离。
   const context = createContext({
     Buffer, URL, URLSearchParams, TextEncoder, TextDecoder, Blob, FormData,

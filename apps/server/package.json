@@ -5,6 +5,7 @@
   "exports": {
     "./app": "./src/app.ts",
     "./canvasMerge": "./src/utils/workspace/canvasMerge.ts",
+    "./recycleTypes": "./src/utils/workspace/recycleTypes.ts",
     "./remoteConnection": "./src/remoteConnection.ts",
     "./desktop": "./src/types/desktop.ts",
     "./clientFiles": "./src/utils/desktop/clientFiles.ts",

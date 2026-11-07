@@ -148,6 +148,13 @@ export function useNodeToolsContext() {
         ]);
         callSignal.throwIfAborted();
         return result ?? null;
+      } catch (error) {
+        const failure = error as { name?: string; issues?: z.ZodError["issues"] } | null;
+        if (failure?.name !== "ZodError" || !Array.isArray(failure.issues)) throw error;
+        const fields = Object.keys((entry.parameters.properties ?? {}) as Record<string, unknown>);
+        const message = failure.issues.map(issue => issue.code === "unrecognized_keys"
+          ? `不支持参数 ${issue.keys.join("、")}` : `${issue.path.map(String).join(".") || "参数"}：${issue.message}`).join("；");
+        throw new Error(`节点函数 ${name} 参数校验失败：${message}。允许参数：${fields.length ? fields.join("、") : "无，请传 {}"}。请按 getNodeTools 返回的 parameters 修正；不要重复提交已启动的生成。`);
       } finally {
         callSignal.removeEventListener("abort", cancel);
       }

@@ -7,7 +7,7 @@
       <el-button text :icon="IconX" aria-label="收起节点面板" title="收起节点面板" @click="emit('close')" />
     </div>
     <div class="inspectorContent">
-      <el-alert v-if="requiresModel && !accountView?.authenticated" class="modelNotice" title="登录 UnionAigc 账户后使用生成模型" type="info" :closable="false" showIcon>
+      <el-alert v-if="requiresModel && !accountView?.authenticated" class="modelNotice" title="登录 UnionAIGC 账户后使用生成模型" type="info" :closable="false" showIcon>
         <el-button text type="primary" @click="signInVisible = true">登录 / 注册</el-button>
       </el-alert>
       <slot />

@@ -5,15 +5,20 @@ import { readWebAccount } from "@/utils/web/auth";
 import { webContext } from "@/lib/webContext";
 import { getSettings } from "@/utils/conf";
 import { refreshConfig, platformFetch } from "@/utils/account";
-import { getConfiguredModel } from "@/utils/ai";
+import { getConfiguredModel, streamAi } from "@/utils/ai";
+import { z } from "zod";
+import { parseSubtitleReview, subtitleReviewInstruction } from "@toonflow/local-helper/subtitleProtocol";
 
 const activeChats = new Set<string>();
 
-export async function chat(req: Request) {
-  const input = helperChatRequest.parse(req.body);
+export async function chat(req: Request, review = false) {
+  const reviewInput = review ? z.object({ text: z.string().min(1).max(24000) }).parse(req.body) : undefined;
+  const input = reviewInput ? { messages: [{ role: "user" as const, content: reviewInput.text }] }
+    : helperChatRequest.parse(req.body);
   const device = await requireReadyDevice(req);
-  if (activeChats.has(device.id)) throw Object.assign(new Error("本机智能体正在回复，请等待或停止当前回复"), { status: 409 });
-  activeChats.add(device.id);
+  const requestKey = `${device.id}:${review ? "subtitle" : "chat"}`;
+  if (activeChats.has(requestKey)) throw Object.assign(new Error("本机文本请求正在处理，请稍后重试"), { status: 409 });
+  activeChats.add(requestKey);
   const controller = new AbortController();
   const abort = () => controller.abort();
   req.res!.once("close", abort);
@@ -24,10 +29,26 @@ export async function chat(req: Request) {
       await refreshConfig(false);
       const selection = (getSettings().defaultModels as { text?: { modelId: string } } | undefined)?.text;
       if (!selection) throw Object.assign(new Error("当前账户没有可用的默认文本模型"), { status: 400 });
-      const { model } = getConfiguredModel("yixian", selection.modelId);
+      const configured = getConfiguredModel("yixian", selection.modelId);
+      const { model } = configured;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]);
+      if (reviewInput) {
+        const stream = await streamAi({ ...configured, model: { ...model, maxOutputTokens: Math.min(model.maxOutputTokens, 8192) } }, {
+          systemPrompt: subtitleReviewInstruction,
+          messages: [{ role: "user", content: reviewInput.text, timestamp: Date.now() }],
+        }, signal);
+        const reply = await stream.result();
+        if (reply.stopReason === "error" || reply.stopReason === "aborted")
+          throw Object.assign(new Error(reply.errorMessage || "字幕校对请求失败，当前字幕已保留"), { status: 502 });
+        if (reply.stopReason === "length") throw Object.assign(new Error("字幕校对回复不完整，当前字幕已保留"), { status: 502 });
+        if (reply.content.some(part => part.type === "toolCall")) throw Object.assign(new Error("字幕校对返回了不允许的工具调用"), { status: 502 });
+        const content = reply.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+        try { return { message: { role: "assistant" as const, content: JSON.stringify(parseSubtitleReview(content)) }, model: model.label }; }
+        catch { throw Object.assign(new Error("AI 校对返回的数据格式不正确，本次未应用修改"), { status: 502 }); }
+      }
       const response = await platformFetch(new URL("/v1/chat/completions", account.account.baseUrl), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]),
+        signal,
         body: JSON.stringify({ model: model.id, stream: false, max_tokens: Math.min(model.maxOutputTokens, 8192),
           messages: [{ role: "system", content: `你是 UnionFlow Windows 托盘中的本机智能体。使用中文回应，主要协助网页端处理本机，也可直接与用户聊天。你通过工具清单发现能力，不猜测工具结果。\n${localComputerGuidelines.join("\n")}` }, ...input.messages],
           tools: [{ type: "function", function: { name: "localComputer", description: localComputerDescription, parameters: localComputerParameters } }],
@@ -48,7 +69,7 @@ export async function chat(req: Request) {
       return { message, model: model.label };
     });
   } finally {
-    activeChats.delete(device.id);
+    activeChats.delete(requestKey);
     req.res!.off("close", abort);
   }
 }

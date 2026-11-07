@@ -18,6 +18,7 @@
         <label>语言（留空自动识别）<input v-model="language" :disabled="!ready || busy" /></label>
       </div>
       <p class="taskStatus" role="status">{{ statusLabel }}</p>
+      <p v-if="data.subtitleReview" class="taskStatus">AI 已修正 {{ data.subtitleReview.changed }} 处，记录 {{ data.subtitleReview.issueCount }} 条{{ data.subtitleReview.error ? '；审查未完成，已使用可用字幕继续处理' : '' }}</p>
       <p v-if="error" class="subtitleError" role="alert">{{ error }}</p>
       <segmentTable v-model="draft" :disabled="!ready || busy" />
       <div class="saveActions">
@@ -57,11 +58,12 @@ type SubtitleData = {
   subtitlePath?: string; subtitleSnapshot?: string; subtitleDraft?: DraftSegment[];
   taskId?: string; taskDirectory?: string; resultPath?: string; subtitlePhase?: string; subtitleError?: string;
   subtitleModel?: WhisperModel; subtitleLanguage?: string;
+  subtitleReview?: { changed: number; issueCount: number; error?: string };
 };
 const data = computed(() => node.data as typeof node.data & SubtitleData);
 const subtitlePath = `assets/${id}/subtitle.srt`;
-const models = ["tiny", "base", "small", "medium", "large", "turbo"] as const;
-const model = computed({ get: () => data.value.subtitleModel ?? (models.includes(config.value.defaultModel as WhisperModel) ? config.value.defaultModel as WhisperModel : "small"),
+const models = ["auto", "tiny", "base", "small", "medium", "large", "turbo"] as const;
+const model = computed({ get: () => data.value.subtitleModel ?? (models.includes(config.value.defaultModel as WhisperModel) ? config.value.defaultModel as WhisperModel : "auto"),
   set: (value: WhisperModel) => { data.value.subtitleModel = value; } });
 const language = computed({ get: () => data.value.subtitleLanguage ?? "", set: (value: string) => { data.value.subtitleLanguage = value; } });
 const inputs = ref<NodeInputValue[]>([]);
@@ -97,7 +99,7 @@ const sourceLabel = computed(() => {
   return `媒体输入：${title || fileName}`;
 });
 const statusLabel = computed(() => ({
-  idle: "", preparing: "正在准备本地 Whisper", downloadingModel: "正在下载 Whisper 模型", transcribing: "正在转录", writing: "正在写入生成结果",
+  idle: "", preparing: "等待本地助手准备识别", downloadingModel: "正在下载 Whisper 模型", transcribing: "本地助手正在转录", reviewing: "AI 自动校对，疑问仅记录", writing: "正在回传并保存字幕结果",
   draft: "生成完成，草稿待保存", saved: "字幕已保存", cancelled: "生成已取消", failed: "生成或读取失败",
 } as Record<string, string>)[phase.value] ?? phase.value);
 
@@ -221,11 +223,13 @@ async function consumeResult(resultPath: string, resultFiles: WorkspaceFiles, cu
 async function monitorTask(current: NonNullable<typeof currentJob>, resultFiles: WorkspaceFiles, initial: WhisperTask) {
   let task = initial;
   while (true) {
+    if (disposed) return;
     if (current.cancelled) {
       cancelJob();
       if (current.cancelPromise) task = await current.cancelPromise;
     }
     phase.value = task.phase;
+    if (task.review) data.value.subtitleReview = task.review;
     generationState.syncTask({ ...task, startedAt: ((node.data as Record<string, unknown>).generationTiming as { startedAt?: number } | undefined)?.startedAt ?? Date.now() });
     if (!task.running) break;
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -349,7 +353,6 @@ nodeEvent.on("delete", async () => {
 });
 onScopeDispose(() => {
   disposed = true;
-  cancelAndWait().catch(reportError);
 });
 function subtitleStatus() {
   let draftReady = ready.value;

@@ -30,18 +30,29 @@ export async function loadToolComponent(toolName: string): Promise<Component | u
   }
   let pending = componentLoads.get(renderer.url);
   if (!pending) {
-    pending = new Promise<Record<string, Component>>((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = renderer.url;
-      script.onload = () => {
-        script.remove();
-        const components = toolWindow.toonflowToolViews?.[renderer.name];
-        if (!components || typeof components !== "object") reject(new Error(`工具包未导出界面：${renderer.name}`));
-        else resolve(components);
-      };
-      script.onerror = () => { script.remove(); reject(new Error("工具界面脚本加载失败")); };
-      document.head.append(script);
-    }).catch(error => { componentLoads.delete(renderer.url); throw error; });
+    pending = (async () => {
+      const response = await fetch(renderer.url);
+      if (!response.ok) throw new Error(`工具界面脚本加载失败（HTTP ${response.status}）`);
+      const code = await response.text();
+      return new Promise<Record<string, Component>>((resolve, reject) => {
+        const script = document.createElement("script");
+        const objectUrl = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+        script.src = objectUrl;
+        script.onload = () => {
+          script.remove();
+          URL.revokeObjectURL(objectUrl);
+          const components = toolWindow.toonflowToolViews?.[renderer.name];
+          if (!components || typeof components !== "object") reject(new Error(`工具包未导出界面：${renderer.name}`));
+          else resolve(components);
+        };
+        script.onerror = () => {
+          script.remove();
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("工具界面脚本加载失败"));
+        };
+        document.head.append(script);
+      });
+    })().catch(error => { componentLoads.delete(renderer.url); throw error; });
     componentLoads.set(renderer.url, pending);
   }
   const components = await pending;

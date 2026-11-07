@@ -1,5 +1,5 @@
 import { open } from "@toonflow/file";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { BrowserFfmpegRequest, FfmpegCall } from "./browserTypes";
 
@@ -15,23 +15,36 @@ const valueOptions = new Set("c codec vcodec acodec b ab vb r ar ac crf preset p
 
 function invalid(message: string): never { throw Object.assign(new Error(message), { status: 403 }); }
 
-export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resolvePath: (path: string) => Promise<string>, allowRawOptions: boolean) {
+export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resolvePath: (path: string) => Promise<string>, allowRawOptions: boolean,
+  transfer?: { mapPath: (path: string) => string; isLocalPath?: (path: string) => boolean }) {
   const workingDirectory = request.options.cwd ? await resolvePath(request.options.cwd) : request.directory;
   const inputs: string[] = [];
+  const files = new Set<string>();
+  const outputs = new Set<string>();
+  const folders = new Set<string>();
+  const manifests = new Map<string, string>();
   const concatFiles = new Set<string>();
-  if (request.options.source) inputs.push(await resolvePath(request.options.source));
+  if (request.options.source) {
+    const path = await resolvePath(request.options.source);
+    inputs.push(path);
+    files.add(path);
+    if (transfer) request.options.source = transfer.mapPath(path);
+  }
+  if (transfer && request.options.cwd) request.options.cwd = transfer.mapPath(workingDirectory);
 
   async function validateFormat(format: string, input?: string) {
+    if (input && transfer?.isLocalPath?.(input)) return;
     if (/^(hls|dash|sdp|lavfi)$/i.test(format) || /^concat$/i.test(format) && !input) invalid("不允许通过媒体清单间接访问文件");
     if (!/^concat$/i.test(format) || !input || concatFiles.has(input)) return;
     const handle = await open(input, "r");
     const stream = handle.createReadStream({ encoding: "utf8", autoClose: false });
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
+    const content: string[] = [];
     stream.on("error", error => lines.emit("error", error));
     try {
       for await (const line of lines) {
         if (/^[ \t]*(?:#.*)?$/.test(line) || /^[ \t]*ffconcat[ \t]+version[ \t]+1\.0[ \t]*$/.test(line)
-          || /^[ \t]*(?:duration|inpoint|outpoint)[ \t]+[^\s\x00-\x1f]+[ \t]*$/.test(line)) continue;
+          || /^[ \t]*(?:duration|inpoint|outpoint)[ \t]+[^\s\x00-\x1f]+[ \t]*$/.test(line)) { content.push(line); continue; }
         // ACT: 只开放拼接所需指令；按 FFmpeg 的单引号和反斜杠规则解析文件名，拒绝 option 等间接配置。
         const token = /^[ \t]*file[ \t]+((?:[^\\'\s\x00-\x1f]|\\[^\r\n]|'[^'\r\n]*')+)[ \t]*$/.exec(line)?.[1];
         if (!token) invalid("concat 清单仅支持 file、duration、inpoint、outpoint 和 ffconcat version 1.0");
@@ -39,9 +52,13 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
         if (!path || /[\x00-\x1f]/.test(path) || /^[a-z][a-z\d+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) {
           invalid("FFmpeg 文件路径无效，不能使用协议或设备路径");
         }
-        await resolvePath(resolve(dirname(input), path));
+        const source = await resolvePath(transfer?.isLocalPath?.(path) ? path : resolve(dirname(input), path));
+        files.add(source);
+        const local = (transfer?.isLocalPath?.(source) ? source : relative(dirname(input), source)).replaceAll("\\", "/").replaceAll("'", "'\\''");
+        content.push(`file '${local}'`);
       }
       concatFiles.add(input);
+      manifests.set(input, content.join("\n"));
     } finally {
       lines.close();
       stream.destroy();
@@ -50,10 +67,12 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
   }
 
   async function fileFilterPath(value: unknown) {
+    if (typeof value === "string" && transfer?.isLocalPath?.(value)) return;
     if (typeof value !== "string" || !value || /[\\:'";,\[\]\x00-\x1f]/.test(value) || value.startsWith("/") || value.split("/").includes("..")) {
       invalid("FFmpeg 文件路径无效，不能使用协议或设备路径");
     }
-    await resolvePath(resolve(workingDirectory, value));
+    const path = await resolvePath(resolve(workingDirectory, value));
+    files.add(path);
   }
 
   async function validateFilter(value: unknown): Promise<void> {
@@ -85,7 +104,7 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
     for (const [key, value] of values) {
       if (/[\\:'";,\[\]\x00-\x1f]/.test(String(key))) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
       if (value !== undefined && typeof value !== "number" && (typeof value !== "string" || /[\\'";,\[\]\x00-\x1f]/.test(value))) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
-      if (fileFilters.has(item.filter) && typeof value === "string" && value.includes(":")) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
+      if (fileFilters.has(item.filter) && typeof value === "string" && value.includes(":") && !transfer?.isLocalPath?.(value)) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
     }
   }
 
@@ -100,9 +119,10 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
       const name = /^-([a-z_]+)(?::[\w:]+)?$/i.exec(option)?.[1];
       if (!name) invalid("原始参数不在允许范围内，请使用专用方法");
       if (switches.has(name)) continue;
-      if (!["vf", "af", "filter_complex"].includes(name) && !valueOptions.has(name)) invalid("原始参数不在允许范围内，请使用专用方法");
+      if (!["vf", "af", "filter_complex", "protocol_whitelist"].includes(name) && !valueOptions.has(name)) invalid("原始参数不在允许范围内，请使用专用方法");
       const value = values[++index];
       if (value === undefined) invalid("原始参数不在允许范围内，请使用专用方法");
+      if (name === "protocol_whitelist" && value !== "file,pipe") invalid("只能使用本地文件协议");
       if (["vf", "af", "filter_complex"].includes(name)) await validateFilter(value);
       if (name === "safe") {
         if (!input || !/^[01]$/.test(value)) invalid("原始参数不在允许范围内，请使用专用方法");
@@ -116,7 +136,9 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
     if (inputMethods.has(call.method) || outputMethods.has(call.method)) {
       if (typeof call.args[0] !== "string") invalid("浏览器 FFmpeg 输入、输出必须使用工作区文件路径");
       const path = await resolvePath(call.args[0]);
-      if (inputMethods.has(call.method)) inputs.push(path);
+      if (inputMethods.has(call.method)) { inputs.push(path); files.add(path); }
+      else outputs.add(path);
+      if (transfer) call.args[0] = transfer.mapPath(path);
     }
     if (/options?$/i.test(call.method)) {
       if (!allowRawOptions) invalid("配对设备不能使用 FFmpeg 原始参数或滤镜");
@@ -134,12 +156,18 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
     }
     if (screenshotMethods.has(call.method)) {
       const options = call.args[0];
+      let folder = typeof call.args[1] === "string" ? call.args[1] : workingDirectory;
       if (options && typeof options === "object" && !Array.isArray(options)) {
-        const { folder, filename } = options as { folder?: string; filename?: string };
-        if (folder) await resolvePath(folder);
-        if (filename) await resolvePath(resolve(workingDirectory, folder ?? "", filename));
+        const settings = options as { folder?: string; filename?: string };
+        folder = settings.folder ?? folder;
+        if (settings.filename) await resolvePath(resolve(workingDirectory, folder, settings.filename));
       }
-      if (typeof call.args[1] === "string") await resolvePath(call.args[1]);
+      const path = await resolvePath(folder);
+      folders.add(path);
+      if (transfer) {
+        call.args[0] = { ...(typeof options === "number" ? { count: options } : options as object), folder: transfer.mapPath(path) };
+        call.args = call.args.slice(0, 1);
+      }
     }
     if (call.method === "ffprobe") {
       const args = call.args.map((value, index) => call.undefinedArgs?.includes(index) ? undefined : value);
@@ -159,7 +187,8 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
       delete call.undefinedArgs;
     }
   }
-  // ACT: 仅约束 JSON 桥接中的显式参数；媒体容器自身的间接文件引用仍需要进程级文件系统隔离。
+  // ACT: 工作区只解析显式参数；本地助手按当前 Windows 用户权限访问本机文件。
   const protocol: FfmpegCall = { method: "inputOptions", args: ["-protocol_whitelist", "file,pipe"] };
-  request.calls = [...(request.options.source ? [protocol] : []), ...request.calls.flatMap(call => inputMethods.has(call.method) ? [call, protocol] : [call])];
+  if (!transfer) request.calls = [...(request.options.source ? [protocol] : []), ...request.calls.flatMap(call => inputMethods.has(call.method) ? [call, protocol] : [call])];
+  return { files, outputs, folders, manifests };
 }

@@ -3,15 +3,21 @@ import { setTimeout } from "node:timers/promises";
 import { resolve, dirname } from "node:path";
 import { stat } from "@toonflow/file";
 import type { Request } from "express";
-import { helperVersion, localComputerRequest, type LocalComputerRequest, type LocalHelperDevice, type LocalHelperJob, type LocalHelperResult, type LocalHelperStatus } from "@toonflow/local-helper/protocol";
+import { helperVersion, localHelperRequest, type LocalHelperRequest, type LocalMediaStatus, type LocalHelperDevice, type LocalHelperJob, type LocalHelperResult, type LocalHelperStatus } from "@toonflow/local-helper/protocol";
 import { isWebMode, requireWebAccount, webContext } from "@/lib/webContext";
 import { getWebDatabase, hashWebToken } from "@/utils/web/store";
 import conf from "@/utils/conf";
 
 export { chat } from "./chat";
 export { deviceProjects, prepareTransfer, uploadFile, downloadFile, finishTransfer } from "./files";
+export { getUpdate, downloadUpdate } from "./update";
+export { mediaInput, mediaOutput, mediaEvent, executeMedia } from "./media";
 
 const registrationLimits = new Map<string, { count: number; until: number }>();
+const mediaStatuses = new Map<string, LocalMediaStatus>();
+
+export function getMediaStatus(id: string) { return mediaStatuses.get(id); }
+export function setMediaStatus(id: string, status: LocalMediaStatus) { mediaStatuses.set(id, status); }
 
 function unavailable(message: string, status = 409) { return Object.assign(new Error(message), { status }); }
 
@@ -71,6 +77,7 @@ export async function revokeDevice(id: string, ownerId = requireWebAccount().use
     await transaction`UPDATE yixianflow.localCalls SET status = 'cancelled', error = '设备已解除绑定', "finishedAt" = CURRENT_TIMESTAMP
       WHERE "deviceId" = ${id} AND status IN ('queued', 'running')`;
   });
+  mediaStatuses.delete(id);
 }
 
 export async function registerDevice(req: Request, input: { id: string; code: string; name: string; version: string }) {
@@ -120,13 +127,16 @@ export async function disconnectDevice(req: Request) {
   await sql`DELETE FROM yixianflow.localDevices WHERE id = ${device.id} AND "ownerId" IS NULL`;
 }
 
-export async function pollDevice(req: Request, input: { activeId?: string; approved: boolean; paused: boolean; autoExecute: boolean; version: string }) {
+export async function pollDevice(req: Request, input: { activeId?: string; approved: boolean; paused: boolean; autoExecute: boolean; version: string; media?: LocalMediaStatus; subtitleTasks?: string[] }) {
   const device = await authenticateDevice(req);
+  if (input.media) mediaStatuses.set(device.id, input.media);
   const sql = getWebDatabase();
   await sql`UPDATE yixianflow.localDevices SET "lastSeenAt" = CURRENT_TIMESTAMP,
     approved = ${input.approved && !!device.ownerId}, paused = ${input.paused}, "autoExecute" = ${input.autoExecute}, version = ${input.version}
     WHERE id = ${device.id}`;
   const owner = device.ownerId ? { id: device.ownerId, name: device.ownerName ?? String(device.ownerId) } : null;
+  const subtitleCancelled = input.subtitleTasks?.length
+    ? await import("@/utils/whisper/runtime").then(module => module.cancelledSubtitles(device.id, device.ownerId, input.subtitleTasks!)) : [];
   const deadline = Date.now() + 18000;
   do {
     if (req.res?.destroyed) break;
@@ -138,7 +148,7 @@ export async function pollDevice(req: Request, input: { activeId?: string; appro
           AND "expiresAt" > CURRENT_TIMESTAMP AND "seenAt" > CURRENT_TIMESTAMP - INTERVAL '30 minutes'))`;
     const cancelled = input.activeId ? await sql`SELECT id FROM yixianflow.localCalls WHERE id = ${input.activeId}
       AND "deviceId" = ${device.id} AND status <> 'running'` : [];
-    if (cancelled.length) return { owner, job: null, cancelled: cancelled.map((item: { id: string }) => item.id) };
+    if (cancelled.length) return { owner, job: null, cancelled: cancelled.map((item: { id: string }) => item.id), subtitleCancelled };
     if (owner && input.approved && !input.paused && !input.activeId) {
       const job = await sql.begin(async transaction => {
         const [available] = await transaction`SELECT id FROM yixianflow.localDevices WHERE id = ${device.id} AND NOT revoked FOR UPDATE`;
@@ -155,13 +165,13 @@ export async function pollDevice(req: Request, input: { activeId?: string; appro
           ) RETURNING id, nonce, request`;
         return call as LocalHelperJob | undefined ?? null;
       });
-      if (job) return { owner, job, cancelled: [] };
+      if (job) return { owner, job, cancelled: [], subtitleCancelled };
     }
     // 首次绑定立即通知本机，让托盘完成本地授权。
     if (!input.approved || input.paused) break;
     await setTimeout(1000);
   } while (Date.now() < deadline);
-  return { owner, job: null, cancelled: [] };
+  return { owner, job: null, cancelled: [], subtitleCancelled };
 }
 
 export async function completeDeviceCall(req: Request, input: LocalHelperResult) {
@@ -184,19 +194,23 @@ export async function getSelectedDevice() {
   const context = webContext.getStore();
   if (!context) return;
   const sql = getWebDatabase();
-  const [device] = await sql`SELECT device.id, device.name FROM yixianflow.localDevices AS device
+  const [device] = await sql`SELECT device.id, device.name, device.version, device.approved, device.paused,
+    (device."lastSeenAt" > CURRENT_TIMESTAMP - INTERVAL '45 seconds') AS online FROM yixianflow.localDevices AS device
     JOIN yixianflow.sessions AS session ON session."localDeviceId" = device.id
     WHERE session.hash = ${context.sessionHash} AND device."ownerId" = ${context.account.user.id} AND NOT device.revoked`;
-  if (device) return { id: device.id as string, name: device.name as string, ownerId: context.account.user.id, sessionHash: context.sessionHash };
+  if (device) return { id: device.id as string, name: device.name as string, version: device.version as string,
+    ready: device.approved && !device.paused && device.online === true, ownerId: context.account.user.id, sessionHash: context.sessionHash };
 }
 
-export async function callDevice(device: NonNullable<Awaited<ReturnType<typeof getSelectedDevice>>>, request: LocalComputerRequest, signal?: AbortSignal) {
+export async function callDevice(device: NonNullable<Awaited<ReturnType<typeof getSelectedDevice>>>, request: LocalHelperRequest, signal?: AbortSignal) {
   signal?.throwIfAborted();
-  request = localComputerRequest.parse(request);
+  request = localHelperRequest.parse(request);
+  if (request.action.startsWith("subtitle") && !Bun.semver.satisfies(device.version, ">=0.6.0"))
+    throw unavailable("请将本地助手升级到 0.6.0 后使用字幕任务", 424);
   const sql = getWebDatabase();
   const id = crypto.randomUUID();
   const timeout = ("timeoutSeconds" in request ? request.timeoutSeconds ?? (request.action === "install" ? 1200 : 60)
-    : ["upload", "download"].includes(request.action) ? 900 : 60) * 1000 + 180000;
+    : request.action === "ffmpeg" ? 7200 : ["upload", "download", "ffmpegInstall", "subtitleTranscribe", "subtitleStart", "subtitleScan"].includes(request.action) ? 900 : 60) * 1000 + 180000;
   await sql.begin(async transaction => {
     const [available] = await transaction`SELECT id FROM yixianflow.localDevices
       WHERE id = ${device.id} AND "ownerId" = ${device.ownerId} AND NOT revoked AND approved AND NOT paused

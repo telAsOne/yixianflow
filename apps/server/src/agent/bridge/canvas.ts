@@ -35,7 +35,7 @@ export function createCanvasContext(cwd: string, canvas: CanvasInfo, send: (even
           const abort = () => finish({ error: "画布调用已取消" });
           // 人工确认超时先由前端关闭窗口，额外留出取消结果的回传时间。
           const timeout = getCanvasCallTimeout(operation.name) + (operation.name === "arrangeCanvas" ? 10000 : 0);
-          const timer = setTimeout(() => finish({ error: "画布调用超时，请确认画布仍然打开" }), timeout);
+          const timer = setTimeout(() => finish({ error: "画布调用超时，操作回执尚未确认。请确认目标画布仍然打开，先查询节点、输出及原任务状态；不要直接重试新建节点或生成" }), timeout);
           pendingCalls.set(callId, { cwd, finish });
           activeCalls.add(callId);
           signal?.addEventListener("abort", abort, { once: true });

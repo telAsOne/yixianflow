@@ -1,29 +1,12 @@
 import { Router } from "express";
-import { z } from "zod";
 import type { BrowserFfmpegRequest } from "@toonflow/ffmpeg";
+import { ffmpegRequest } from "@toonflow/local-helper/protocol";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 import u from "@/utils";
 import { translateError, validationOptions } from "@/lib/i18n";
 
-const callSchema = z.object({
-  method: z.string().min(1).max(64), args: z.array(z.json()).max(128),
-  undefinedArgs: z.array(z.number().int().min(0).max(127)).max(128).optional(),
-}).strict();
-const inputSchema = z.object({
-  requestId: z.uuid(),
-  directory: z.string().min(1).max(4096),
-  options: z.object({
-    source: z.string().min(1).max(4096).optional(),
-    cwd: z.string().min(1).max(4096).optional(),
-    niceness: z.number().int().min(-20).max(20).optional(),
-    priority: z.number().int().min(-20).max(20).optional(),
-    stdoutLines: z.number().int().nonnegative().optional(),
-    timeout: z.number().nonnegative().optional(),
-  }).strict(),
-  calls: z.array(callSchema).max(2048),
-  operation: callSchema,
-});
+const inputSchema = ffmpegRequest;
 // ACT: Bun 的静默 SSE 不保证触发断开事件；显式取消复用本接口和单进程会话状态。
 const requests = new Map<string, { controller: AbortController; finished: Promise<void> }>();
 
@@ -39,7 +22,7 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
     res.json(success());
     return;
   }
-  // 配对设备已通过设备令牌鉴权，FFmpeg 能力与本机页面一致；工作区路径边界仍由原生工厂检查。
+  // 服务器只协调任务；素材路径由统一入口检查，编码和探测交给选定的本地助手。
   const controller = new AbortController();
   const finished = Promise.withResolvers<void>();
   if (input.operation.method !== "prepare") {
@@ -52,15 +35,15 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
   req.socket.once("close", close);
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   try {
-    const factory = await u.ffmpeg.createWorkspaceFfmpeg(cwd, controller.signal);
     if (input.operation.method === "prepare") {
+      await u.ffmpeg.createWorkspaceFfmpeg(cwd, controller.signal);
       res.json(success());
       return;
     }
     res.set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" });
     res.flushHeaders();
     heartbeat = setInterval(() => { if (!res.destroyed) res.write(": keepalive\n\n"); }, 1000);
-    await u.ffmpeg.executeRemoteFfmpeg(factory, input, event => {
+    await u.ffmpeg.executeWorkspaceFfmpeg(cwd, input, event => {
       const failure = event.event === "error" ? event.args[0] as { message?: unknown; i18nMessage?: unknown } | undefined : undefined;
       if (failure && typeof failure.message === "string") {
         const { i18nMessage, ...details } = failure;
@@ -69,6 +52,13 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
       if (!res.destroyed) res.write(`data: ${JSON.stringify(event)}\n\n`);
     }, controller.signal);
     res.end();
+  } catch (error) {
+    if (!res.headersSent) throw error;
+    if (!res.destroyed) {
+      const failure = error as Error & { code?: string };
+      res.write(`data: ${JSON.stringify({ event: "error", args: [{ name: failure.name, message: translateError(error), code: failure.code }] })}\n\n`);
+      res.end();
+    }
   } finally {
     if (requests.get(requestKey)?.controller === controller) requests.delete(requestKey);
     clearInterval(heartbeat);

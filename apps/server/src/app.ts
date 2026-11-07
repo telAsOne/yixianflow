@@ -109,6 +109,8 @@ export async function createApp({
   await initializeAccount(appVersion || process.env.appVersion || "2.0.0");
   const router = await import("@/router");
   router.default(app);
+  const { startRecycleMaintenance } = await import("@/utils/workspace/recycleBin");
+  startRecycleMaintenance();
   const [{ createMcpRouter }, { getMcpTools }, { authorizeMcp }, { skillResources }] = await Promise.all([
     import("@toonflow/mcp"),
     import("@/utils/mcp/tools"),

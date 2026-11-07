@@ -15,10 +15,9 @@ export default Router().get("/", async (req, res) => {
       const query = z.object({ state: z.string().regex(/^[A-Za-z0-9_-]{43,128}$/), code: z.string().max(8192).optional(), error: z.string().max(100).optional() }).parse(req.query);
       await u.webAuth.completeWebLogin(req, res, query.state, query.code, query.error);
       return void res.redirect(`${u.webStore.getWebBasePath()}/#/home`);
-    } catch (error) {
+    } catch {
       console.warn("[web] login callback rejected");
-      const reason = (error as { code?: string }).code === "toonflow.admin_required" ? "adminRequired" : "failed";
-      return void res.redirect(`${u.webStore.getWebBasePath()}/#/home?login=${reason}`);
+      return void res.redirect(`${u.webStore.getWebBasePath()}/#/home?login=failed`);
     }
   }
   try {
@@ -27,5 +26,5 @@ export default Router().get("/", async (req, res) => {
     await u.account.completeLogin(query.state, query.code, query.error);
     if (query.error === "access_denied") message = "已取消登录，可以返回 Toonflow";
   } catch { status = 400; message = "登录未完成，请返回 Toonflow 查看原因并重新登录"; }
-  res.status(status).type("html").send(`<!doctype html><html lang="${getLocale()}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${Bun.escapeHTML(translateMessage("登录逸仙"))}</title><body><h1>${Bun.escapeHTML(translateMessage(message))}</h1></body></html>`);
+  res.status(status).type("html").send(`<!doctype html><html lang="${getLocale()}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${Bun.escapeHTML(translateMessage("登录 UnionAIGC"))}</title><body><h1>${Bun.escapeHTML(translateMessage(message))}</h1></body></html>`);
 });

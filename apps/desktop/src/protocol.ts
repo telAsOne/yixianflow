@@ -21,7 +21,7 @@ export function parseInstallUrl(value: string): PluginInstallRequest {
       if (!values[0]?.trim()) throw new Error(t`安装链接的 ${key} 参数不能为空`);
     }
     const type = link.searchParams.get("type") as PluginInstallType;
-    if (type === "provider") throw new Error("逸仙版不支持安装自定义供应商");
+    if (type === "provider") throw new Error("UnionAIGC 版不支持安装自定义供应商");
     const patterns = {
       node: /^[a-z][a-zA-Z0-9]*\.umd\.js$/,
       ext: /^ext-[a-z][a-zA-Z0-9]*\.umd\.js$/,

@@ -86,42 +86,6 @@
           </el-popover>
         </span>
       </el-tooltip>
-      <el-tooltip :showArrow="false" content="帮助" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]" :disabled="helpVisible">
-        <span class="toolTrigger">
-          <el-popover v-model:visible="helpVisible" trigger="click" placement="top-end" :width="196">
-            <template #reference>
-              <el-button class="toolButton" text aria-label="帮助">
-                <icon-help :size="17" />
-              </el-button>
-            </template>
-            <div class="helpMenu">
-              <el-button
-                class="helpAction"
-                tag="a"
-                text
-                :icon="IconBook"
-                href="https://qcn7xdsqgc4z.feishu.cn/docx/RXFqdgR2Xo0dXZxGfd0cZCGgnwf"
-                target="_blank"
-                rel="noopener noreferrer"
-                @click="helpVisible = false">
-                使用教程
-              </el-button>
-              <el-button
-                class="helpAction"
-                tag="a"
-                text
-                :icon="IconBug"
-                href="https://docs.qq.com/smartsheet/form/EmvmQBrmlPmr%2Fss_vsqk2v%2FvhiGzE?tab=ss_vsqk2v"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Toonflow 需求/BUG反馈表"
-                @click="helpVisible = false">
-                汇报 BUG
-              </el-button>
-            </div>
-          </el-popover>
-        </span>
-      </el-tooltip>
     </div>
   </div>
   <arrangeDialog ref="arrangeDialogRef" :active="active" :canvasId="canvasId" :directory="directory" :projectName="projectName" :batchHistory="batchHistory" />
@@ -130,7 +94,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useVueFlow } from "@vue-flow/core";
-import { IconArrowGuide, IconBook, IconBug, IconMagnet, IconSitemap } from "@tabler/icons-vue";
+import { IconArrowGuide, IconMagnet, IconSitemap } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import arrangeDialog from "./arrangeDialog.vue";
 import type { CanvasNavigation } from "../useCanvasNavigation";
@@ -150,7 +114,6 @@ const showEdges = defineModel<boolean>("showEdges", { required: true });
 const showMap = defineModel<boolean>("showMap", { default: true });
 const zoomMenuVisible = ref(false);
 const moreVisible = ref(false);
-const helpVisible = ref(false);
 const flow = useVueFlow();
 const { viewport, zoomTo, zoomIn, zoomOut, getNodes } = flow;
 const canNavigate = computed(() => props.active && !!props.canvasId && !!props.directory);

@@ -114,6 +114,7 @@
       </teleport>
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" :nodeTypes="availableNodes" :focusNodes="navigation.focusNodes" />
       <teleport :to="flow.viewportRef.value ?? 'body'" :disabled="!flow.viewportRef.value">
+      <canvasImports :imports="fileImports" />
       <div v-if="placingNode" class="nodePlacement" @pointerdown.stop @mousedown="$event.button === 0 && !handMode && $event.stopPropagation()" @click.stop="placeNode" @dblclick.stop @contextmenu.stop.prevent="cancelNodePlacement">
         <div class="nodePlacementHint nodrag nopan" role="status" @click.stop>
           <span>点击画布放置{{ placingNode.label }} · Enter 居中 · Esc 或右键取消</span>
@@ -127,7 +128,7 @@
       </teleport>
     </vue-flow>
     <canvasStarter
-      v-if="canvasReady && !canvasReloading && !flow.getNodes.value.length && !placingNode"
+      v-if="canvasReady && !canvasReloading && !flow.getNodes.value.length && !fileImports.size && !placingNode"
       :nodeOptions="nodeCreation.nodeOptions.value"
       :starters="nodeCreation.starters.value"
       :disabled="!canCreate"
@@ -177,7 +178,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowRef, watch } from "vue";
+import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch } from "vue";
 import axios from "axios";
 import { ElMessage } from "element-plus";
 import { translate } from "@toonflow/i18n/vue";
@@ -203,6 +204,7 @@ import { Background } from "@vue-flow/background";
 import { useCanvasTools } from "./useCanvasTools";
 import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import { useCanvasHistory } from "./useCanvasHistory";
+import { recycleNodeRoots } from "@toonflow/server/recycleTypes";
 import { useCanvasSync } from "./useCanvasSync";
 import { useCanvasSave } from "./useCanvasSave";
 import { useDocumentNodes } from "./useDocumentNodes";
@@ -226,6 +228,7 @@ import nodeSearch from "./components/nodeSearch.vue";
 import nodeInspector from "./components/nodeInspector.vue";
 import canvasDock from "./components/canvasDock.vue";
 import canvasStarter from "./components/canvasStarter.vue";
+import canvasImports from "./components/canvasImports.vue";
 import { workspaceLayoutKey } from "../../workspaceLayout";
 import { finishGroupDrag } from "./selectionNodes";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
@@ -235,7 +238,7 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { generalSettings } from "@/stores/settings";
 import { shortcutLabel, shortcutMatches, shortcutPressed } from "@/lib/canvasShortcuts";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
-import { dropCanvasFiles, importCanvasFiles, isCanvasFileDrag } from "./canvasDrop";
+import { dropCanvasFiles, importCanvasFiles, isCanvasFileDrag, type CanvasFileImport } from "./canvasDrop";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/minimap/dist/style.css";
@@ -305,6 +308,7 @@ const assetsVisible = ref(false);
 const assetLibraryRef = ref<InstanceType<typeof assetLibrary>>();
 const edgeDisconnect = ref<{ id: string; x: number; y: number }>();
 const flow = useVueFlow(props.runtimeKey);
+const fileImports = shallowReactive(new Map<string, CanvasFileImport>());
 const inspectorShown = computed(() => workspaceLayout.inspectorVisible.value && workspaceLayout.inspectorAvailable.value);
 const inspectorTitle = computed(() => flow.getSelectedNodes.value.length > 1 ? `已选中 ${flow.getSelectedNodes.value.length} 个节点` : flow.getSelectedNodes.value[0]?.data.label || "节点设置");
 const inspectorRequiresModel = computed(() => flow.getSelectedNodes.value.length === 1
@@ -346,6 +350,16 @@ const canvasHistory = useCanvasHistory(flow, () =>
   project.value?.directory && canvasId.value ? JSON.stringify([project.value.directory, canvasId.value]) : ""
 );
 const { canUndo, canRedo } = canvasHistory;
+const recycleSessionId = crypto.randomUUID();
+async function protectRecycleHistory() {
+  const directory = project.value?.directory;
+  if (directory && canvasId.value) await useWorkspaceFiles(directory).protectRecycleHistory(recycleSessionId, [...recycleNodeRoots(canvasHistory.getRetainedNodes())]);
+}
+const recycleHistoryTimer = setInterval(() => { void protectRecycleHistory().catch(() => {}); }, 30000);
+watch([() => project.value?.directory, canvasId, () => flow.getNodes.value.map(node => node.id).join("\n")], () => {
+  void nextTick().then(protectRecycleHistory).catch(() => {});
+}, { immediate: true });
+onScopeDispose(() => { clearInterval(recycleHistoryTimer); });
 const canvasSync = useCanvasSync(flow, () => project.value?.directory && canvasId.value ? { directory: project.value.directory, path: canvasId.value } : undefined,
   canvasHistory, (disk, dirty) => {
     canvasMenuRef.value?.updateCanvasSnapshot(disk);
@@ -400,7 +414,7 @@ const placingNode = computed(() => nodeCreation.nodeOptions.value.find(node => n
 watch([canCreate, canvasId, canvasReloading], cancelNodePlacement, { flush: "sync" });
 const { copySelectedNodes, pasteNodeAtCenter, pasteClipboardNode } = useCanvasClipboard(flow, {
   active: () => props.active, settingsVisible: () => props.settingsVisible, canvasId, directory: () => project.value?.directory,
-  canvasElement, pointer: () => pointerPosition, signal: () => canvasController.signal, availableNodes, batchHistory: canvasHistory.batch,
+  canvasElement, pointer: () => pointerPosition, signal: () => canvasController.signal, availableNodes, imports: fileImports, batchHistory: canvasHistory.batch,
 });
 const searchHint = computed(() => {
   const binding = shortcutLabel(generalSettings.value.canvasShortcuts.search);
@@ -433,6 +447,7 @@ defineExpose({ canvasId, canvasReady, getCanvasContext, readDocumentNode, saveDo
   syncCanvasPath: (previous: string, target: string) => canvasMenuRef.value?.syncCanvasPath(previous, target),
   getMentionNodes: () => flow.nodes.value, findMentionNode: flow.findNode,
   getRetainedNodes: canvasHistory.getRetainedNodes,
+  clearHistory: async () => { canvasHistory.reset(); await protectRecycleHistory(); },
   get saveBusy() { return canvasSave.paused; }, get loadError() { return canvasMenuRef.value?.loadError ?? ""; }, saveError: canvasSaveError,
 });
 
@@ -483,7 +498,7 @@ async function dropFiles(event: DragEvent) {
   cancelNodePlacement();
   try {
     if (nodeCreation.isNodeDrag(event)) await nodeCreation.dropNode(event);
-    else await canvasHistory.batch(() => dropCanvasFiles(event, { directory, availableNodes: availableNodes.value, signal: canvasController.signal, flow }));
+    else await canvasHistory.batch(() => dropCanvasFiles(event, { directory, availableNodes: availableNodes.value, signal: canvasController.signal, imports: fileImports, flow }));
   } catch (error) {
     if (!canvasController.signal.aborted) ElMessage.error(error instanceof Error ? error.message : "画布内容添加失败");
   }
@@ -492,7 +507,7 @@ async function dropFiles(event: DragEvent) {
 function selectFiles(position: { x: number; y: number }) {
   const directory = project.value?.directory;
   if (!props.active || props.settingsVisible || !canvasId.value || !directory) return;
-  const context = { directory, availableNodes: availableNodes.value, signal: canvasController.signal, flow };
+  const context = { directory, availableNodes: availableNodes.value, signal: canvasController.signal, imports: fileImports, flow };
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;

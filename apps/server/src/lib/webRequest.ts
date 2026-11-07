@@ -9,6 +9,9 @@ const helperDeviceRoutes = new Set([
   "POST /api/localHelper/device/register", "POST /api/localHelper/device/poll", "POST /api/localHelper/device/result", "POST /api/localHelper/device/revoke",
   "POST /api/localHelper/device/chat", "GET /api/localHelper/device/projects", "POST /api/localHelper/device/transfer",
   "POST /api/localHelper/device/upload", "GET /api/localHelper/device/download", "POST /api/localHelper/device/finishTransfer",
+  "GET /api/localHelper/device/update", "GET /api/localHelper/device/updatePackage",
+  "GET /api/localHelper/device/mediaInput", "POST /api/localHelper/device/mediaOutput", "POST /api/localHelper/device/mediaEvent",
+  "GET /api/localHelper/device/subtitleInput", "POST /api/localHelper/device/subtitleEvent", "POST /api/localHelper/device/subtitleReview",
 ]);
 const privateRoutes = new Set([
   "GET /api/localHelper/status", "GET /api/localHelper/download", "POST /api/localHelper/bind", "PUT /api/localHelper/select", "DELETE /api/localHelper/revoke",
@@ -19,13 +22,15 @@ const privateRoutes = new Set([
   "GET /api/tools/get", "GET /api/tools/client", "GET /api/tools/renderers",
   "GET /api/workspaces/files/list", "GET /api/workspaces/files/canvases", "GET /api/workspaces/files/read", "PUT /api/workspaces/files/write",
   "POST /api/workspaces/files/mkdir", "POST /api/workspaces/files/rename", "POST /api/workspaces/files/copy", "DELETE /api/workspaces/files/remove",
-  "GET /api/workspaces/files/media", "POST /api/workspaces/files/mediaAccess", "GET /api/workspaces/files/export",
+  "GET /api/workspaces/files/media", "POST /api/workspaces/files/mediaAccess", "GET /api/workspaces/files/export", "GET /api/workspaces/files/usage",
   "GET /api/workspaces/canvas/events", "POST /api/workspaces/canvas/save", "GET /api/workspaces/canvas/recovery/get",
   "POST /api/workspaces/canvas/recovery/save", "DELETE /api/workspaces/canvas/recovery/remove",
+  "GET /api/workspaces/recycleBin/list", "POST /api/workspaces/recycleBin/restore", "DELETE /api/workspaces/recycleBin/purge", "PUT /api/workspaces/recycleBin/protect",
   "GET /api/account/cameraPresets", "POST /api/account/refreshModels", "POST /api/workspaces/selectDirectory", "GET /api/workspaces/list",
   "POST /api/workspaces/files/importImage", "POST /api/workspaces/presence/update",
   "GET /api/settings/systemPrompt", "GET /api/settings/personalization/get", "PUT /api/settings/personalization/save",
   "GET /api/providers/media/list", "GET /api/ffmpeg/status", "POST /api/ffmpeg/execute", "GET /api/ffmpeg/progress",
+  "POST /api/ffmpeg/download", "POST /api/ffmpeg/cancel", "GET /api/ffmpeg/events",
 ]);
 const creativeRoutes = /^\/api\/(ai|agent|assets|singleAgent|whisper)(\/|$)/;
 const pluginRoutes = /^\/api\/(nodes|tools|ext|skills|agents)(\/|$)/;
@@ -47,7 +52,7 @@ export default async function webRequest(req: Request, res: Response, next: Next
   const expectedUser = req.get("x-yixianflow-user") ?? (req.path === "/api/assets/read" && typeof req.query.userId === "string" ? req.query.userId : undefined);
   if (expectedUser && session && expectedUser !== String(session.account.user.id))
     throw Object.assign(new Error("账户已切换或登录已过期，请刷新页面后继续"), { status: 409 });
-  if (!publicRoutes.has(route) && !session) throw Object.assign(new Error("请先登录逸仙账户"), { status: 401 });
+  if (!publicRoutes.has(route) && !session) throw Object.assign(new Error("请先登录 UnionAIGC 账户"), { status: 401 });
   const personalData = /^\/api\/(projects|settings|workspaces|ai|agent|assets|singleAgent|whisper|localHelper)(\/|$)/.test(req.path)
     && !["/api/workspaces/files/media", "/api/localHelper/download"].includes(req.path);
   if (session && personalData && !expectedUser) throw Object.assign(new Error("请刷新页面后继续访问个人项目"), { status: 409 });

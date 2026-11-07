@@ -16,5 +16,5 @@ export default router.get("/", validateFields(inputSchema.shape, "query"), async
   const input = inputSchema.parse(req.query);
   await u.workspace.resolveWorkspace(req, input.directory);
   const config = await u.whisper.readWhisperConfig();
-  res.json(success({ ...await u.whisper.checkWhisper(config.pythonPath), defaultModel: config.defaultModel }));
+  res.json(success({ ...await u.whisper.checkWhisper(), defaultModel: config.defaultModel }));
 });

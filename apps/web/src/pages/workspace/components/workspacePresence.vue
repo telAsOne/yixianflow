@@ -1,11 +1,12 @@
 <template>
-  <div class="workspacePresence" role="group" aria-label="项目刷新与协作状态">
+  <div class="workspacePresence" role="group" :aria-label="webMode ? '项目刷新与本地助手状态' : '项目刷新与协作状态'">
     <el-tooltip v-if="saveError" :content="saveError" placement="bottom" :trigger="['hover', 'focus']" :popperStyle="{ maxWidth: 'min(400px, calc(100vw - 24px))', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }" :showArrow="false" :hideAfter="0">
       <el-button class="saveWarning" text :aria-label="'处理保存问题：' + saveError" @click="emit('resolveSave')"><icon-alert-triangle :size="15" aria-hidden="true" /><span class="saveWarningText">保存受阻</span></el-button>
     </el-tooltip>
     <el-tooltip content="刷新项目" placement="bottom" :showArrow="false" :hideAfter="0">
       <el-button class="refreshButton" text :icon="IconRefresh" :loading="refreshing" :disabled="!directory" aria-label="刷新项目" @click="refreshProject" />
     </el-tooltip>
+    <slot />
     <el-popover v-if="!webMode" v-model:visible="membersVisible" trigger="click" placement="bottom-end" :width="320" :popperStyle="{ maxWidth: 'calc(100vw - 24px)' }" :showArrow="false" :disabled="!directory" @show="retryPresence">
       <template #reference>
         <el-button class="presenceButton" :class="{ unavailable: status === 'error' || status === 'unsupported' }" text :disabled="!directory" :aria-expanded="membersVisible" aria-label="查看在线与操作人数，点击重试连接">

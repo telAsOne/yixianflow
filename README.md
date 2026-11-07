@@ -281,7 +281,7 @@ sudo spctl --master-disable
 
 ### 4.2 Docker 安装
 
-先安装 Git、[Docker Engine](https://docs.docker.com/engine/install/) 和 Docker Compose；Windows / macOS 可使用 Docker Desktop 的 Linux 容器模式。仓库提供 [Dockerfile](./Dockerfile)、[Compose 配置](./compose.yaml) 和 [构建排除规则](./.dockerignore)，基于 Bun 1.3.14 构建，镜像内包含 FFmpeg。
+先安装 Git、[Docker Engine](https://docs.docker.com/engine/install/) 和 Docker Compose；Windows / macOS 可使用 Docker Desktop 的 Linux 容器模式。仓库提供 [Dockerfile](./Dockerfile)、[Compose 配置](./compose.yaml) 和 [构建排除规则](./.dockerignore)，基于 Bun 1.3.14 构建。FFmpeg 由选定的 Windows 本地助手执行，镜像无需安装 FFmpeg。
 
 <details>
 <summary><strong>展开 Docker 安装步骤</strong></summary>
@@ -334,7 +334,7 @@ docker compose start
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y git curl unzip ffmpeg
+sudo apt-get install -y git curl unzip
 curl -fsSL https://bun.com/install | bash -s "bun-v1.3.14"
 export PATH="$HOME/.bun/bin:$PATH"
 bun --version
@@ -364,9 +364,9 @@ bun run start:server
 - 默认模式监听 `3000`，业务页面与 API 没有独立登录鉴权。服务器安装时，请通过防火墙或安全组限制该端口的访问来源；公网访问需配置带认证的反向代理。多账号私有画布使用下方的网页版模式。
 - 个人远程使用可在自己的电脑上执行 `ssh -N -L 3000:127.0.0.1:3000 用户名@服务器地址`，保持连接后打开 `http://127.0.0.1:3000`，无需将服务器的 `3000` 端口向公网开放。
 - 直接安装时，配置、插件与工作区默认保存在仓库的 `data/`；Docker 安装则保存在数据卷内的 `/app/data/`。迁移或备份时请完整保留。进入页面后选择服务器工作区内的 `myProject`，更多项目可在对应的 `workspaces/` 下创建子目录。
-- 两种安装方式均包含系统 FFmpeg。模型服务的 API Key 仍需在页面内配置。
+- 音视频处理需要在网页连接 0.5.1 或更新版本的 Windows 本地助手，FFmpeg 与 ffprobe 随助手提供。模型服务的 API Key 仍需在页面内配置。
 
-网页版第一阶段仅向逸仙管理员开放，提供逸仙登录、私有项目目录、画布及项目文件读写；生成、全局素材、AI 助手、协作与管理接口暂未开放。登录和每次会话访问都会向逸仙核对当前角色与账号状态，管理员被降权或停用后会话失效。桌面端和默认服务器模式沿用原来的入口。
+网页版第一阶段仅向 UnionAIGC 管理员开放，提供 UnionAIGC 登录、私有项目目录、画布及项目文件读写；生成、全局素材、AI 助手、协作与管理接口暂未开放。登录和每次会话访问都会向 UnionAIGC 核对当前角色与账号状态，管理员被降权或停用后会话失效。桌面端和默认服务器模式沿用原来的入口。
 
 启用网页版时，在服务进程中配置以下环境变量；以下示例将入口部署在 `https://yixian.lol/flow/`：
 
@@ -379,13 +379,13 @@ TOONFLOW_WEB_DATABASE_URL=postgres://flow:URL编码后的数据库密码@数据�
 TOONFLOW_WEB_SECRET=32字节随机密钥的64位十六进制值
 ```
 
-`TOONFLOW_WEB_SECRET` 可用 `openssl rand -hex 32` 生成。使用独立的 PostgreSQL 数据库或账号，应用会初始化 `yixianflow` schema。凭据使用此密钥加密，会话仅保存随机令牌的摘要；会话最长 12 小时，连续 30 分钟无请求失效。更换加密密钥或逸仙平台地址前须迁移已有凭据。
+`TOONFLOW_WEB_SECRET` 可用 `openssl rand -hex 32` 生成。使用独立的 PostgreSQL 数据库或账号，应用会初始化 `yixianflow` schema。凭据使用此密钥加密，会话仅保存随机令牌的摘要；会话最长 12 小时，连续 30 分钟无请求失效。更换加密密钥或 UnionAIGC 平台地址前须迁移已有凭据。
 
 授权与会话设计参考 OWASP 的[认证](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)、[会话管理](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)、[OAuth2](https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html)和 [CSRF 防护](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)指南；使用 PKCE S256、浏览器绑定的一次性授权、会话轮换和服务端退出失效，并检查修改请求的固定来源与自定义请求头。
 
-逸仙 NewAPI 服务同时配置 `TOONFLOW_WEB_CALLBACK_URLS=https://yixian.lol/flow/api/account/callback`，多个固定回调地址用逗号分隔。授权页从服务端读取白名单，授权和换取凭据时均校验完整回调地址及管理员身份。默认白名单为空，原桌面回调继续有效。
+UnionAIGC NewAPI 服务同时配置 `TOONFLOW_WEB_CALLBACK_URLS=https://yixian.lol/flow/api/account/callback`，多个固定回调地址用逗号分隔。授权页从服务端读取白名单，授权和换取凭据时均校验完整回调地址及管理员身份。默认白名单为空，原桌面回调继续有效。
 
-构建前端时同步设置 `TOONFLOW_WEB_BASE_PATH=/flow`；Docker 构建传入 `--build-arg TOONFLOW_WEB_BASE_PATH=/flow`。Caddy 使用 `handle_path /flow/*` 转发到本服务，剥离 `/flow` 前缀并保留原始 `Host`，画布事件与文件响应不缓存；应用端口仅向代理开放。现有逸仙容器网络可使用 [composeWeb.yaml](./composeWeb.yaml) 部署，数据库与加密密钥通过本地 `.env` 提供，`YIXIANFLOW_IMAGE` 指定已构建镜像。
+构建前端时同步设置 `TOONFLOW_WEB_BASE_PATH=/flow`；Docker 构建传入 `--build-arg TOONFLOW_WEB_BASE_PATH=/flow`。Caddy 使用 `handle_path /flow/*` 转发到本服务，剥离 `/flow` 前缀并保留原始 `Host`，画布事件与文件响应不缓存；应用端口仅向代理开放。现有 UnionAIGC 容器网络可使用 [composeWeb.yaml](./composeWeb.yaml) 部署，数据库与加密密钥通过本地 `.env` 提供，`YIXIANFLOW_IMAGE` 指定已构建镜像。
 
 浏览器使用 `Secure`、`HttpOnly`、`SameSite=Lax` 的独立 Cookie。项目接口中的 `directory` 在网页版是兼容现有编辑器的项目 UUID，服务端验证所有者后才定位目录，不接受服务器磁盘路径。插件由部署者统一安装。
 

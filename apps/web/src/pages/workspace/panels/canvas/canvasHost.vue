@@ -416,6 +416,7 @@ const mentionSource: MentionCanvasSource = {
 
 defineExpose({ canvasId, canvasReady, getCanvasContext, readDocumentNode, readDocumentNodes, saveDocumentNode, mountDocumentNode, observeDocumentNode, resolveDocumentNodeFile, performFileAction, flushSave, cancelSave,
   mentionSource, refreshProject,
+  clearHistory: async () => { await Promise.all([...instances.values()].map(panel => panel.clearHistory())); },
   showSaveConflict() { [...instances.values()].find(panel => panel.saveError)?.showSaveConflict(); },
   get saveError() { return [...instances.values()].map(panel => panel.saveError).find(Boolean) || syncError.value; },
   get saveBusy() { return fileActionBusy || [...instances.values()].some(panel => panel.saveBusy); },

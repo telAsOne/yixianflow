@@ -12,7 +12,7 @@ export interface WorkspaceFiles {
   readTextSnapshot(path: string): Promise<{ text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }>;
   writeTextSnapshot(path: string, text: string, snapshot: { revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }): Promise<string>;
   readJson<T = unknown>(path: string): Promise<T>;
-  write(path: string, content: string | Blob | ArrayBuffer, exclusive?: boolean): Promise<void>;
+  write(path: string, content: string | Blob | ArrayBuffer, exclusive?: boolean, signal?: AbortSignal, onUploadProgress?: (loaded: number, total?: number) => void): Promise<void>;
   writeJson(path: string, data: unknown, exclusive?: boolean): Promise<void>;
   rename(path: string, target: string): Promise<void>;
   remove(path: string, recursive?: boolean): Promise<void>;
@@ -24,7 +24,7 @@ function getNodeDirectory(nodeId: string) {
   return `assets/${nodeId}`;
 }
 
-export async function uploadNodeFile(files: WorkspaceFiles, nodeId: string, file: File) {
+export async function uploadNodeFile(files: WorkspaceFiles, nodeId: string, file: File, onUploadProgress?: (loaded: number, total?: number) => void) {
   const directory = getNodeDirectory(nodeId);
   for (const path of ["assets", directory]) {
     await files.mkdir(path).catch((error: { response?: { data?: { data?: { code?: string } } } }) => {
@@ -33,7 +33,7 @@ export async function uploadNodeFile(files: WorkspaceFiles, nodeId: string, file
   }
   const extension = file.name.match(/\.[a-zA-Z0-9]{1,10}$/)?.[0].toLowerCase() ?? "";
   const path = `${directory}/${crypto.randomUUID()}${extension}`;
-  await files.write(path, file, true);
+  await files.write(path, file, true, undefined, onUploadProgress);
   return path;
 }
 

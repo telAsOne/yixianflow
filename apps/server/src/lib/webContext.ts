@@ -10,6 +10,6 @@ export function isWebMode() {
 
 export function requireWebAccount() {
   const context = webContext.getStore();
-  if (!context) throw Object.assign(new Error("请先登录逸仙账户"), { status: 401 });
+  if (!context) throw Object.assign(new Error("请先登录 UnionAIGC 账户"), { status: 401 });
   return context.account;
 }

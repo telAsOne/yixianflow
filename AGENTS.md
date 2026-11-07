@@ -1,5 +1,13 @@
 本规范适用于整个仓库。
 
+## 生产服务器连接
+
+- 已于 2026-11-06 验证：SSH `root@72.249.206.129:22`，站点 `https://yixian.lol/flow/`，Flow 容器 `yixianflow-yixianflow-1`。
+- 当前 Windows 用户的密码凭据以 DPAPI 加密保存在 `data/localAccess/sshCredentials.json`，该目录已被 Git 忽略；不把明文密码、解密结果或凭据文件写入提交、日志和回复。
+- 仓库根目录的 PowerShell 连接入口：`& .\data\localAccess\remote.ps1 -Action exec -Source 'docker ps --format "{{.Names}} {{.Image}}"'`。上传用 `-Action put -Source 本地绝对路径 -Target 远端绝对路径`，下载用 `-Action get -Source 远端绝对路径 -Target 本地绝对路径`；可设置 `-TimeoutSeconds`。
+- 入口只读取上述加密凭据，校验本机 `known_hosts`；不从历史会话中查找密码，不关闭 SSH 主机密钥校验。凭据绑定当前 Windows 用户，其他电脑或用户须单独配置。
+- 连接入口复用本机 Codex Python 与 `F:\workspace\yixianapi\.codex-work\prompt-failure-20261024\python` 中已有的 Paramiko 依赖；这些是本机运维路径，不得写入产品默认路径或分发包。
+
 # 开发规范说明
 
 ## 代码风格要求

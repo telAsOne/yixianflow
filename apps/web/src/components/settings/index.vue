@@ -16,10 +16,7 @@
         </template>
       </aside>
       <section class="content" :aria-label="activePanel.label" tabindex="0">
-        <h2 class="panelTitle">
-          <template v-if="activePanel.id === 'account'"><a class="accountLink" href="https://yixian.lol/" target="_blank" rel="noopener noreferrer">UnionAigc</a> 账户</template>
-          <template v-else>{{ activePanel.label }}</template>
-        </h2>
+        <h2 class="panelTitle">{{ activePanel.label }}</h2>
         <div class="panelContent">
           <transition name="el-fade-in" mode="out-in">
             <keep-alive include="personalization">
@@ -37,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, shallowRef } from "vue";
+import { defineAsyncComponent, shallowRef, watch } from "vue";
 import { isMobile } from "@/lib/mobile";
 import { webMode } from "@/lib/webRuntime";
 import {
@@ -53,6 +50,7 @@ import {
   IconUser,
 } from "@tabler/icons-vue";
 
+const props = defineProps<{ panel?: string }>();
 const settingsPanels = [
   { id: "ui", label: "界面设置", icon: IconPalette, component: defineAsyncComponent(() => import("./panels/ui.vue")) },
   { id: "general", label: "常规配置", icon: IconSettings, component: defineAsyncComponent(() => import("./panels/general/index.vue")) },
@@ -64,7 +62,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/languageModel/index.vue")),
   },
   { id: "mediaModel", label: "媒体模型", icon: IconPhotoVideo, component: defineAsyncComponent(() => import("./panels/mediaModel/index.vue")) },
-  { id: "account", label: "UnionAigc 账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
+  { id: "account", label: "UnionAIGC 账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
   {
     id: "pluginMarket",
     label: "插件市场",
@@ -88,6 +86,11 @@ const settingsPanels = [
 ].filter(panel => !webMode.value || !["mcp", "deviceLink"].includes(panel.id));
 const activePanel = shallowRef(settingsPanels[0]!);
 const visible = defineModel<boolean>({ default: false });
+watch([visible, () => props.panel], ([open, panel]) => {
+  if (!open || !panel) return;
+  const selectedPanel = settingsPanels.find(item => item.id === panel);
+  if (selectedPanel) activePanel.value = selectedPanel;
+}, { immediate: true });
 </script>
 
 <style lang="scss" scoped>
@@ -208,11 +211,6 @@ const visible = defineModel<boolean>({ default: false });
       font-weight: 600;
       letter-spacing: -0.01em;
 
-      .accountLink {
-        color: var(--el-color-primary);
-        text-decoration: underline;
-        text-underline-offset: 3px;
-      }
     }
 
     .panelContent {

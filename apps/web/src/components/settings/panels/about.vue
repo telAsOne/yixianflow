@@ -40,16 +40,6 @@
       </div>
     </el-card>
 
-    <el-card class="infoCard repositoryCard" shadow="never">
-      <a class="repositoryLink" href="https://yixian.lol/" target="_blank" rel="noopener noreferrer">
-        <icon-world class="repositoryIcon" :size="22" aria-hidden="true" />
-        <div class="repositoryInfo">
-          <span class="repositoryTitle">逸仙平台</span>
-        </div>
-        <icon-external-link class="externalIcon" :size="16" aria-hidden="true" />
-      </a>
-    </el-card>
-
     <el-dialog v-model="resultVisible" title="版本更新" width="min(480px, 92vw)" alignCenter appendToBody>
       <div class="updateResult" aria-live="polite" :aria-busy="working">
         <div class="resultHeader">
@@ -121,12 +111,10 @@ import axios from "axios";
 import { isMobile, isRemoteConnection } from "@/lib/mobile";
 import {
   IconRefresh,
-  IconExternalLink,
   IconAlertCircle,
   IconArrowUpCircle,
   IconCircleCheck,
   IconArrowRight,
-  IconWorld,
 } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/unionIcon.svg";
 import {
@@ -334,52 +322,6 @@ async function runUpdate(nextAction: "read" | "check" | "download" | "apply") {
       p { margin: 8px 0 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
     }
 
-    &.repositoryCard {
-      transition: border-color 0.2s;
-
-      :deep(.el-card__body) {
-        padding: 0;
-      }
-      &:hover {
-        border-color: var(--el-border-color-darker);
-      }
-
-      .repositoryLink {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px;
-        color: var(--el-text-color-primary);
-        text-decoration: none;
-
-        &:focus-visible {
-          outline: 2px solid var(--el-color-primary);
-          outline-offset: -2px;
-          border-radius: calc(var(--ui-radius) * 1);
-        }
-
-        .repositoryIcon,
-        .externalIcon {
-          flex-shrink: 0;
-        }
-        .externalIcon {
-          color: var(--el-text-color-secondary);
-        }
-
-        .repositoryInfo {
-          display: flex;
-          flex: 1;
-          flex-direction: column;
-          gap: 6px;
-          min-width: 0;
-
-          .repositoryTitle {
-            font-size: 14px;
-            font-weight: 600;
-          }
-        }
-      }
-    }
   }
 
 }

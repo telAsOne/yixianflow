@@ -88,9 +88,11 @@ function loadExtension(extension: InstalledExtension) {
       if (requestedRevision !== revision) throw new Error("文件扩展已更新，请重新打开");
       return new Promise<ExtDefinition>((resolve, reject) => {
         const script = document.createElement("script");
-        script.src = url.href;
+        const objectUrl = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+        script.src = objectUrl;
         script.onload = () => {
           script.remove();
+          URL.revokeObjectURL(objectUrl);
           try {
             if (requestedRevision !== revision) throw new Error("文件扩展已更新，请重新打开");
             const definition = host.toonflowExts?.[extension.id];
@@ -98,7 +100,7 @@ function loadExtension(extension: InstalledExtension) {
             resolve(defineExt(definition));
           } catch (error) { reject(error); }
         };
-        script.onerror = () => { script.remove(); reject(new Error(`扩展加载失败：${extension.displayName}`)); };
+        script.onerror = () => { script.remove(); URL.revokeObjectURL(objectUrl); reject(new Error(`扩展加载失败：${extension.displayName}`)); };
         delete host.toonflowExts?.[extension.id];
         document.head.append(script);
       });

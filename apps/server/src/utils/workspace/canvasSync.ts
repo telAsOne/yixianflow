@@ -6,6 +6,7 @@ import { lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/file
 import { getVideoTask } from "@/utils/media/videoTasks";
 import { getImageTask } from "@/utils/media/imageTasks";
 import { canvasChanges, mergeCanvas, sameCanvasValue, validateCanvas, type CanvasChange, type CanvasSnapshot } from "./canvasMerge";
+import { captureDeletedNodes, commitRecycleRecord, validateRecycledMedia } from "./recycleBin";
 
 export const elementSchema = z.looseObject({ id: z.string().min(1).max(500) });
 export const canvasSchema = z.object({ toonflowCanvas: z.literal(true),
@@ -47,7 +48,7 @@ export function notifyFileChange(directory: string, path: string) {
   recordChange(directory, { path: name });
 }
 
-async function readCanvas(path: string) {
+export async function readCanvas(path: string) {
   const bytes = await readFile(path);
   const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? "utf-16le" : bytes[0] === 0xfe && bytes[1] === 0xff ? "utf-16be"
     : bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? "utf-8-bom" : "utf-8";
@@ -81,31 +82,44 @@ export async function removeRecovery(directory: string, path: string, author: st
   await rm(target, { force: true });
 }
 
-async function normalizeTaskResults(directory: string, changes: CanvasChange[]) {
+async function normalizeTaskResults(directory: string, changes: CanvasChange[], current: CanvasSnapshot) {
   const tasks = changes.filter(change => change.kind === "nodes" && change.after?.data?.generationTiming?.operationId
-    && !sameCanvasValue(change.before?.data?.generationTiming, change.after.data.generationTiming));
+    && ["generationTiming", "outputs", "appliedImageTaskId", "appliedVideoTaskId"].some(field => !sameCanvasValue(change.before?.data?.[field], change.after?.data?.[field])));
+  const nodes = new Map(current.nodes.map(node => [node.id, node]));
   for (let offset = 0; offset < tasks.length; offset += 4) await Promise.all(tasks.slice(offset, offset + 4).map(async change => {
     const node = change.after!;
     const type = node.type === "remote-videoGenerationNode" ? "video" : node.type === "remote-imageGenerationNode" ? "image" : undefined;
     if (!type) return;
     const task = await (type === "video" ? getVideoTask : getImageTask)(directory, `assets/${node.id}${type === "image" && node.data.inpaint ? "/inpaint" : ""}`);
     if (!task || task.operationId !== node.data.generationTiming.operationId) return;
-    node.data.generationTiming = { operationId: task.operationId, startedAt: task.startedAt, ...(task.endedAt ? { endedAt: task.endedAt } : {}),
-      status: task.phase === "completed" ? "succeeded" : ["failed", "expired"].includes(task.phase) ? "failed" : task.running ? "running" : "interrupted" };
+    const result = task.result?.[0];
+    const appliedField = type === "video" ? "appliedVideoTaskId" : "appliedImageTaskId";
+    for (const target of [node, nodes.get(node.id)]) {
+      if (!target || target.type !== node.type || target.data?.generationTiming?.operationId !== task.operationId) continue;
+      // 重绘原片还需客户端合成，不能提前发布为节点成品。
+      if (type === "image" && target.data.inpaint && task.phase === "completed" && target.data[appliedField] !== task.operationId) continue;
+      if (task.phase === "completed" && result?.mediaType === type && target.data[appliedField] !== task.operationId) {
+        target.data.outputs = { ...target.data.outputs, [type]: { dataType: type === "video" ? "VIDEO" : "IMAGE", value: { url: result.path, mimeType: result.mimeType } } };
+        target.data[appliedField] = task.operationId;
+      }
+      target.data.generationTiming = { operationId: task.operationId, startedAt: task.startedAt, ...(task.endedAt ? { endedAt: task.endedAt } : {}),
+        status: task.phase === "completed" ? "succeeded" : ["failed", "expired"].includes(task.phase) ? "failed" : task.running ? "running" : "interrupted" };
+    }
   }));
 }
 
-export async function saveCanvas(directory: string, path: string, baseRevision: string, input: CanvasChange[]) {
+export async function saveCanvas(directory: string, path: string, baseRevision: string, input: CanvasChange[], deletedNodes: CanvasSnapshot["nodes"] = [], deletedEdges: CanvasSnapshot["edges"] = []) {
   const resolved = await resolveWorkspacePath(directory, path);
   if (!/\.json$/i.test(path) || resolved.path === directory) throw Object.assign(new Error("请选择画布文件"), { status: 400 });
   const key = normalize(resolved.path);
   const pending = (saves.get(key) ?? Promise.resolve()).catch(() => {}).then(async () => {
     const changes = structuredClone(input);
-    await normalizeTaskResults(directory, changes);
     const release = lockWorkspaceFiles([resolved.path]);
     try {
       const disk = await readCanvas(resolved.path);
-      const result = mergeCanvas(disk.canvas, changes);
+      const current = structuredClone(disk.canvas);
+      await normalizeTaskResults(directory, changes, current);
+      const result = mergeCanvas(current, changes);
       if (result.conflicts.length) return { conflict: true as const, conflicts: result.conflicts, canvas: disk.canvas, revision: disk.revision };
       canvasSchema.parse(result.canvas);
       try { validateCanvas(result.canvas); }
@@ -115,6 +129,8 @@ export async function saveCanvas(directory: string, path: string, baseRevision: 
           message: `${(error as Error).message}。本机修改已保留，可调整后重新合并，或保存副本并采用主机版本。` };
       }
       const accepted = canvasChanges(disk.canvas, result.canvas);
+      await validateRecycledMedia(directory, accepted.filter(change => change.kind === "nodes" && !change.before && change.after).map(change => change.after!));
+      const recycled = await captureDeletedNodes(directory, path, disk.canvas, result.canvas, deletedNodes, deletedEdges);
       let revision = disk.revision;
       if (accepted.length) {
         const text = `${JSON.stringify(result.canvas, null, 2)}\n`;
@@ -129,6 +145,7 @@ export async function saveCanvas(directory: string, path: string, baseRevision: 
         revision = hash(bytes);
         recordChange(directory, { path, revision });
       }
+      await commitRecycleRecord(directory, recycled);
       return { conflict: false as const, revision, baseRevision: disk.revision, changes: accepted, ...(baseRevision === disk.revision ? {} : { canvas: result.canvas }) };
     } finally { release(); }
   });

@@ -51,7 +51,7 @@ async function explainError() {
   const signal = AbortSignal.any([props.signal, AbortSignal.timeout(60000)]);
   try {
     models.value = await ai.getModels(signal);
-    if (!models.value.length) throw new Error("请登录逸仙账户并刷新模型，再重试 AI 解释。");
+    if (!models.value.length) throw new Error("请登录 UnionAIGC 账户并刷新模型，再重试 AI 解释。");
     // ACT: 由用户选择解释模型，不自动轮询产生额外请求。
     const model = selectedModel.value;
     if (!model) {

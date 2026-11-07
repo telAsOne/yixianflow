@@ -5,7 +5,7 @@
     <template #header>
       <span class="toolHeader" :data-status="tool.status">
         <icon-tool :size="14" />
-        <span class="toolName">{{ renderer ? "操作工具" : tool.name || "工具调用" }}</span>
+        <span class="toolName">{{ tool.name === "nodeTools" && typeof tool.args?.name === "string" ? tool.args.name : tool.name || "工具调用" }}</span>
         <span class="toolState">{{ tool.name === 'subAgent' && tool.status === 'success' ? '调用已返回' : toolStatusLabels[tool.status] }}</span>
       </span>
     </template>

@@ -6,12 +6,13 @@ import { appendFile, createReadStream, createWriteStream, link, lstat, mkdir, op
 import { Zip, ZipDeflate } from "fflate";
 import { z } from "zod";
 import { helperVersion } from "./protocol";
+import { recordLog } from "./activity";
 
 export const dataDirectory = resolve(process.env.TOONFLOW_HELPER_DATA_DIR || join(process.env.LOCALAPPDATA || homedir(), "UnionFlfow/localHelper"));
 export const logDirectory = join(dataDirectory, "logs");
 export type LogContext = { source: "web" | "tray" | "helper"; taskId?: string; chatId?: string };
 export const nativeDiagnosticSchema = z.strictObject({
-  event: z.enum(["workerStarted", "workerExited", "workerStderr", "workerStartFailed", "nativeMessageFailed", "nativeSendFailed", "startupSettingFailed", "openLogsFailed"]),
+  event: z.enum(["workerStarted", "workerExited", "workerStderr", "workerStartFailed", "nativeMessageFailed", "nativeSendFailed", "startupSettingFailed", "openLogsFailed", "controlViewFailed", "updateStartFailed"]),
   errorType: z.string().regex(/^[a-zA-Z][a-zA-Z0-9.]{0,95}$/).optional(),
   systemCode: z.number().int().optional(), exitCode: z.number().int().optional(), length: z.number().int().nonnegative().optional(), pid: z.number().int().positive().optional(),
 });
@@ -22,7 +23,7 @@ const archiveBatchBytes = 512 * 1024 * 1024;
 const allowedFields = new Set(["source", "taskId", "chatId", "deviceId", "approvalId", "action", "kind", "reason", "allowed", "approved", "paused", "autoExecute",
   "ownerId", "pid", "bunVersion", "platform", "arch", "server", "endpoint", "method", "httpStatus", "upstreamStatus", "requestId", "durationMs", "waitMs", "retryMs",
   "fileCount", "index", "bytes", "transferId", "completed", "failed", "remaining", "cancelled", "messageCount", "round", "toolCount", "errorType", "errorCode",
-  "causeCode", "invalidFields", "exitCode", "systemCode", "length", "dropped", "truncated", "day", "stackFrames"]);
+  "causeCode", "invalidFields", "exitCode", "systemCode", "length", "dropped", "truncated", "day", "stackFrames", "targetVersion"]);
 let component = "worker";
 let initialized = false;
 let queue = Promise.resolve();
@@ -175,6 +176,8 @@ export function logEvent(level: "info" | "warn" | "error", event: string, fields
   if (pending >= 256) { dropped++; return Promise.resolve(); }
   const details = Object.fromEntries(Object.entries(fields).filter(([key]) => allowedFields.has(key)).map(([key, value]) => [key, safeValue(value)]));
   const entry = { at: new Date().toISOString(), level, event, component, version: helperVersion, ...details };
+  // ACT: 控制中心推送失败不阻断原磁盘日志与归档队列。
+  if (component === "worker") { try { recordLog(entry); } catch { } }
   pending++;
   queue = queue.then(async () => {
     const line = JSON.stringify({ ...entry, ...(dropped ? { dropped } : {}) }) + "\n";

@@ -9,20 +9,20 @@ import { decryptWebSecret, encryptWebSecret, getWebDatabase, getWebOrigin, getWe
 const sessionCookie = "__Host-yixianflow";
 const loginCookie = "__Host-yixianflowLogin";
 const cookieOptions = { httpOnly: true, secure: true, sameSite: "lax", path: "/" } as const;
-const adminAccountSchema = accountInfoSchema.extend({ user: userSchema.extend({ role: z.number().int(), status: z.number().int() }) });
+const webAccountSchema = accountInfoSchema.extend({ user: userSchema.extend({ role: z.number().int(), status: z.number().int() }) });
 
-async function requireWebAdmin(account: WebAccount, version: string) {
+async function requireWebUser(account: WebAccount, version: string) {
   const response = await fetch(`${account.baseUrl}/v1/toonflow/me`, { cache: "no-store", redirect: "error",
     signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${account.key}`, "X-Toonflow-Version": version } });
   if (response.status === 401 || response.status === 403)
     throw Object.assign(new Error("登录已失效，请重新登录"), { status: response.status });
   const body = await response.json() as { success?: boolean; data?: { user?: unknown } };
-  if (!response.ok || body.success !== true) throw Object.assign(new Error("暂时无法确认管理员身份，请稍后重试"), { status: 503 });
-  const info = adminAccountSchema.parse(body.data);
+  if (!response.ok || body.success !== true) throw Object.assign(new Error("暂时无法确认账户身份，请稍后重试"), { status: 503 });
+  const info = webAccountSchema.parse(body.data);
   const identity = info.user;
   if (identity.id !== account.user.id) throw Object.assign(new Error("账户身份不匹配，请重新登录"), { status: 401 });
-  if (identity.role < 10 || identity.status !== 1)
-    throw Object.assign(new Error("当前画布仅向逸仙管理员开放"), { status: 403, code: "toonflow.admin_required" });
+  if (identity.status !== 1)
+    throw Object.assign(new Error("当前账户已被停用"), { status: 403, code: "toonflow.account_disabled" });
   return info;
 }
 
@@ -59,7 +59,7 @@ export async function readWebAccount(userId: number, version: string) {
   const baseUrl = getBaseUrl();
   const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${userId}`)));
   if (account.baseUrl !== baseUrl || account.user.id !== userId) throw new Error("服务端账户凭据不匹配");
-  const accountInfo = await requireWebAdmin(account, version);
+  const accountInfo = await requireWebUser(account, version);
   account.user = accountInfo.user;
   return { account, settings: record.settings as Record<string, unknown>, accountInfo };
 }
@@ -103,11 +103,9 @@ export async function completeWebLogin(req: Request, res: Response, state: strin
     body: JSON.stringify({ grant_type: "authorization_code", code, code_verifier: decryptWebSecret(login.verifier, `login:${hash}`),
       redirect_uri: `${getWebOrigin()}${getWebBasePath()}/api/account/callback`, client_version: req.app.locals.appVersion || process.env.appVersion || "2.0.0" }) });
   const body = await response.json() as { success?: boolean; data?: unknown; error_code?: string };
-  if (body.error_code === "toonflow.admin_required")
-    throw Object.assign(new Error("当前画布仅向逸仙管理员开放"), { status: 403, code: body.error_code });
-  if (!response.ok || body.success !== true) throw Object.assign(new Error("逸仙授权失败，请重新登录"), { status: 400 });
+  if (!response.ok || body.success !== true) throw Object.assign(new Error("UnionAIGC 授权失败，请重新登录"), { status: 400 });
   const account = credentialSchema.parse({ ...body.data as object, baseUrl });
-  account.user = (await requireWebAdmin(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0")).user;
+  account.user = (await requireWebUser(account, req.app.locals.appVersion || process.env.appVersion || "2.0.0")).user;
   const token = randomBytes(32).toString("base64url");
   const oldToken = readCookie(req, sessionCookie);
   await sql.begin(async transaction => {

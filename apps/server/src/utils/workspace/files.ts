@@ -1,7 +1,40 @@
-import { constants, copyFile, cp, lstat, mkdir, rename, unlink, realpath, writeAtomic } from "@toonflow/file";
+import { constants, copyFile, cp, lstat, mkdir, opendir, rename, unlink, realpath, writeAtomic } from "@toonflow/file";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { Request } from "express";
 import { resolveWorkspace } from "@/utils/workspace";
+import { mentionAssetType } from "@/agent/mentionSources";
+
+export async function getWorkspaceUsage(directory: string, signal?: AbortSignal) {
+  const usage = { totalBytes: 0, fileCount: 0, assetBytes: 0, assetCount: 0 };
+  const folders = [""];
+  // ACT: 逐文件读取元数据，耗时随项目文件数增长；后续配额可改用写入时维护的用量索引。
+  while (folders.length) {
+    signal?.throwIfAborted();
+    const folder = await resolveWorkspacePath(directory, folders.pop()!);
+    for await (const entry of await opendir(folder.path)) {
+      signal?.throwIfAborted();
+      if (!entry.isFile() && !entry.isDirectory()) continue;
+      const path = relative(directory, resolve(folder.path, entry.name));
+      const target = await resolveWorkspacePath(directory, path);
+      const info = await lstat(target.path);
+      if (info.isDirectory()) { folders.push(path); continue; }
+      if (!info.isFile()) continue;
+      usage.totalBytes += info.size;
+      usage.fileCount++;
+      if (path.split(sep)[0]?.toLowerCase() === "assets" || ["IMAGE", "VIDEO", "AUDIO"].includes(mentionAssetType(entry.name).dataType)) {
+        usage.assetBytes += info.size;
+        usage.assetCount++;
+      }
+    }
+  }
+  const recycleDirectory = await resolveWorkspacePath(directory, ".toonflow/recycleBin", true);
+  if (!(await lstat(recycleDirectory.path).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; }))) {
+    return { ...usage, recycleBytes: 0, reclaimableBytes: 0 };
+  }
+  const { getRecycleOverview } = await import("./recycleBin");
+  const recycled = await getRecycleOverview(directory, false);
+  return { ...usage, recycleBytes: recycled.assetBytes, reclaimableBytes: recycled.reclaimableBytes };
+}
 
 export async function writeWorkspaceFile(path: string, content: string | Uint8Array, exclusive = false) {
   await writeAtomic(path, content, { exclusive });
@@ -94,4 +127,8 @@ export function lockWorkspaceFiles(paths: string[]) {
 
 export function protectWorkspaceRoot(directory: string, path: string) {
   if (directory === path) throw Object.assign(new Error("不能修改工作区根目录"), { status: 400 });
+  const name = relative(directory, path).replaceAll("\\", "/").toLowerCase();
+  if (name === ".toonflow" || name === ".toonflow/recyclebin" || name.startsWith(".toonflow/recyclebin/")) {
+    throw Object.assign(new Error("请通过项目回收站管理删除记录"), { status: 403 });
+  }
 }
