@@ -21,7 +21,8 @@ export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: C
   const ready = ref(false);
   const selectionReady = ref(false);
   let saved: z.infer<typeof canvasViewSchema> | undefined;
-  const save = debounce((key: string, value: string) => settingsStorage.setItem(key, value), 300, { maxWait: 1000 });
+  // 个人视图随账户设置上传，平移缩放停下后再写入；隐藏、切换和卸载时立即写入。
+  const save = debounce((key: string, value: string) => settingsStorage.setItem(key, value), 300);
 
   function remember() {
     if (!key.value || !ready.value) return;

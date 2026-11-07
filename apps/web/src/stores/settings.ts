@@ -1,6 +1,7 @@
 import api from "@/lib/api";
 import { normalizeLocale } from "@toonflow/i18n/core";
 import { computed, nextTick, ref, watch } from "vue";
+import { isEqual } from "lodash-es";
 import { ElMessage } from "element-plus";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeModels";
 import { canvasShortcutFields, defaultCanvasShortcuts, getShortcutBindings, isShortcutAllowed, normalizeShortcut, type CanvasShortcuts } from "@/lib/canvasShortcuts";
@@ -131,10 +132,12 @@ export function saveSettings(update?: (current: Record<string, unknown>) => Reco
     );
     lastSaveError = undefined;
     const providers = data.data?.customProviders;
-    if ((patch && Object.hasOwn(patch, "customProviders")) || providers) invalidateNodeModels("language");
-    if (patch || providers) {
+    // 服务端每次保存都回传模型服务；内容未变时不替换设置，避免自动保存后全部设置派生值重算、打断画布缩放和按键状态。
+    const providersChanged = !!providers && !isEqual(providers, { ...settings.value, ...patch }.customProviders);
+    if ((patch && Object.hasOwn(patch, "customProviders")) || providersChanged) invalidateNodeModels("language");
+    if (patch || providersChanged) {
       applyingSettings = true;
-      try { settings.value = { ...settings.value, ...patch, ...(providers ? { customProviders: providers } : {}) }; }
+      try { settings.value = { ...settings.value, ...patch, ...(providersChanged ? { customProviders: providers } : {}) }; }
       finally { applyingSettings = false; }
     }
     if (data.data?.mediaProvider) {
