@@ -13,3 +13,7 @@ export function requireWebAccount() {
   if (!context) throw Object.assign(new Error("请先登录 UnionAIGC 账户"), { status: 401 });
   return context.account;
 }
+
+export function canViewAllWebProjects() {
+  return (webContext.getStore()?.account.user.role ?? 0) >= 10;
+}
