@@ -6,10 +6,9 @@ export default createNodeConfig({
   author: "Toonflow",
   github: "https://github.com/HBAI-Ltd/Toonflow-app",
   configRules: [
-    { type: "input", field: "pythonPath", title: "Python 路径（可选）", value: "" },
     {
-      type: "select", field: "defaultModel", title: "默认 Whisper 模型", value: "small",
-      options: ["tiny", "base", "small", "medium", "large", "turbo"].map(value => ({ label: value, value })),
+      type: "select", field: "defaultModel", title: "默认 Whisper 模型（本地助手执行）", value: "auto",
+      options: ["auto", "tiny", "base", "small", "medium", "large", "turbo"].map(value => ({ label: value === "auto" ? "自动推荐（本机资源）" : value, value })),
     },
   ],
 }, import.meta.url);

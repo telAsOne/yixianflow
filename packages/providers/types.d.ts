@@ -287,7 +287,7 @@ interface ProviderDefinition<TRules extends readonly ProviderFormRule[] = readon
    * 媒体模型列表 GET 地址，使用配置的 apiKey 作为 Bearer 凭据，返回 { data: 模型数组 }。
    * 模型须含 id，type 可由 URL 的 type 参数或同名已有模型补全。
    * 可选 modelInfo 对象提供模型能力（如 mode、audio、durationResolutionMap、imageSizes、imageRatios），获取时合并至模型顶层。
-   * 模型目录由逸仙管理面板维护。
+   * 模型目录由 UnionAIGC 管理面板维护。
    */
   modelsUrl?: string;
   protocol?: "openai-completions" | "openai-responses" | "anthropic-messages";

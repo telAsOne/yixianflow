@@ -197,11 +197,13 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
       const before = baseline;
       const local = current();
       const changes = canvasChanges(before.canvas, local);
+      const deletedNodes = history.getDeletedNodes();
       let dirty = false;
       try {
-        if (changes.length) {
-          const result = await useWorkspaceFiles(target.directory).saveCanvasChanges(target.path, before.revision, changes);
+        if (changes.length || deletedNodes.length) {
+          const result = await useWorkspaceFiles(target.directory).saveCanvasChanges(target.path, before.revision, changes, deletedNodes.map(entry => entry.node), deletedNodes.flatMap(entry => entry.edges));
           checkBinding(target);
+          history.acknowledgeDeletions(deletedNodes);
           const disk = { canvas: result.canvas ?? mergeCanvas(before.canvas, result.changes).canvas, revision: result.revision };
           const latest = current();
           const merged = mergeCanvas(disk.canvas, canvasChanges(local, latest));

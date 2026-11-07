@@ -39,9 +39,9 @@ async function request(input: BrowserFfmpegRequest, signal?: AbortSignal) {
 }
 
 /** 只传输 fluent 调用，执行库和媒体文件始终留在宿主。目录在创建工厂时固定。 */
-export async function createBrowserFfmpeg(directory: string, signal?: AbortSignal): Promise<BrowserFfmpegFactory> {
+export async function createBrowserFfmpeg(directory: string, signal?: AbortSignal, transportRequest = request): Promise<BrowserFfmpegFactory> {
   signal?.throwIfAborted();
-  const prepared = await request({ directory, requestId: crypto.randomUUID(), options: {}, calls: [], operation: { method: "prepare", args: [] } }, signal);
+  const prepared = await transportRequest({ directory, requestId: crypto.randomUUID(), options: {}, calls: [], operation: { method: "prepare", args: [] } }, signal);
   const result = await prepared.json() as { code: number; message?: string };
   if (result.code !== 200) throw remoteError(result);
 
@@ -71,7 +71,7 @@ export async function createBrowserFfmpeg(directory: string, signal?: AbortSigna
       const cancel = () => {
         if (!ready || finished || cancellation) return;
         // Bun 不总是把 fetch.abort 传递给 Express；显式取消，并等响应头保证任务已注册。
-        cancellation = request({ ...input, options: {}, calls: [], operation: { method: "cancel", args: [] } })
+        cancellation = transportRequest({ ...input, options: {}, calls: [], operation: { method: "cancel", args: [] } })
           .then(() => {})
           .catch(error => console.error("FFmpeg 取消请求失败", error))
           .finally(() => transport.abort(requestSignal.reason));
@@ -79,7 +79,7 @@ export async function createBrowserFfmpeg(directory: string, signal?: AbortSigna
       requestSignal.addEventListener("abort", cancel, { once: true });
       void (async () => {
         requestSignal.throwIfAborted();
-        const response = await request(input, transport.signal);
+        const response = await transportRequest(input, transport.signal);
         ready = true;
         if (requestSignal.aborted) cancel();
         if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) throw new Error("FFmpeg 响应不是事件流");

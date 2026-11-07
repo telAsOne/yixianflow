@@ -47,7 +47,7 @@ const plugin: ToolPlugin = {
       return { id, context: canvas };
     }
     const generationTools = ([
-      { name: "generateImage", mediaType: "image", enabled: permissions.allowImage, label: "生成图片", parameters: imageGenerationSchema, description: "根据提示词和可选的工作区参考图生成图片。" },
+      { name: "generateImage", mediaType: "image", enabled: permissions.allowImage, label: "生成图片", parameters: imageGenerationSchema, description: "根据提示词和可选的工作区参考图生成图片。size、ratio 必须分别取自所选模型的 imageSizes、imageRatios，不自行推算像素尺寸；省略时沿用模型默认值。" },
       { name: "generateVideo", mediaType: "video", enabled: permissions.allowVideo, label: "生成视频", parameters: videoGenerationSchema, description: "根据提示词和可选的工作区图片、视频、音频、首尾帧生成视频。referenceImageInput 为 url 的模型可使用 referenceImageUrls 中的公网 HTTPS 图片直链；也可在 images 中传工作区参考图，由已启用的阿里云 OSS 自动上传。本地图片在前、链接在后，合计最多 9 张。首尾帧模式通过 firstFrame、lastFrame 分别传工作区图片 { path, mimeType }；referenceImageInput 为 url 时也可传 { url } HTTPS 直链，本地帧图片经 OSS 上传。startEndRequired 要求两帧均提供，不混入 images、referenceImageUrls、音频或视频。referenceAudioInput 为 url 时，audios 中的工作区音频也通过 OSS 上传；上传的单个本地素材最多 20 MiB，图片与音频合计最多 300 MiB。未配置存储时请引导用户在设置中填写，禁止索取密钥。supportsSeed 为 true 时可传非负安全整数 seed（含 0），优先于供应商默认值，省略则使用供应商默认。按模型能力设置生成模式、时长、分辨率和音频。" },
       { name: "generateAudio", mediaType: "audio", enabled: permissions.allowAudio, label: "生成音频", parameters: audioGenerationSchema, description: "根据文本或提示词和可选的工作区参考图片和音频生成音频。按模型能力设置音色、语速、音量、语种、采样率和格式。" },
     ] as const).filter(operation => operation.enabled);
@@ -104,7 +104,7 @@ const plugin: ToolPlugin = {
       name: operation.name,
       label: operation.label,
       description: `${operation.description}providerId 和 modelId 必须来自 listMediaModels。引用素材的 path 及 outputDirectory 均为工作区相对路径；${operation.mediaType === "video" ? "省略输出目录会为本次视频任务隔离目录，旧任务不会阻塞新创作；中断后用 getVideoTask 查询、resumeVideoTask 恢复，不能反复提交同一生成。" : "省略输出目录使用默认媒体目录。"}等待生成完成后返回已保存的文件路径，不返回 Base64。${operation.mediaType === "audio" ? "" : "有目标画布时，成功结果自动加入任务开始时的画布；已有相同文件的节点会复用，无需另外创建。"}`,
-      promptSnippet: "生成媒体前先查询 listMediaModels，复用实际模型和工作区参考素材。",
+      promptSnippet: "生成媒体前先查询 listMediaModels，复用实际模型和工作区参考素材。更新已有生成节点时使用其 node:generateImage 或 node:generateVideo；本工具直接生成文件并添加素材节点。参数校验失败时按可选值修正，不重复提交已受理或已完成的生成。",
       parameters: z.toJSONSchema(operation.parameters, { io: "input", target: "draft-07" }),
       executionMode: "sequential",
       async execute(id, params, signal) {

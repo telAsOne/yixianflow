@@ -1,17 +1,30 @@
 {
   "name": "@toonflow/local-helper",
-  "version": "0.1.0",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
-  "exports": { "./protocol": "./src/protocol.ts" },
+  "exports": { "./protocol": "./src/protocol.ts", "./subtitleProtocol": "./src/subtitleProtocol.ts" },
   "scripts": {
     "build": "bun scripts/build.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc && vue-tsc --project ui/tsconfig.json"
   },
   "dependencies": {
     "@toonflow/file": "workspace:*",
     "@toonflow/ffmpeg": "workspace:*",
+    "@toonflow/node-subtitle": "workspace:*",
+    "@toonflow/node-shared": "workspace:*",
     "zod": "^4.6.2",
-    "fflate": "^0.8.3"
+    "fflate": "^0.8.3",
+    "vue": "^3.5.42",
+    "@tabler/icons-vue": "^3.46.0",
+    "marked": "18.0.13",
+    "dompurify": "3.4.16"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.2",
+    "vue-tsc": "^3.3.11",
+    "typescript": "~6.0.3",
+    "sass": "^1.104.0"
   }
 }

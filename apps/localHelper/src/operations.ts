@@ -78,6 +78,9 @@ export async function runProgram(executable: string, args: string[], cwd: string
 
 export async function operate(request: Exclude<LocalComputerRequest, { action: "projects" | "upload" | "download" }>, signal: AbortSignal, readLimit = 65536): Promise<unknown> {
   signal.throwIfAborted();
+  if (request.action === "subtitleEnvironment" || request.action === "subtitleScan" || request.action === "subtitleStart"
+    || request.action === "subtitleStatus" || request.action === "subtitleCancel" || request.action === "subtitleRender")
+    throw new Error("字幕操作须通过字幕任务入口执行");
   if (request.action === "readBatch") {
     const files = [];
     const limit = Math.min(65536, Math.floor(256 * 1024 / request.files.length));

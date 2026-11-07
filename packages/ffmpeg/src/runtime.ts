@@ -15,11 +15,12 @@ const require = createRequire(import.meta.url);
 const native = ffmpeg.prototype as FfmpegInternals;
 
 /** 原生 fluent 工厂；文件路径相对工作区解析，不修改库的全局原型。 */
-export function createFfmpeg(directory: string): typeof ffmpeg {
+export function createFfmpeg(directory: string, options: { localFiles?: boolean } = {}): typeof ffmpeg {
   const root = realpathSync(directory);
   if (!statSync(root).isDirectory()) throw new Error("FFmpeg 工作区必须是目录");
 
   function assertWithin(path: string) {
+    if (options.localFiles) return;
     const offset = relative(root, path);
     if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) {
       throw Object.assign(new Error("FFmpeg 只能操作当前工作区内的文件"), { status: 403 });

@@ -422,7 +422,7 @@ export async function installSkill(fileName: string, bytes: Uint8Array, force = 
 }
 
 export async function installRemotePlugin(type: PluginInstallType, url: string, fileName?: string, force = false) {
-  if (type === "provider") invalid("逸仙版不支持安装自定义供应商");
+  if (type === "provider") invalid("UnionAIGC 版不支持安装自定义供应商");
   const address = remoteAddress(url);
   if (fileName === undefined) {
     try { fileName = decodeURIComponent(address.pathname.split("/").at(-1) ?? ""); }

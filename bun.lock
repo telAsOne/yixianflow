@@ -29,12 +29,25 @@
     },
     "apps/localHelper": {
       "name": "@toonflow/local-helper",
-      "version": "0.1.0",
+      "version": "0.6.3",
       "dependencies": {
+        "@tabler/icons-vue": "^3.46.0",
         "@toonflow/ffmpeg": "workspace:*",
         "@toonflow/file": "workspace:*",
+        "@toonflow/node-shared": "workspace:*",
+        "@toonflow/node-subtitle": "workspace:*",
+        "dompurify": "3.4.16",
         "fflate": "^0.8.3",
+        "marked": "18.0.13",
+        "vue": "^3.5.42",
         "zod": "^4.6.2",
+      },
+      "devDependencies": {
+        "@vitejs/plugin-vue": "^6.0.8",
+        "sass": "^1.104.0",
+        "typescript": "~6.0.3",
+        "vite": "^8.2.2",
+        "vue-tsc": "^3.3.11",
       },
     },
     "apps/mobile": {
@@ -2793,6 +2806,8 @@
     "@toonflow/ext-txt/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "@toonflow/i18n/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
+
+    "@toonflow/local-helper/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "@toonflow/node-audio/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

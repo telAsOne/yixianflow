@@ -1,326 +1,206 @@
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeAtomic } from "@toonflow/file";
-import { parseSrt, serializeSrt } from "@toonflow/node-shared/subtitleSrt";
+import { createHash, randomBytes } from "node:crypto";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
+import type { Request, Response } from "express";
+import { createReadStream, lstat, mkdir, readFile, stat, withFileAccess, writeAtomic } from "@toonflow/file";
+import { parseSrt, serializeSrt } from "@toonflow/node-shared/subtitleSrt";
+import { subtitleReportSchema, whisperSelections } from "@toonflow/local-helper/subtitleProtocol";
+import type { SubtitleEnvironment } from "@toonflow/local-helper/subtitleProtocol";
+import { transferFileMaxBytes } from "@toonflow/local-helper/protocol";
+import { z } from "zod";
 import conf from "@/utils/conf";
-import { getStatus } from "@/utils/ffmpeg";
-import { isWithin, lockWorkspaceFiles } from "@/utils/workspace/files";
-import { whisperModels } from "./types";
-import type { WhisperCheckResult, WhisperStartInput, WhisperTask, WhisperTaskPhase } from "./types";
+import { callDevice, getSelectedDevice, requireReadyDevice } from "@/utils/localHelper";
+import { requireWebAccount } from "@/lib/webContext";
+import { isWithin, lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/files";
+import { notifyFileChange } from "@/utils/workspace/canvasSync";
+import type { WhisperCheckResult, WhisperStartInput, WhisperTask } from "./types";
 
-const dataDirectory = dirname(conf.path);
-const cacheDirectory = join(dataDirectory, "whisper", "cache");
-const taskDirectory = join(dataDirectory, "whisper", "tasks");
-const tasks = new Map<string, WhisperTaskEntry>();
-const maxCompletedTasks = 64;
-const maxOutputLength = 64 * 1024;
-let activeTask = false;
+const recordDirectory = join(dirname(conf.path), "subtitleTasks");
+const recordSchema = z.object({
+  operationId: z.uuid(), ownerId: z.number().int(), deviceId: z.uuid(), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  directory: z.string(), source: z.string(), output: z.string(), sourceRevision: z.string(), size: z.number().int(), createdAt: z.number(), expiresAt: z.number(),
+  state: z.object({ operationId: z.uuid(), phase: z.enum(["preparing", "downloadingModel", "transcribing", "reviewing", "writing", "completed", "failed", "cancelled"]),
+    running: z.boolean(), model: z.enum(whisperSelections), output: z.string().optional(), error: z.string().optional(), updatedAt: z.number(), progress: z.number().optional(),
+    review: subtitleReportSchema.shape.review }),
+});
+type Record = z.infer<typeof recordSchema>;
+type Entry = { record: Record; queue: Promise<void>; release?: () => void; dispatch?: AbortController };
+const entries = new Map<string, Entry>();
+const loads = new Map<string, Promise<Entry>>();
+const revision = (info: Awaited<ReturnType<typeof lstat>>) => `${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
 
-type WhisperTaskEntry = {
-  controller: AbortController;
-  child?: Bun.Subprocess;
-  completion: Promise<WhisperTask>;
-  resolveCompletion: (task: WhisperTask) => void;
-  state: WhisperTask;
-  outputPath: string;
-  output: string;
-  temporaryDirectory: string;
-  pythonPath: string;
-  ffmpegPath: string;
-  release: () => void;
-  finished: boolean;
-};
-
-type ProbeResult = {
-  whisper: boolean;
-  whisperError?: string;
-  torchVersion?: string;
-  torchCuda: boolean;
-  torchError?: string;
-  error?: string;
-};
-
-const probeScript = [
-  "import importlib.util, json",
-  "result = {'whisper': False, 'torchCuda': False}",
-  "try:",
-  " if importlib.util.find_spec('whisper') is None:",
-  "  raise ModuleNotFoundError('openai-whisper is not installed')",
-  " import whisper",
-  " result['whisper'] = True",
-  "except Exception as error:",
-  " result['whisperError'] = str(error)",
-  "try:",
-  " import torch",
-  " result['torchVersion'] = str(torch.__version__)",
-  " result['torchCuda'] = bool(torch.cuda.is_available())",
-  "except Exception as error:",
-  " result['torchError'] = str(error)",
-  "print(json.dumps(result, ensure_ascii=False))",
-].join("\n");
-
-function taskKey(directory: string, operationId: string) {
-  return `${directory}\0${operationId}`;
+async function readyDevice() {
+  const device = await getSelectedDevice();
+  if (!device?.ready) throw Object.assign(new Error("请在设置 → 本地助手连接并选择已授权电脑，Whisper 由本地托盘执行"), { status: 424, code: "LOCAL_HELPER_REQUIRED" });
+  if (!Bun.semver.satisfies(device.version, ">=0.6.0")) throw Object.assign(new Error("请先升级本地助手至 0.6.0，安装本机识别环境后再生成字幕"), { status: 424, code: "LOCAL_HELPER_UPDATE_REQUIRED" });
+  return device;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+async function persist(entry: Entry) {
+  await mkdir(recordDirectory, { recursive: true });
+  await writeAtomic(join(recordDirectory, `${entry.record.operationId}.json`), JSON.stringify(entry.record), { mode: 0o600 });
 }
 
-function snapshot(task: WhisperTask): WhisperTask {
-  return { ...task };
-}
-
-function updateTask(entry: WhisperTaskEntry, phase: WhisperTaskPhase) {
-  entry.state = { ...entry.state, phase, updatedAt: Date.now() };
-}
-
-function throwIfCancelled(entry: WhisperTaskEntry) {
-  entry.controller.signal.throwIfAborted();
-}
-
-async function resolvePython(pythonPath?: string) {
-  if (pythonPath !== undefined && !pythonPath.trim()) return { error: "Python 路径不能为空" };
-  const requested = pythonPath?.trim();
-  const path = requested ? isAbsolute(requested) ? requested : Bun.which(requested) : Bun.which("python");
-  if (!path) return { error: requested ? `找不到 Python：${requested}` : "找不到 Python，请安装 Python 或配置路径" };
-  const info = await stat(path).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  });
-  if (!info) return { error: `找不到 Python：${path}` };
-  if (!info.isFile()) return { error: `Python 路径不是普通文件：${path}` };
-  return { path };
-}
-
-async function probePython(path: string): Promise<ProbeResult> {
-  let child: Bun.Subprocess;
-  try {
-    child = Bun.spawn([path, "-c", probeScript], { stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true, timeout: 30000 });
-  } catch (error) {
-    return { whisper: false, torchCuda: false, error: `Python 无法启动：${errorMessage(error)}` };
-  }
-  const [stdout, stderr, code] = await Promise.all([readProcessOutput(child.stdout), readProcessOutput(child.stderr), child.exited]).catch(error => {
-    return ["", `Python 探测失败：${errorMessage(error)}`, -1] as const;
-  });
-  if (code !== 0) return { whisper: false, torchCuda: false, error: stderr.trim() || `Python 探测失败（退出码 ${code}）` };
-  try {
-    const result = JSON.parse(stdout) as Partial<ProbeResult>;
-    if (typeof result.whisper !== "boolean" || typeof result.torchCuda !== "boolean") throw new Error("探测结果格式无效");
-    return {
-      whisper: result.whisper,
-      whisperError: typeof result.whisperError === "string" ? result.whisperError : undefined,
-      torchVersion: typeof result.torchVersion === "string" ? result.torchVersion : undefined,
-      torchCuda: result.torchCuda,
-      torchError: typeof result.torchError === "string" ? result.torchError : undefined,
-    };
-  } catch (error) {
-    return { whisper: false, torchCuda: false, error: `Python 探测结果无效：${errorMessage(error)}` };
-  }
-}
-
-async function readProcessOutput(stream: Bun.Subprocess["stdout"] | Bun.Subprocess["stderr"], onText?: (text: string) => void) {
-  if (!stream || typeof stream === "number") return "";
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let tail = "";
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value, { stream: true });
-      onText?.(text);
-      tail = (tail + text).slice(-maxOutputLength);
-    }
-    const finalText = decoder.decode();
-    onText?.(finalText);
-    return (tail + finalText).slice(-maxOutputLength);
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-export async function checkWhisper(pythonPath?: string): Promise<WhisperCheckResult> {
-  const [python, ffmpeg] = await Promise.all([resolvePython(pythonPath), getStatus()]);
-  const probe = python.path ? await probePython(python.path) : undefined;
-  const pythonError = python.error ?? probe?.error;
-  const whisperError = probe?.whisperError ?? (!probe?.whisper ? pythonError ? "Python 不可用，无法探测 Whisper" : "当前 Python 环境未安装 openai-whisper" : undefined);
-  const torchError = probe?.torchError ?? (!probe?.torchVersion ? pythonError ? "Python 不可用，无法探测 PyTorch" : "当前 Python 环境未安装 PyTorch" : undefined);
-  const ffmpegError = ffmpeg.tools.ffmpeg.error ?? (!ffmpeg.tools.ffmpeg.path ? "未找到 FFmpeg" : undefined);
-  const ffprobeError = ffmpeg.tools.ffprobe.error ?? (!ffmpeg.tools.ffprobe.path ? "未找到 FFprobe" : undefined);
-  const errors = [pythonError, whisperError, torchError, ffmpegError, ffprobeError].filter((error): error is string => Boolean(error));
-  const torchAvailable = Boolean(probe?.torchVersion) && !torchError;
-  return {
-    models: whisperModels,
-    python: { path: python.path, available: !pythonError, error: pythonError },
-    whisper: { available: Boolean(probe?.whisper), error: whisperError },
-    torch: { available: torchAvailable, version: probe?.torchVersion, cuda: probe?.torchCuda ?? false, error: torchError },
-    device: torchAvailable ? probe?.torchCuda ? "cuda" : "cpu" : "unavailable",
-    ffmpeg,
-    cacheDirectory,
-    ready: !errors.length,
-    errors,
-  };
-}
-
-async function modelIsCached(model: WhisperStartInput["model"]) {
-  // 官方 Whisper 的别名 large/turbo 分别落到以下检查点文件。
-  const filename = model === "large" ? "large-v3.pt" : model === "turbo" ? "large-v3-turbo.pt" : `${model}.pt`;
-  const info = await lstat(join(cacheDirectory, "whisper", filename)).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  });
-  return Boolean(info?.isFile());
-}
-
-async function runWhisper(entry: WhisperTaskEntry, input: WhisperStartInput) {
-  try {
-    const cached = await modelIsCached(input.model);
-    throwIfCancelled(entry);
-    if (!cached) updateTask(entry, "downloadingModel");
-    const pathSeparator = process.platform === "win32" ? ";" : ":";
-    const environment: Record<string, string> = Object.fromEntries(Object.entries(process.env).map(([key, value]) => [key, value ?? ""]));
-    environment.XDG_CACHE_HOME = cacheDirectory;
-    const pathKey = Object.keys(environment).find(key => key.toUpperCase() === "PATH") ?? "PATH";
-    environment[pathKey] = `${dirname(entry.ffmpegPath)}${pathSeparator}${environment[pathKey] ?? ""}`;
-    throwIfCancelled(entry);
-    entry.child = Bun.spawn([
-      entry.pythonPath, "-u", "-m", "whisper", input.sourcePath,
-      "--model", input.model,
-      "--output_dir", entry.temporaryDirectory,
-      "--output_format", "srt",
-      "--task", "transcribe",
-      "--verbose", "True",
-      ...(input.language ? ["--language", input.language] : []),
-    ], { stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true, env: environment, signal: entry.controller.signal });
-    if (cached) updateTask(entry, "transcribing");
-    let lineTail = "";
-    const onStdout = (text: string) => {
-      if (entry.state.phase !== "downloadingModel") return;
-      lineTail = (lineTail + text).slice(-256);
-      if (!entry.controller.signal.aborted && /\[\d{2}:\d{2}(?::\d{2})?\.\d{3}\s*-->/.test(lineTail)) updateTask(entry, "transcribing");
-    };
-    const [stdout, stderr, code] = await Promise.all([readProcessOutput(entry.child.stdout, onStdout), readProcessOutput(entry.child.stderr), entry.child.exited]);
-    throwIfCancelled(entry);
-    if (code !== 0) throw new Error(stderr.trim() || stdout.trim() || `Whisper 退出码为 ${code}`);
-    const results = (await readdir(entry.temporaryDirectory, { withFileTypes: true }))
-      .filter(item => item.isFile() && item.name.toLowerCase().endsWith(".srt"));
-    throwIfCancelled(entry);
-    if (results.length !== 1) throw new Error(results.length ? "Whisper 生成了多个 SRT 文件" : "Whisper 未生成 SRT 文件");
-    const content = await readFile(join(entry.temporaryDirectory, results[0].name), "utf8");
-    throwIfCancelled(entry);
-    const segments = parseSrt(content);
-    if (!segments.length) throw new Error("Whisper 生成了空字幕");
-    const normalized = serializeSrt(segments);
-    // ACT: writing 是不可取消的提交边界；开始排他原子写入后，取消请求只等待真实结果。
-    updateTask(entry, "writing");
-    await writeAtomic(entry.outputPath, normalized, { exclusive: true });
-    await finishTask(entry, "completed");
-  } catch (error) {
-    try { entry.child?.kill(); }
-    catch { /* 子进程可能已经退出，保留原始失败原因。 */ }
-    await finishTask(entry, entry.controller.signal.aborted ? "cancelled" : "failed", errorMessage(error));
-  }
-}
-
-async function finishTask(entry: WhisperTaskEntry, phase: "completed" | "failed" | "cancelled", error?: string) {
-  if (entry.finished) return;
-  entry.finished = true;
-  let cleanupError: unknown;
-  try {
-    if (entry.child) await entry.child.exited;
-  } catch (cause) {
-    cleanupError = cause;
-  }
-  try {
-    if (!isWithin(taskDirectory, entry.temporaryDirectory) || resolve(entry.temporaryDirectory) === resolve(taskDirectory)) throw new Error("Whisper 临时目录路径无效");
-    await rm(entry.temporaryDirectory, { recursive: true, force: true });
-  } catch (cause) {
-    cleanupError = cleanupError ? new AggregateError([cleanupError, cause], `${errorMessage(cleanupError)}；${errorMessage(cause)}`) : cause;
-  } finally {
-    if (cleanupError) {
-      phase = "failed";
-      error = `Whisper 清理失败：${errorMessage(cleanupError)}`;
-    }
-    entry.release();
-    activeTask = false;
-    entry.state = { ...entry.state, phase, running: false, output: phase === "completed" ? entry.output : undefined, error, updatedAt: Date.now() };
-    entry.resolveCompletion(snapshot(entry.state));
-    const completed = [...tasks].filter(([, task]) => !task.state.running);
-    for (const [key] of completed.slice(0, -maxCompletedTasks)) tasks.delete(key);
-  }
-}
-
-export async function startWhisper(input: WhisperStartInput): Promise<WhisperTask> {
-  if (!whisperModels.includes(input.model)) throw new Error("Whisper 模型无效");
-  const language = input.language?.trim();
-  if (language && (language.length > 32 || !/^[a-zA-Z][a-zA-Z -]*$/.test(language))) throw new Error("Whisper 语言无效");
-  if (!isAbsolute(input.sourcePath) || !isAbsolute(input.outputPath) || !isAbsolute(input.directory)) throw new Error("Whisper 输入路径必须是绝对路径");
-  if (!isWithin(input.directory, input.sourcePath) || !isWithin(input.directory, input.outputPath)) throw new Error("Whisper 文件必须位于工作区内");
-  if (resolve(input.sourcePath).toLowerCase() === resolve(input.outputPath).toLowerCase()) throw new Error("Whisper 输出不能覆盖源文件");
-  if (extname(input.outputPath).toLowerCase() !== ".srt") throw Object.assign(new Error("Whisper 输出必须是 SRT 文件"), { status: 400 });
-  if (activeTask) throw Object.assign(new Error("Whisper 任务正在运行，请等待完成"), { status: 409, code: "EBUSY" });
-  activeTask = true;
-  let release: (() => void) | undefined;
-  let temporaryDirectory: string | undefined;
-  try {
-    const source = await lstat(input.sourcePath);
-    if (!source.isFile()) throw Object.assign(new Error("Whisper 源文件必须是普通文件"), { status: 400 });
-    if (!(await stat(dirname(input.outputPath))).isDirectory()) throw Object.assign(new Error("Whisper 输出目录不存在"), { status: 400 });
-    const output = await lstat(input.outputPath).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-    if (output) throw Object.assign(new Error("Whisper 输出文件已存在"), { code: "EEXIST" });
-    const check = await checkWhisper(input.pythonPath);
-    if (!check.ready || !check.python.path || !check.ffmpeg.tools.ffmpeg.path) throw new Error(check.errors.join("；") || "Whisper 运行环境不可用");
-    release = lockWorkspaceFiles([input.outputPath]);
-    await mkdir(taskDirectory, { recursive: true });
-    temporaryDirectory = await mkdtemp(join(taskDirectory, "task-"));
-    const operationId = crypto.randomUUID();
-    const state: WhisperTask = { operationId, phase: "preparing", running: true, model: input.model, updatedAt: Date.now() };
-    let resolveCompletion!: (task: WhisperTask) => void;
-    const completion = new Promise<WhisperTask>(resolve => { resolveCompletion = resolve; });
-    const entry: WhisperTaskEntry = {
-      controller: new AbortController(), completion, resolveCompletion, state,
-      outputPath: input.outputPath, output: relative(input.directory, input.outputPath).split(sep).join("/"),
-      temporaryDirectory, pythonPath: check.python.path, ffmpegPath: check.ffmpeg.tools.ffmpeg.path,
-      release, finished: false,
-    };
-    tasks.set(taskKey(input.directory, operationId), entry);
-    void runWhisper(entry, { ...input, language });
-    return snapshot(state);
-  } catch (error) {
+async function load(id: string): Promise<Entry> {
+  z.uuid().parse(id);
+  if (entries.has(id)) return entries.get(id)!;
+  if (loads.has(id)) return loads.get(id)!;
+  const pending = (async () => {
     try {
-      if (temporaryDirectory && isWithin(taskDirectory, temporaryDirectory) && resolve(temporaryDirectory) !== resolve(taskDirectory)) {
-        await rm(temporaryDirectory, { recursive: true, force: true });
-      }
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], `${errorMessage(error)}；临时目录清理失败：${errorMessage(cleanupError)}`);
-    } finally {
-      release?.();
-      activeTask = false;
+      const path = join(recordDirectory, `${id}.json`);
+      if ((await stat(path)).size > 128 * 1024) throw new Error("字幕任务元数据过大");
+      const record = recordSchema.parse(JSON.parse(await readFile(path, "utf8")));
+      if (record.operationId !== id) throw new Error("字幕任务记录编号不匹配");
+      const entry: Entry = { record, queue: Promise.resolve() };
+      if (record.state.running) entry.release = lockWorkspaceFiles([(await resolveWorkspacePath(record.directory, record.output)).path]);
+      entries.set(id, entry); return entry;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw Object.assign(new Error("字幕任务不存在或已过期"), { status: 404, code: "WHISPER_TASK_EXPIRED" });
+      throw error;
     }
-    throw error;
-  }
+  })().finally(() => loads.delete(id));
+  loads.set(id, pending); return pending;
 }
 
-function findTask(directory: string, operationId: string) {
-  const entry = tasks.get(taskKey(directory, operationId));
-  if (!entry) throw Object.assign(new Error("任务已失效"), { code: "WHISPER_TASK_EXPIRED", status: 404 });
+function change<T>(entry: Entry, operation: () => Promise<T>): Promise<T> {
+  const pending = entry.queue.then(operation);
+  entry.queue = pending.then(() => {}, () => {}); return pending;
+}
+
+async function finish(entry: Entry, phase: "completed" | "failed" | "cancelled", error?: string) {
+  entry.record.state = { ...entry.record.state, phase, running: false, error, updatedAt: Date.now(),
+    output: phase === "completed" ? entry.record.output : undefined, progress: phase === "completed" ? 100 : entry.record.state.progress };
+  await persist(entry); entry.release?.(); entry.release = undefined;
+}
+
+async function owned(directory: string, id: string) {
+  const entry = await load(id);
+  if (entry.record.ownerId !== requireWebAccount().user.id || resolve(directory) !== resolve(entry.record.directory))
+    throw Object.assign(new Error("字幕任务不属于当前账户或工作区"), { status: 404 });
+  if (entry.record.state.running && entry.record.expiresAt < Date.now()) await change(entry, () => finish(entry, "failed", "本地字幕任务超时，已有本机结果保留，请核对后重试"));
   return entry;
 }
 
-export function getWhisperTask(directory: string, operationId: string) {
-  return snapshot(findTask(directory, operationId).state);
+async function fromDevice(req: Request) {
+  const device = await requireReadyDevice(req);
+  const id = z.uuid().parse(req.query.operationId ?? req.body?.operationId);
+  const entry = await load(id);
+  if (entry.record.deviceId !== device.id || entry.record.ownerId !== device.ownerId || (req.get("x-subtitle-token") ?? req.body?.token) !== entry.record.token)
+    throw Object.assign(new Error("字幕任务不属于该设备或任务凭据无效"), { status: 403 });
+  if (entry.record.expiresAt < Date.now()) throw Object.assign(new Error("字幕任务凭据已过期"), { status: 410 });
+  return entry;
 }
 
-export async function cancelWhisper(directory: string, operationId: string) {
-  const entry = findTask(directory, operationId);
-  if (entry.state.running && entry.state.phase !== "writing") {
-    entry.controller.abort();
-    try { entry.child?.kill(); }
-    catch { /* 进程可能已在退出，仍等待 exited 和清理完成。 */ }
+export async function checkWhisper(): Promise<WhisperCheckResult> {
+  const device = await readyDevice();
+  const environment = await callDevice(device, { action: "subtitleEnvironment" }) as SubtitleEnvironment;
+  const models = environment.models.filter(model => model.cached && model.allowed);
+  const errors = [environment.error, !environment.ready ? "请从本地助手 → 批量字幕安装识别环境" : undefined,
+    !models.length ? "请在本地助手下载适合本机硬件的模型，云端不下载模型" : undefined].filter((value): value is string => !!value);
+  const ffmpeg = await import("@/utils/ffmpeg").then(module => module.getStatus());
+  return { models: whisperSelections, defaultModel: environment.hardware?.recommended,
+    python: { path: environment.pythonPath, available: environment.ready }, whisper: { available: environment.ready },
+    torch: { available: environment.ready, cuda: !!environment.hardware?.cuda }, device: environment.ready ? environment.hardware?.cuda ? "cuda" : "cpu" : "unavailable",
+    ffmpeg, cacheDirectory: environment.settings.directory, ready: environment.ready && models.length > 0, errors,
+    execution: "localHelper", localDevice: { id: device.id, name: device.name }, cachedModels: models.map(model => model.id) };
+}
+
+export async function startWhisper(input: WhisperStartInput): Promise<WhisperTask> {
+  const device = await readyDevice();
+  if (!isAbsolute(input.directory) || !isWithin(input.directory, input.sourcePath) || !isWithin(input.directory, input.outputPath)
+    || resolve(input.sourcePath) === resolve(input.outputPath) || extname(input.outputPath).toLowerCase() !== ".srt") throw new Error("字幕任务输入输出路径无效");
+  const sourceName = relative(input.directory, input.sourcePath).split(sep).join("/");
+  const outputName = relative(input.directory, input.outputPath).split(sep).join("/");
+  const source = await resolveWorkspacePath(input.directory, sourceName);
+  const output = await resolveWorkspacePath(input.directory, outputName);
+  const sourceInfo = await lstat(source.path);
+  if (!sourceInfo.isFile() || sourceInfo.isSymbolicLink()) throw new Error("字幕源文件必须是普通媒体文件");
+  if (!sourceInfo.size || sourceInfo.size > transferFileMaxBytes) throw Object.assign(new Error("字幕素材传输上限为单文件 100 MiB，请先缩小素材"), { status: 413 });
+  if (!(await stat(dirname(output.path))).isDirectory()) throw new Error("字幕输出目录不存在");
+  if (await lstat(output.path).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; return null; }))
+    throw Object.assign(new Error("字幕输出已经存在，不会覆盖"), { status: 409, code: "EEXIST" });
+  const operationId = crypto.randomUUID();
+  const entry: Entry = { queue: Promise.resolve(), dispatch: new AbortController(), release: lockWorkspaceFiles([output.path]), record: {
+    operationId, ownerId: device.ownerId, deviceId: device.id, token: randomBytes(32).toString("base64url"), directory: input.directory, source: sourceName,
+    output: outputName, sourceRevision: revision(sourceInfo), size: sourceInfo.size, createdAt: Date.now(), expiresAt: Date.now() + 24 * 60 * 60000,
+    state: { operationId, phase: "preparing", running: true, model: input.model, updatedAt: Date.now(), progress: 0 },
+  } };
+  try { await persist(entry); entries.set(operationId, entry); } catch (error) { entry.release?.(); throw error; }
+  // 仅协调和传输；识别在托盘持久队列执行，浏览器关闭不取消已提交任务。
+  void (async () => {
+    const hash = createHash("sha256");
+    for await (const chunk of createReadStream(source.path)) hash.update(chunk);
+    if (revision(await lstat(source.path)) !== entry.record.sourceRevision) throw new Error("字幕源文件在提交期间发生变化");
+    const extension = /^[a-z0-9]{1,8}$/i.test(extname(source.path).slice(1)) ? extname(source.path).slice(1).toLowerCase() : "bin";
+    await callDevice(device, { action: "subtitleTranscribe", operationId, token: entry.record.token, fileName: `input.${extension}`,
+      size: sourceInfo.size, sha256: hash.digest("hex"), model: input.model, language: input.language || "" }, entry.dispatch!.signal);
+  })().catch(error => change(entry, async () => {
+    if (entry.record.state.running) await finish(entry, entry.dispatch?.signal.aborted ? "cancelled" : "failed", error instanceof Error ? error.message : String(error));
+  })).catch(error => console.error("字幕任务协调记录保存失败", error instanceof Error ? error.name : "Error"));
+  return structuredClone(entry.record.state);
+}
+
+export async function getWhisperTask(directory: string, id: string) { return structuredClone((await owned(directory, id)).record.state); }
+
+export async function cancelWhisper(directory: string, id: string) {
+  const entry = await owned(directory, id);
+  return change(entry, async () => {
+    if (entry.record.state.running && entry.record.state.phase !== "writing") { entry.dispatch?.abort(); await finish(entry, "cancelled", "已取消本地字幕任务"); }
+    return structuredClone(entry.record.state);
+  });
+}
+
+export async function subtitleInput(req: Request, res: Response) {
+  const entry = await fromDevice(req);
+  if (!entry.record.state.running) throw Object.assign(new Error("字幕任务已经结束"), { status: 409 });
+  const source = await resolveWorkspacePath(entry.record.directory, entry.record.source);
+  await withFileAccess([source.path], "read", async () => {
+    if (revision(await lstat(source.path)) !== entry.record.sourceRevision) throw Object.assign(new Error("字幕源文件已变化"), { status: 409 });
+    res.set({ "Content-Type": "application/octet-stream", "Content-Length": String(entry.record.size), "Cache-Control": "no-store" });
+    await pipeline(createReadStream(source.path), res);
+  });
+}
+
+export async function subtitleEvent(req: Request) {
+  const report = subtitleReportSchema.parse(req.body);
+  const entry = await fromDevice(req);
+  return change(entry, async () => {
+    if (entry.record.state.phase === "completed") return { accepted: true };
+    if (!entry.record.state.running) throw Object.assign(new Error("字幕任务已结束，不接受后续修改"), { status: 409 });
+    if (report.model) entry.record.state.model = report.model;
+    entry.record.state.progress = report.progress; entry.record.state.review = report.review;
+    if (report.state === "completed") {
+      if (!report.srt || Buffer.byteLength(report.srt) > 2 * 1024 * 1024) throw new Error("本机字幕结果为空或超过 2 MiB");
+      const segments = parseSrt(report.srt);
+      if (!segments.length) throw new Error("本机字幕没有有效分段");
+      const content = serializeSrt(segments);
+      const source = await resolveWorkspacePath(entry.record.directory, entry.record.source);
+      if (revision(await lstat(source.path)) !== entry.record.sourceRevision) throw Object.assign(new Error("原媒体已经变化，本机字幕保留但未写入该工作区"), { status: 409 });
+      const output = await resolveWorkspacePath(entry.record.directory, entry.record.output);
+      const recovering = entry.record.state.phase === "writing";
+      entry.record.state.phase = "writing"; await persist(entry);
+      try { await writeAtomic(output.path, content, { exclusive: true }); }
+      catch (error) {
+        if (!recovering || (error as NodeJS.ErrnoException).code !== "EEXIST" || await readFile(output.path, "utf8") !== content) throw error;
+      }
+      await finish(entry, "completed"); notifyFileChange(entry.record.directory, entry.record.output);
+    } else if (["failed", "cancelled", "interrupted", "noSpeech", "waitingEnvironment"].includes(report.state)) {
+      await finish(entry, report.state === "cancelled" ? "cancelled" : "failed", report.error || (report.state === "noSpeech" ? "没有识别到有效语音" : "本机识别已中断，请查看托盘任务记录"));
+    } else {
+      entry.record.state.phase = report.state === "reviewing" ? "reviewing" : report.state === "transcribing" ? "transcribing" : "preparing";
+      entry.record.state.updatedAt = Date.now(); await persist(entry);
+    }
+    return { accepted: true };
+  });
+}
+
+export async function cancelledSubtitles(deviceId: string, ownerId: number | null, ids: string[]) {
+  const cancelled: string[] = [];
+  for (const id of ids) {
+    try {
+      const { record } = await load(id);
+      if (record.deviceId !== deviceId || record.ownerId !== ownerId || record.expiresAt < Date.now() || !record.state.running && record.state.phase !== "completed") cancelled.push(id);
+    } catch (error) { if ((error as { status?: number }).status === 404) cancelled.push(id); else throw error; }
   }
-  await entry.completion;
-  return snapshot(entry.state);
+  return cancelled;
 }

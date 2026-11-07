@@ -1,4 +1,5 @@
 import axios from "axios";
+import { nextTick, reactive } from "vue";
 import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
 import { ElMessage } from "element-plus";
 import type { useVueFlow } from "@vue-flow/core";
@@ -23,9 +24,9 @@ const mediaExtensions: Record<string, string> = {
   "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "video/x-matroska": "mkv", "video/x-msvideo": "avi",
 };
 
-function inferredMediaType(file: File) {
+function inferredMediaType(file: Pick<File, "type" | "name">) {
   const type = file.type.split(";")[0]?.trim().toLowerCase() ?? "";
-  if (/^(image|audio|video)\//.test(type)) return type;
+  if (/^(image|audio|video|text)\//.test(type) || /^application\/(json|xml|javascript|x-ndjson)$/.test(type)) return type;
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   return fileMimeTypes[extension] ?? "";
 }
@@ -64,10 +65,24 @@ export function isCanvasFileDrag(event: DragEvent) {
   return event.dataTransfer?.types.some(type => type === assetDragType || type === "Files") ?? false;
 }
 
+export type CanvasFileImport = {
+  id: string;
+  name: string;
+  kind: "image" | "audio" | "video" | "text";
+  position: { x: number; y: number };
+  status: "queued" | "reading" | "uploading" | "error";
+  progress: number;
+  previewUrl: string;
+  error: string;
+  retry(): void;
+  remove(): void;
+};
+
 type CanvasFileContext = {
   directory: string;
   availableNodes: { type: string }[];
   signal: AbortSignal;
+  imports: Map<string, CanvasFileImport>;
   flow: Pick<ReturnType<typeof useVueFlow>, "addNodes" | "screenToFlowCoordinate">;
 };
 
@@ -75,56 +90,98 @@ export async function dropCanvasFiles(event: DragEvent, context: CanvasFileConte
   const transfer = event.dataTransfer;
   if (!transfer) return;
   const path = transfer.getData(assetDragType);
-  let droppedFiles = Array.from(transfer.files);
   const { signal, flow } = context;
   const position = flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
   try {
     signal.throwIfAborted();
-    if (path) {
-      const { data } = await axios.get<Blob>("/api/assets/read", { params: { path }, responseType: "blob", signal });
-      droppedFiles = [new File([data], path.split("/").pop()!, { type: data.type })];
-    }
-    await importCanvasFiles(droppedFiles, position, context);
+    await importCanvasFiles(path ? [path] : Array.from(transfer.files), position, context);
   } catch (error) {
     if (!signal.aborted) showError(error);
   }
 }
 
-export async function importCanvasFiles(droppedFiles: File[], position: { x: number; y: number }, context: CanvasFileContext) {
+export async function importCanvasFiles(droppedFiles: (File | string)[], position: { x: number; y: number }, context: CanvasFileContext) {
   const { signal, flow, availableNodes } = context;
+  signal.throwIfAborted();
   const files = useWorkspaceFiles(context.directory);
-  await validateMediaFiles(droppedFiles.map(file => ({ type: inferredMediaType(file), size: file.size })).filter(file => /^(image|audio|video)\//.test(file.type)));
-  for (const [index, file] of droppedFiles.entries()) {
-    if (signal.aborted) break;
+  const tasks: { item: CanvasFileImport; run(): Promise<void> }[] = [];
+  for (const [index, source] of droppedFiles.entries()) {
+    const name = typeof source === "string" ? source.split("/").pop()! : source.name;
+    const mimeType = inferredMediaType(typeof source === "string" ? { name, type: "" } : source);
+    const kind = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("audio/") ? "audio" : mimeType.startsWith("video/") ? "video"
+      : mimeType.startsWith("text/") || /^application\/(json|xml|javascript|x-ndjson)$/.test(mimeType) ? "text" : undefined;
+    if (!kind) { showError(new Error(`${name}：该文件类型暂不支持导入画布`)); continue; }
+    const type = `remote-${kind}Node`;
+    if (!availableNodes.some(node => node.type === type)) { showError(new Error(`${name}：请先安装并启用对应的基础节点`)); continue; }
     const id = crypto.randomUUID();
-    let copiedPath: string | undefined;
-    try {
-      const fileType = file.type.split(";")[0]!.trim().toLowerCase();
-      const extension = file.name.split(".").pop()!.toLowerCase();
-      const mimeType = !fileType || fileType === "application/octet-stream" ? fileMimeTypes[extension] ?? fileType : fileType;
-      const kind = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("audio/") ? "audio" : mimeType.startsWith("video/") ? "video"
-        : mimeType.startsWith("text/") || /^application\/(json|xml|javascript|x-ndjson)$/.test(mimeType) ? "text" : undefined;
-      if (!kind) throw new Error(`${file.name}：该文件类型暂不支持导入画布`);
-      const type = `remote-${kind}Node`;
-      if (!availableNodes.some(node => node.type === type)) throw new Error(`${file.name}：请先安装并启用对应的基础节点`);
-      let output: NodeOutput | undefined;
-      let textSnapshot: string | undefined;
-      if (kind === "text") {
-        textSnapshot = await file.text();
-      } else {
-        copiedPath = await uploadNodeFile(files, id, file);
-        output = { dataType: kind === "image" ? "IMAGE" : kind === "audio" ? "AUDIO" : "VIDEO", value: { url: copiedPath, mimeType } };
+    const previewUrl = typeof source !== "string" && kind === "image" ? URL.createObjectURL(source) : "";
+    let pending = false;
+    const item = reactive<CanvasFileImport>({
+      id, name, kind, position: { x: position.x + index % 3 * 304, y: position.y + Math.floor(index / 3) * 236 },
+      status: "queued", progress: 0, previewUrl, error: "",
+      retry() { if (!pending && !signal.aborted) void run(); },
+      remove() {
+        context.imports.delete(id);
+        signal.removeEventListener("abort", item.remove);
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+      },
+    });
+    // ACT: 上传卡片只存在于当前视图；正式文件落盘后才进入画布和撤销历史，不保存本地预览地址或半成品节点。
+    context.imports.set(id, item);
+    signal.addEventListener("abort", item.remove, { once: true });
+    async function run() {
+      if (signal.aborted || pending) return;
+      pending = true;
+      item.status = "reading";
+      item.progress = 0;
+      item.error = "";
+      let copiedPath: string | undefined;
+      try {
+        let file: File;
+        if (typeof source === "string") {
+          const { data } = await axios.get<Blob>("/api/assets/read", { params: { path: source }, responseType: "blob", signal });
+          file = new File([data], name, { type: data.type });
+        } else file = source;
+        if (kind !== "text") await validateMediaFiles([{ type: mimeType, size: file.size }]);
+        signal.throwIfAborted();
+        let output: NodeOutput | undefined;
+        let textSnapshot: string | undefined;
+        if (kind === "text") textSnapshot = await file.text();
+        else {
+          item.status = "uploading";
+          copiedPath = await uploadNodeFile(files, id, file, loaded => {
+            item.progress = Math.min(100, Math.floor(loaded / file.size * 100));
+          });
+          output = { dataType: kind === "image" ? "IMAGE" : kind === "audio" ? "AUDIO" : "VIDEO", value: { url: copiedPath, mimeType } };
+        }
+        signal.throwIfAborted();
+        flow.addNodes({ id, type, position: { ...item.position },
+          data: kind === "text" ? { label: name, textSnapshot } : { label: name, outputs: { [item.kind]: output } } });
+        copiedPath = undefined;
+        await nextTick();
+        item.remove();
+      } catch (error) {
+        if (copiedPath) await files.remove(copiedPath).catch(showError);
+        if (!signal.aborted) { item.status = "error"; item.error = errorMessage(error); }
+      } finally {
+        pending = false;
       }
-      signal.throwIfAborted();
-      flow.addNodes({ id, type, position: { x: position.x + index * 32, y: position.y + index * 32 },
-        data: kind === "text" ? { label: file.name, textSnapshot } : { label: file.name, outputs: { [kind]: output } } });
-    } catch (error) {
-      if (copiedPath) await files.remove(copiedPath).catch(showError);
-      if (!signal.aborted) showError(error);
     }
+    tasks.push({ item, run });
   }
+  try {
+    await validateMediaFiles(droppedFiles.filter((file): file is File => typeof file !== "string")
+      .map(file => ({ type: inferredMediaType(file), size: file.size })).filter(file => /^(image|audio|video)\//.test(file.type)));
+  } catch (error) {
+    tasks.forEach(({ item }) => item.remove());
+    throw error;
+  }
+  for (const task of tasks) { if (signal.aborted) break; await task.run(); }
 }
 
-function showError(error: unknown) {
-  ElMessage.error(axios.isAxiosError<{ message: string }>(error) ? error.response?.data.message || error.message : error instanceof Error ? error.message : "文件导入失败");
+function errorMessage(error: unknown) {
+  if (axios.isAxiosError(error) && error.code === "ERR_NETWORK") return "网络连接失败，请检查网络后重试";
+  return axios.isAxiosError<{ message: string }>(error) ? error.response?.data?.message || error.message : error instanceof Error ? error.message : "文件导入失败";
 }
+
+function showError(error: unknown) { ElMessage.error(errorMessage(error)); }

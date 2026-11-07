@@ -20,7 +20,7 @@ const accountPath = join(dirname(conf.path), "account.json");
 export function getBaseUrl() {
   const url = new URL(process.env.TOONFLOW_YIXIAN_BASE_URL || "https://yixian.lol");
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/")
-    throw new Error("逸仙平台地址必须是不含凭据、参数或路径的 HTTPS 站点地址");
+    throw new Error("UnionAIGC 平台地址必须是不含凭据、参数或路径的 HTTPS 站点地址");
   return url.origin;
 }
 
@@ -30,7 +30,7 @@ export function getAccount() {
 }
 export function requireAccount() {
   const account = getAccount();
-  if (!account) throw Object.assign(new Error("请登录或注册逸仙账户后开始生成"), { status: 401, code: "toonflow.login_required" });
+  if (!account) throw Object.assign(new Error("请登录或注册 UnionAIGC 账户后开始生成"), { status: 401, code: "toonflow.login_required" });
   return account;
 }
 export function getApiKey() { return requireAccount().key; }
@@ -106,7 +106,7 @@ export async function platformFetch(input: Parameters<typeof fetch>[0], init?: R
   const account = requireAccount();
   const url = new URL(input instanceof Request ? input.url : String(input));
   if (url.origin !== account.baseUrl || !url.pathname.startsWith("/v1/") || url.username || url.password)
-    throw new Error("只允许调用当前逸仙平台接口");
+    throw new Error("只允许调用当前 UnionAIGC 平台接口");
   const headers = new Headers(input instanceof Request ? input.headers : undefined);
   new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
   if (headers.has("Authorization") && headers.get("Authorization") !== `Bearer ${account.key}`)
@@ -138,7 +138,7 @@ export async function accountFetch(path: string, init?: RequestInit) {
   const body = await response.json() as { success?: boolean; data?: unknown; message?: string; error_code?: string };
   if (body.message && getAccount()) body.message = body.message.replaceAll(getAccount()!.key, "••••••");
   if (!response.ok || body.success !== true) throw Object.assign(new Error(body.error_code === "toonflow.client_outdated"
-    ? "当前版本过旧，请在设置的关于页面更新逸仙版 Toonflow" : body.message || `逸仙接口请求失败（HTTP ${response.status}）`),
+    ? "当前版本过旧，请在设置的关于页面更新 UnionAIGC 版 Toonflow" : body.message || `UnionAIGC 接口请求失败（HTTP ${response.status}）`),
     { status: response.ok ? 502 : response.status, code: body.error_code });
   return body.data;
 }

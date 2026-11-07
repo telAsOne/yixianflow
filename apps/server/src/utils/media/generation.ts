@@ -7,6 +7,7 @@ import type { GeneratedMedia, MediaGenerationRequest, MediaModel, MediaReference
 import { getSettings } from "@/utils/conf";
 import { getMediaProvider, listMediaProviders, loadMediaProviderSource } from "@/utils/media/provider";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { beginWorkspaceOperation } from "@/utils/workspace/activity";
 import { runVideoTask } from "@/utils/media/videoTasks";
 export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
@@ -172,9 +173,10 @@ export async function generateMedia(
     ? join(directory, "assets", parts[1]!) : undefined;
   const key = !videoTask && !imageTask && nodePath ? process.platform === "win32" ? nodePath.toLowerCase() : nodePath : undefined;
   if (key && activeNodeGenerations.has(key)) throw Object.assign(new Error("此节点已有设备正在生成，请等待完成，未提交新的生成任务"), { status: 409 });
+  const releaseOperation = beginWorkspaceOperation(directory);
   if (key) activeNodeGenerations.add(key);
   try { return await generateMediaResult(directory, mediaType, request, signal, videoTask, imageTask); }
-  finally { if (key) activeNodeGenerations.delete(key); }
+  finally { if (key) activeNodeGenerations.delete(key); releaseOperation(); }
 }
 
 async function generateMediaResult(
@@ -233,7 +235,7 @@ async function generateMediaResult(
   let lastFrame: MediaInput | undefined;
   if (!restoring) {
     const frames = [request.firstFrame, request.lastFrame].filter((frame): frame is MediaReference => !!frame && "path" in frame);
-    if (request.referenceImageUrls?.length || [request.firstFrame, request.lastFrame].some(frame => frame && "url" in frame)) invalid("逸仙参考素材须先保存到工作区");
+    if (request.referenceImageUrls?.length || [request.firstFrame, request.lastFrame].some(frame => frame && "url" in frame)) invalid("UnionAIGC 参考素材须先保存到工作区");
     const references = [
       ...(request.images ?? []).map(item => ({ ...item, mediaType: "image" as const })),
       ...(request.audios ?? []).map(item => ({ ...item, mediaType: "audio" as const })),

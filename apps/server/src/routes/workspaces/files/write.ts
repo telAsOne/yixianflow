@@ -5,6 +5,7 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
+import { relative } from "node:path";
 
 const router = Router();
 
@@ -36,7 +37,11 @@ export default router.put("/", validateFields({ directory: z.string().min(1).max
         bytes = Buffer.concat([Buffer.from(req.query.encoding === "utf-16be" ? [0xfe, 0xff] : [0xff, 0xfe]), encoded]);
       }
     }
+    const name = relative(directory, path).replaceAll("\\", "/");
+    if (name === ".toonflow/recycleBin" || name.startsWith(".toonflow/recycleBin/")) throw Object.assign(new Error("请通过项目回收站管理删除记录"), { status: 403 });
+    const recycled = req.query.exclusive === "true" ? undefined : await u.recycleBin.captureCanvasOverwrite(directory, name, bytes);
     await u.workspaceFile.writeWorkspaceFile(path, bytes, req.query.exclusive === "true");
+    await u.recycleBin.commitRecycleRecord(directory, recycled);
     if (req.query.expectedRevision) revision = createHash("sha256").update(bytes).digest("hex");
   }
   finally { release(); }

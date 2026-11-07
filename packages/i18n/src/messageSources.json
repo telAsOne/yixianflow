@@ -25,7 +25,7 @@
   "更新说明的展示记录保存失败，下次启动时可能再次显示。": [
     "apps/web/src/App.vue"
   ],
-  "登录逸仙": [
+  "登录 UnionAIGC": [
     "apps/web/src/components/account/signInDialog.vue",
     "apps/server/src/routes/account/callback.ts"
   ],
@@ -991,7 +991,7 @@
     "apps/web/src/components/settings/panels/languageModel/index.vue",
     "apps/web/src/components/settings/panels/mediaModel/index.vue"
   ],
-  "请登录逸仙账户并刷新模型": [
+  "请登录 UnionAIGC 账户并刷新模型": [
     "apps/web/src/components/modelPopover.vue"
   ],
   "推理等级": [
@@ -1053,7 +1053,7 @@
   "媒体模型": [
     "apps/web/src/components/settings/index.vue"
   ],
-  "逸仙账户": [
+  "UnionAIGC 账户": [
     "apps/web/src/components/settings/index.vue"
   ],
   "插件市场": [
@@ -1096,7 +1096,7 @@
   "更新源": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
-  "逸仙": [
+  "UnionAIGC": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
   "自定义源": [
@@ -1129,7 +1129,7 @@
   "GitHub 仓库": [
     "apps/web/src/components/settings/panels/about.vue"
   ],
-  "逸仙平台": [
+  "UnionAIGC 平台": [
     "apps/web/src/components/settings/panels/about.vue",
     "apps/web/src/components/settings/panels/pluginMarket/index.vue"
   ],
@@ -6053,10 +6053,10 @@
   "平台默认模型不存在": [
     "apps/server/src/types/account.ts"
   ],
-  "逸仙平台地址必须是不含凭据、参数或路径的 HTTPS 站点地址": [
+  "UnionAIGC 平台地址必须是不含凭据、参数或路径的 HTTPS 站点地址": [
     "apps/server/src/utils/account/index.ts"
   ],
-  "请登录或注册逸仙账户后开始生成": [
+  "请登录或注册 UnionAIGC 账户后开始生成": [
     "apps/server/src/utils/account/index.ts"
   ],
   "本地登录回调端口无效": [
@@ -6080,7 +6080,7 @@
   "登录失败": [
     "apps/server/src/utils/account/index.ts"
   ],
-  "只允许调用当前逸仙平台接口": [
+  "只允许调用当前 UnionAIGC 平台接口": [
     "apps/server/src/utils/account/index.ts"
   ],
   "账户已切换，请重新发起操作": [
@@ -6089,7 +6089,7 @@
   "登录已失效，请重新登录": [
     "apps/server/src/utils/account/index.ts"
   ],
-  "当前版本过旧，请在设置的关于页面更新逸仙版 Toonflow": [
+  "当前版本过旧，请在设置的关于页面更新 UnionAIGC 版 Toonflow": [
     "apps/server/src/utils/account/index.ts"
   ],
   "平台返回的账户不匹配，请重新登录": [
@@ -6366,7 +6366,7 @@
   "卸载全局技能及其文件，不影响工作区内的同名技能。": [
     "apps/server/src/utils/mcp/operations.ts"
   ],
-  "读取逸仙平台的媒体模型。": [
+  "读取 UnionAIGC 平台的媒体模型。": [
     "apps/server/src/utils/mcp/operations.ts"
   ],
   "分页列出全局素材库的一层目录，每页最多 200 项；有 nextOffset 时继续读取。query 搜索子目录文件，每页最多 50 项，有 nextCursor 时继续。与工作区 assets 目录不同。": [
@@ -6651,7 +6651,7 @@
   "当前模型不支持 seed 或 seed 不是非负安全整数": [
     "apps/server/src/utils/media/generation.ts"
   ],
-  "逸仙参考素材须先保存到工作区": [
+  "UnionAIGC 参考素材须先保存到工作区": [
     "apps/server/src/utils/media/generation.ts"
   ],
   "供应商未返回生成结果": [
@@ -6795,7 +6795,7 @@
   "供应商目录不能是符号链接或文件": [
     "apps/server/src/utils/media/provider.ts"
   ],
-  "仅支持逸仙提供方": [
+  "仅支持 UnionAIGC 提供方": [
     "apps/server/src/utils/media/provider.ts"
   ],
   "供应商文件不能是符号链接或目录": [
@@ -7305,7 +7305,7 @@
   "技能资源路径无效": [
     "apps/server/src/utils/plugins/install.ts"
   ],
-  "逸仙版不支持安装自定义供应商": [
+  "UnionAIGC 版不支持安装自定义供应商": [
     "apps/server/src/utils/plugins/install.ts",
     "apps/desktop/src/protocol.ts"
   ],

@@ -15,5 +15,5 @@ export default router.get("/", validateFields(inputSchema.shape, "query"), async
   u.mcpControl.assertAppRequest(req);
   const input = inputSchema.parse(req.query);
   const directory = await u.workspace.resolveWorkspace(req, input.directory);
-  res.json(success(u.whisper.getWhisperTask(directory, input.operationId)));
+  res.json(success(await u.whisper.getWhisperTask(directory, input.operationId)));
 });
