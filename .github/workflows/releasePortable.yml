@@ -2,12 +2,6 @@ name: 发布桌面版
 run-name: 发布桌面版 ${{ inputs.version || '自动版本' }}
 
 on:
-  push:
-    branches: [master]
-    paths-ignore:
-      - docs/**
-      - README.md
-      - AGENTS.md
   workflow_dispatch:
     inputs:
       version:
