@@ -21,6 +21,7 @@
     "./useMediaModels": "./src/useMediaModels.ts",
     "./useOutputReplace": "./src/useOutputReplace.ts",
     "./generationTools": "./src/generationTools.ts",
+    "./assetIdentity": "./src/assetIdentity.ts",
     "./subtitleSrt": "./src/subtitleSrt.ts",
     "./mediaLimits": "./src/mediaLimits.ts"
   },

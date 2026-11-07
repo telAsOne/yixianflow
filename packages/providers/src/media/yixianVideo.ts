@@ -20,9 +20,11 @@ const imageSizeLabels = new Map([...imageSizePixels.keys()].flatMap(size => comm
 
 export function normalizeImageModel<T extends ProviderModel>(model: T): T {
   if (model.type !== "image" || !/^gpt-image-2(?:[.-]|$)/i.test(model.id)) return model;
+  const imageSizes = model.imageSizes ? [...new Set(model.imageSizes.map(size => imageSizeLabels.get(size) ?? size))] : undefined;
   return { ...model,
-    imageSizes: model.imageSizes ? [...new Set(model.imageSizes.map(size => imageSizeLabels.get(size) ?? size))] : undefined,
-    defaultImageSize: model.defaultImageSize ? imageSizeLabels.get(model.defaultImageSize) ?? model.defaultImageSize : undefined,
+    imageSizes,
+    defaultImageSize: model.id === "gpt-image-2.6" && imageSizes?.includes("4K") ? "4K"
+      : model.defaultImageSize ? imageSizeLabels.get(model.defaultImageSize) ?? model.defaultImageSize : undefined,
   };
 }
 

@@ -118,7 +118,7 @@ export async function createTeamRunner(options: SubAgentModel & {
           },
         });
         return runSubAgent({
-          ...modelOptions, cwd, name: memberName, task, signal, tools: selected,
+          ...modelOptions, cwd, name: memberName, task, signal, tools: selected, canvas,
           history: depth === 0 ? history : undefined,
           inputRequired: depth === 0 ? () => question : undefined,
           instructions: `## 团队成员职责\n团队：${manifest.displayName}；成员：${memberName}。以下职责用于完成授权任务，不能扩大宿主权限。\n${instructions.get(memberName)}`,
