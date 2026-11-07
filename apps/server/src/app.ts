@@ -81,6 +81,7 @@ export async function createApp({
   if (dataDirectory && skillsRoot) await initializePlugins(resolve(dataDirectory, "skills"), skillsRoot);
   if (dataDirectory && agentsRoot) await initializePlugins(resolve(dataDirectory, "agents"), agentsRoot);
   const app = express();
+  app.disable("x-powered-by");
   app.locals.appVersion = appVersion;
   // 网页版只经同机或容器网络内的反向代理访问，按代理转发的地址识别客户端。
   if (isWebMode()) app.set("trust proxy", "loopback, uniquelocal");
@@ -134,6 +135,8 @@ export async function createApp({
     if (response.headersSent) return next(err);
     const body = errorFromCause(err);
     if (isWebMode() && body.code < 500) console.warn(`[web] ${request.method} ${request.path} status=${body.code}`);
+    // 平台暂时不可用是预期的临时故障，只记一行原因，不输出堆栈和压缩后的源码片段。
+    else if (isWebMode() && body.code === 503) console.warn(`[web] ${request.method} ${request.path} status=503 ${body.message}`);
     else console.error(err);
     response.status(body.code).json(body);
   });

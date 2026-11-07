@@ -103,6 +103,11 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
         onStatus();
       } catch (error) {
         if (!signal.aborted) onStatus(error);
+        // 网页版重新登录会整页跳转并重新监听，会话失效后停止轮询并提示登录。
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          window.dispatchEvent(new Event("toonflow:sign-in"));
+          return;
+        }
         cursor = undefined;
         delay = 5000;
       }
