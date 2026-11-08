@@ -91,6 +91,7 @@ async function readTask(type: "image" | "video", input: { directory: string; out
         try {
           const result = await readResult<{ type: string; outputDirectory: string; task?: TaskStatus; error?: string }[]>(await fetch("/api/ai/media/tasks", {
             method: "POST", headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
+            signal: AbortSignal.timeout(15000),
             body: JSON.stringify({ directory: input.directory, items: page.map(({ type, outputDirectory }) => ({ type, outputDirectory })) }),
           }));
           const values = new Map(result.map(item => [JSON.stringify([item.type, item.outputDirectory]), item]));
