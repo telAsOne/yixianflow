@@ -135,9 +135,11 @@ export function streamAi(
   references: Awaited<ReturnType<typeof readAiReferences>> = [],
 ) {
   const { provider, model: configuredModel, baseUrl } = configured;
+  const disableArgonThinking = configuredModel.id === "gemini-4-argon" && configuredModel.think === true && configuredModel.defaultThinkingLevel === "off";
   const model: Model<typeof provider.protocol> = {
     id: configuredModel.id, name: configuredModel.label, provider: "toonflow", api: provider.protocol, baseUrl,
-    reasoning: configuredModel.think === true && configuredModel.defaultThinkingLevel !== "off", input: ["text", "image"],
+    reasoning: disableArgonThinking || configuredModel.think === true && configuredModel.defaultThinkingLevel !== "off", input: ["text", "image"],
+    ...(disableArgonThinking ? { thinkingLevelMap: { off: "none" } } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: configuredModel.contextWindow,
     maxTokens: configuredModel.maxOutputTokens,
