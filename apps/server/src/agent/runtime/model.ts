@@ -7,12 +7,14 @@ export async function createAgentModel(providerId: string, modelId: string, thin
   await refreshConfig(false);
   const configured = getConfiguredModel(providerId, modelId);
   const { provider, model, baseUrl } = configured;
+  const disableArgonThinking = model.id === "gemini-4-argon" && model.think === true && (thinkingLevel ?? model.defaultThinkingLevel) === "off";
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
   runtime.registerProvider(providerId, {
     api: provider.protocol,
     baseUrl,
     models: [{
-      id: model.id, name: model.label, reasoning: model.think === true && (thinkingLevel ?? model.defaultThinkingLevel ?? "off") !== "off",
+      id: model.id, name: model.label, reasoning: disableArgonThinking || model.think === true && (thinkingLevel ?? model.defaultThinkingLevel ?? "off") !== "off",
+      ...(disableArgonThinking ? { thinkingLevelMap: { off: "none" } } : {}),
       // ACT: 保留图片输入，由实际供应方判断该模型是否支持。
       input: ["text", "image"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
