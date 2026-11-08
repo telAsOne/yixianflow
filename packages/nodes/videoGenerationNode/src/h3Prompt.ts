@@ -2,7 +2,7 @@ import type { NodeInputValue, NodeMediaValue } from "@toonflow/nodes-scaffold/ru
 import { referenceKey } from "@toonflow/node-shared/useNodeReferences";
 import type { ZealmanVoice } from "./zealmanOptions";
 
-export type H3Subject = { id: number; name: string; references: string[]; speaker?: number };
+export type H3Subject = { id: number; name: string; references: string[]; speaker?: number; referenceNotes?: Record<string, string> };
 export type H3PromptState = {
   subjects: H3Subject[];
   audioBindings: Record<string, { subject: number; speaker: number; description: string }>;
@@ -120,8 +120,11 @@ export function h3GenerationPrompt(prompt: string, references: H3Reference[], st
     if (!sources.length) continue;
     const generated = new RegExp(`(<Subject ${subject.id}> is the )[^\\n]*? in <(?:Missing )?(?:Picture|Video) \\d+>(?: and <(?:Missing )?(?:Picture|Video) \\d+>)*`, "g");
     if (updateBindings) text = text.replace(generated, () => `<Subject ${subject.id}> is the ${subject.name} in ${sources.join(" and ")}`);
-    if (new RegExp(`<Subject\\s+${subject.id}>\\s+(?:is|是)`, "i").test(text)) continue;
-    definitions.push(`<Subject ${subject.id}> is the ${subject.name} in ${sources.join(" and ")}.`);
+    if (!new RegExp(`<Subject\\s+${subject.id}>\\s+(?:is|是)`, "i").test(text)) definitions.push(`<Subject ${subject.id}> is the ${subject.name} in ${sources.join(" and ")}.`);
+    for (const [id, note] of Object.entries(subject.referenceNotes ?? {})) {
+      const reference = byId.get(id);
+      if (reference && subject.references.includes(id) && !text.includes(`${reference.value}：${note}`)) definitions.push(`${reference.value}：${note}`);
+    }
   }
   for (const [id, binding] of Object.entries(state.audioBindings)) {
     const audio = byId.get(id);

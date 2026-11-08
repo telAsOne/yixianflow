@@ -266,6 +266,7 @@ export async function createAgentConversation(cwd: string, child?: Omit<AgentSub
     history.appendCustomEntry("toonflowSubAgentInfo", { ...child, file: basename(path), status: "running" });
     if (child.providerId && child.modelId) history.appendModelChange(child.providerId, child.modelId);
     if (child.thinkingLevel) history.appendThinkingLevelChange(child.thinkingLevel);
+    if (child.modelId === "gemini-4-argon") history.appendCustomEntry("toonflowThinkingPreference", { level: child.thinkingLevel ?? null });
   }
   // ACT: SDK 默认等首条回复才落盘；先保存会话头，让空对话也能被历史列表读取。
   await writeWorkspaceFile(path, [history.getHeader(), ...history.getEntries()].map(entry => JSON.stringify(entry)).join("\n") + "\n", true);
@@ -336,7 +337,7 @@ export async function getAgentSessionPage(cwd: string, path: string, before?: st
   const providers = getSettings().customProviders;
   const modelSettings = Array.isArray(providers) ? providers.map(provider => ({ id: provider?.id, models: provider?.models })) : [];
   const revision = `${info.size}:${info.mtimeMs}:${info.ctimeMs}:${JSON.stringify(modelSettings)}`;
-  const indexPath = cacheFile("sessionIndex", JSON.stringify(["sessionPages", path, 1]));
+  const indexPath = cacheFile("sessionIndex", JSON.stringify(["sessionPages", path, 2]));
   let index = await readCache<SessionPages>(indexPath);
   if (index?.revision !== revision) index = await buildSessionPages(cwd, path, revision, indexPath);
   const end = before ? index.ids.indexOf(before) : index.ids.length;
@@ -474,6 +475,12 @@ export async function getAgentSession(cwd: string, path: string) {
     lastReply?.type === "message" && lastReply.message.role === "assistant"
       ? { provider: lastReply.message.provider, modelId: lastReply.message.model }
       : context.model;
+  let thinkingLevel: string | undefined = context.thinkingLevel;
+  if (model?.modelId === "gemini-4-argon") {
+    const preference = branch.findLast(entry => entry.type === "custom" && entry.customType === "toonflowThinkingPreference");
+    const parsed = preference?.type === "custom" ? z.object({ level: z.enum(["off", "low", "medium", "high"]).nullable() }).safeParse(preference.data) : undefined;
+    thinkingLevel = parsed?.success ? parsed.data.level ?? undefined : thinkingLevel === "off" ? undefined : thinkingLevel;
+  }
   const providers = getSettings().customProviders;
   const provider = providerSchema.safeParse(Array.isArray(providers) ? providers.find((item) => item?.id === model?.provider) : undefined);
   const configuredModel = provider.success ? provider.data.models.find((item) => item.id === model?.modelId) : undefined;
@@ -492,7 +499,7 @@ export async function getAgentSession(cwd: string, path: string) {
     contextUsage: configuredModel && model ? getAgentContext(history, getModelLimits(model.provider, configuredModel).contextWindow) : undefined,
     providerId: model?.provider,
     modelId: model?.modelId,
-    thinkingLevel: context.thinkingLevel,
+    thinkingLevel,
     parentFile: getParentSessionFile(history),
     subAgents: [...subAgents.values()],
     running: Boolean(active),

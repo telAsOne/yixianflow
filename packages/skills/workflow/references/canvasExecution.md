@@ -73,6 +73,7 @@
 ## 生成前准备
 
 1. 调用当前节点的 `node:getConfig`，核实可用模型、模式、参考类型与数量、画幅、图片尺寸或视频时长/分辨率、原生声音及音频输入能力。图片和视频的规格分开判断，不沿用不相关的默认值。
+   图片未明确指定模型和分辨率时，默认实际可用的 `gpt-image-2.6`、`4K`；比例根据剧情、素材用途和用户要求选择，已有明确设置优先。图片 AI 生成前用 `assetIdentity` 登记素材类型、稳定身份、状态及必要底图；不同人物不能共用身份，同一人物的不同形态不能各自建立独立底图。
 2. 先接好实际素材，再读取当前匹配模式。通过 `node:setConfig` 设置配置：图片字段按 schema 使用 `providerId/modelId/size/ratio`；视频使用 `providerId/modelId/duration/resolution/ratio/mode/generateAudio`。只传所需且支持的字段，`providerId` 与 `modelId` 成对提供，mode 使用实际返回值。
 3. 写入完整提示词，再读配置与画布，核对实际 prompt、引用、规格和调用前 output。缺必要参考就停该生成并继续文稿；不能静默将图生图或多参改成无参考模式。
    H3 按 [H3 适配](h3Director.md) 写入六段中文正文并核实真实媒体标签；运镜库按 `cameraLibrary.supported` 与实际 `node:getCameraPresets` 结果使用。节点没有独立优化函数时，不假称 `setPrompt` 已运行优化，也不为触发优化而启动媒体生成。

@@ -19,9 +19,6 @@ export async function createAgentResources(cwd: string, tools: ToolDefinition[],
   });
   const [globalAgents, memory] = await Promise.all([readDocument("agents"), isMemoryEnabled() ? readDocument("memory") : { content: "" }]);
   const skills = loadAgentSkills(cwd);
-  const sdkSkills = tools.some(tool => tool.name === "skillOperator")
-    ? { ...skills, skills: skills.skills.map(skill => ({ ...skill, disableModelInvocation: true })) }
-    : skills;
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,
@@ -34,7 +31,7 @@ export async function createAgentResources(cwd: string, tools: ToolDefinition[],
     noContextFiles: true,
     agentsFilesOverride: () => ({ agentsFiles: agentsContent.trim() ? [{ path: agentsPath, content: agentsContent.replace(/^\uFEFF/, "") }] : [] }),
     // ACT: 技能正文按需读取；每个会话独立创建 loader，避免 SDK 的会话绑定互相覆盖。
-    skillsOverride: () => sdkSkills,
+    skillsOverride: () => skills,
     systemPrompt: "",
     systemPromptOverride: () => [buildSystemPrompt({ systemPrompt, tools, skills: skills.skills, platform: process.platform }), instructions].filter(Boolean).join("\n\n"),
     appendSystemPrompt: [

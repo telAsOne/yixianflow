@@ -3,11 +3,12 @@ import { ref } from "vue";
 import axios from "axios";
 import type { AgentAttachment } from "@/components/agent/types";
 import api from "@/lib/api";
-import { webMode } from "@/lib/webRuntime";
+import { webCanViewAllProjects, webMode, webUserId } from "@/lib/webRuntime";
 
 export type Project = {
   id?: string;
   ownerId?: number;
+  ownerName?: string;
   directory: string;
   name: string;
   lastOpenedAt: number;
@@ -21,8 +22,8 @@ export const useWorkspaceStore = defineStore("workspace", () => {
 
   async function loadProjects() {
     if (!webMode.value) return;
-    const { data } = await api.get<{ data: Project[] }>("/api/projects/list");
-    projectList.value = data.data.filter(item => !hiddenProjectIds.value.includes(item.directory));
+    const { data } = await api.get<{ data: Project[] }>("/api/projects/list", { params: { all: webCanViewAllProjects.value ? "1" : undefined } });
+    projectList.value = data.data.filter(item => item.ownerId !== webUserId.value || !hiddenProjectIds.value.includes(item.directory));
     project.value = projectList.value.find(item => item.directory === project.value?.directory) ?? null;
   }
 

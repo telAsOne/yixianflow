@@ -8,7 +8,8 @@
       <el-button class="newProjectButton" type="primary" :icon="IconPlus" :disabled="creating || opening" @click="createProject(false)">新建项目</el-button>
       <nav class="sideNav" aria-label="创作导航">
         <button type="button" class="navItem" :aria-current="activeSection === 'create' ? 'location' : undefined" @click="showSection('create')"><icon-sparkles :size="18" />灵感创作</button>
-        <button type="button" class="navItem" :aria-current="activeSection === 'projects' ? 'location' : undefined" @click="showSection('projects')"><icon-folders :size="18" />我的项目<span v-if="projectList.length" class="navCount">{{ projectList.length }}</span></button>
+        <button type="button" class="navItem" :aria-current="activeSection === 'projects' && projectScope === 'mine' ? 'location' : undefined" @click="showSection('projects')"><icon-folders :size="18" />我的项目<span v-if="ownProjects.length" class="navCount">{{ ownProjects.length }}</span></button>
+        <button v-if="webCanViewAllProjects" type="button" class="navItem" :aria-current="activeSection === 'projects' && projectScope === 'members' ? 'location' : undefined" @click="showSection('members')"><icon-users :size="18" />人员项目<span v-if="memberProjects.length" class="navCount">{{ memberProjects.length }}</span></button>
       </nav>
       <div v-if="project" class="resumeSection">
         <span class="sideCaption">继续上次创作</span>
@@ -72,11 +73,18 @@
         </section>
         <section class="projectList" :class="{ activePanel: activeSection === 'projects' }" aria-labelledby="projectListTitle">
           <div class="sectionHeader">
-            <h2 id="projectListTitle">我的项目<span v-if="projectList.length" class="projectCount">{{ projectList.length }}</span></h2>
+            <h2 id="projectListTitle">{{ browsingMembers ? '人员项目' : '我的项目' }}<span v-if="visibleProjects.length" class="projectCount">{{ visibleProjects.length }}</span></h2>
             <div class="sectionActions">
-              <el-input v-if="projectList.length" v-model="projectSearch" class="projectSearch" :prefixIcon="IconSearch" placeholder="搜索项目名称或路径" clearable aria-label="搜索项目" />
-              <el-button class="sectionButton" text :icon="IconFolderOpen" :disabled="creating || opening" @click="openProject()">{{ webMode ? '打开项目' : '导入项目' }}</el-button>
-              <span class="actionDivider" aria-hidden="true" />
+              <el-radio-group v-if="webCanViewAllProjects" v-model="projectScope" class="projectScope" aria-label="项目范围">
+                <el-radio-button value="mine">我的项目</el-radio-button>
+                <el-radio-button value="members">人员项目</el-radio-button>
+              </el-radio-group>
+              <el-select v-if="browsingMembers" v-model="selectedOwnerId" class="ownerSelect" filterable placeholder="选择人员" aria-label="选择项目所属人员">
+                <el-option v-for="owner in projectOwners" :key="owner.id" :value="owner.id" :label="`${owner.name}（ID: ${owner.id}，${owner.count} 个项目）`" />
+              </el-select>
+              <el-input v-if="visibleProjects.length" v-model="projectSearch" class="projectSearch" :prefixIcon="IconSearch" placeholder="搜索项目名称或路径" clearable aria-label="搜索项目" />
+              <el-button v-if="!browsingMembers" class="sectionButton" text :icon="IconFolderOpen" :disabled="creating || opening" @click="openProject()">{{ webMode ? '打开项目' : '导入项目' }}</el-button>
+              <span v-if="!browsingMembers" class="actionDivider" aria-hidden="true" />
               <el-tooltip :content="sortDescending ? '按时间降序' : '按时间升序'" placement="top" :showArrow="false" :hideAfter="0">
                 <el-button class="iconButton" text :icon="sortDescending ? IconSortDescending : IconSortAscending" :aria-label="sortDescending ? '按时间降序' : '按时间升序'" @click="sortDescending = !sortDescending" />
               </el-tooltip>
@@ -102,7 +110,7 @@
                 </span>
                 <span class="projectTime" :title="new Date(project.lastOpenedAt).toLocaleString(locale, { hour12: false })"><icon-clock :size="13" />{{ dateFormatter.format(project.lastOpenedAt) }}</span>
               </button>
-              <div class="projectActions">
+              <div v-if="!browsingMembers" class="projectActions">
                 <el-button text :icon="IconEdit" :disabled="creating || opening" :aria-label="`重命名项目 ${project.name}`" title="重命名" @click="renameProject(project)" />
                 <el-button text type="danger" :icon="IconTrash" :disabled="creating || opening" :aria-label="`移除项目 ${project.name}`" title="从列表移除，不删除文件" @click="workspaceStore.removeProject(project.directory)" />
               </div>
@@ -110,10 +118,10 @@
           </div>
           <div v-else class="projectEmpty" role="status">
             <span class="emptyIcon"><component :is="projectSearch.trim() ? IconSearch : IconFolders" :size="26" /></span>
-            <strong>{{ projectSearch.trim() ? '没有找到匹配的项目' : '你的第一部作品，从这里开始' }}</strong>
-            <p>{{ projectSearch.trim() ? '试试其他名称，或搜索项目所在的文件夹路径。' : '新建一张画布，或导入已有项目，开始积累你的创作。' }}</p>
+            <strong>{{ projectSearch.trim() ? '没有找到匹配的项目' : browsingMembers ? '暂无其他人员的项目' : '你的第一部作品，从这里开始' }}</strong>
+            <p v-if="!browsingMembers || projectSearch.trim()">{{ projectSearch.trim() ? '试试其他名称，或搜索项目所在的文件夹路径。' : '新建一张画布，或导入已有项目，开始积累你的创作。' }}</p>
             <el-button v-if="projectSearch.trim()" text @click="projectSearch = ''">清除搜索</el-button>
-            <el-button v-else :icon="IconPlus" :disabled="creating || opening" @click="createProject(false)">新建项目</el-button>
+            <el-button v-else-if="!browsingMembers" :icon="IconPlus" :disabled="creating || opening" @click="createProject(false)">新建项目</el-button>
           </div>
         </section>
       </main>
@@ -136,7 +144,7 @@ import {
   IconSettings, IconQrcode, IconDeviceDesktop,
   IconArrowUpRight, IconLayoutGrid, IconList, IconSortDescending,
   IconSortAscending, IconFolder, IconEdit, IconSparkles, IconInfoCircle,
-  IconTrash, IconFolderOpen, IconFolders, IconLayoutDashboard, IconPlus, IconSearch, IconClock,
+  IconTrash, IconFolderOpen, IconFolders, IconLayoutDashboard, IconPlus, IconSearch, IconClock, IconUsers,
 } from "@tabler/icons-vue";
 import modelPopover from "@/components/modelPopover.vue";
 import attachmentList from "@/components/agent/attachmentList.vue";
@@ -151,7 +159,7 @@ import useWorkspaceFiles, { type WorkspaceUsage } from "@/lib/workspaceFiles";
 import settings from "@/components/settings/index.vue";
 import workspacePicker from "./workspacePicker.vue";
 import api, { errorMessage } from "@/lib/api";
-import { webMode, webUserId } from "@/lib/webRuntime";
+import { webCanViewAllProjects, webMode, webUserId } from "@/lib/webRuntime";
 
 const settingsVisible = ref(false);
 const settingsPanel = ref<string>();
@@ -185,8 +193,28 @@ const directoryHint = computed(() => workspaceDirectory.value ? "新项目将保
 const hasPrompt = computed(() => !!prompt.value.trim() || !!promptAttachments.value.length);
 const promptPlaceholder = computed(() => translate("描述你想创作的故事、角色或镜头，AI 助手会和你一起搭建画布…"));
 const activeSection = ref("create");
+const projectScope = ref("mine");
+const selectedOwnerId = ref<number>();
 const projectSearch = ref("");
 const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }));
+const ownProjects = computed(() => projectList.value.filter(project => !webMode.value || project.ownerId === webUserId.value));
+const memberProjects = computed(() => webCanViewAllProjects.value ? projectList.value.filter(project => project.ownerId !== webUserId.value) : []);
+const browsingMembers = computed(() => webCanViewAllProjects.value && projectScope.value === "members");
+const projectOwners = computed(() => {
+  const owners = new Map<number, { id: number; name: string; count: number }>();
+  for (const project of memberProjects.value) {
+    if (project.ownerId === undefined) continue;
+    const owner = owners.get(project.ownerId);
+    if (owner) owner.count++;
+    else owners.set(project.ownerId, { id: project.ownerId, name: project.ownerName || String(project.ownerId), count: 1 });
+  }
+  return [...owners.values()].sort((left, right) => left.name.localeCompare(right.name, locale.value, { numeric: true }) || left.id - right.id);
+});
+watch(projectOwners, owners => {
+  if (!owners.some(owner => owner.id === selectedOwnerId.value)) selectedOwnerId.value = owners[0]?.id;
+}, { immediate: true });
+const visibleProjects = computed(() => browsingMembers.value
+  ? memberProjects.value.filter(project => project.ownerId === selectedOwnerId.value) : ownProjects.value);
 
 const selectedModel = ref("");
 const reasoningEffort = ref("");
@@ -206,7 +234,7 @@ onMounted(async () => {
   }
 });
 
-watch(() => usageReady.value && (!webMode.value || webUserId.value) ? projectList.value.map(project => project.directory) : [], async directories => {
+watch(() => usageReady.value && (!webMode.value || webUserId.value) ? visibleProjects.value.map(project => project.directory) : [], async directories => {
   const controller = new AbortController();
   onWatcherCleanup(() => controller.abort());
   projectUsages.value = {};
@@ -236,7 +264,7 @@ function openSettings() {
   if (webMode.value && !webUserId.value) { signInVisible.value = true; return; }
   settingsVisible.value = true;
 }
-const sortedProjects = computed(() => [...projectList.value].sort((left, right) =>
+const sortedProjects = computed(() => [...visibleProjects.value].sort((left, right) =>
   sortDescending.value ? right.lastOpenedAt - left.lastOpenedAt : left.lastOpenedAt - right.lastOpenedAt
 ));
 const filteredProjects = computed(() => {
@@ -244,8 +272,9 @@ const filteredProjects = computed(() => {
   return query ? sortedProjects.value.filter(item => `${item.name}\n${item.directory}`.toLocaleLowerCase(locale.value).includes(query)) : sortedProjects.value;
 });
 
-async function showSection(section: "create" | "projects") {
-  activeSection.value = section;
+async function showSection(section: "create" | "projects" | "members") {
+  if (section !== "create") projectScope.value = section === "members" ? "members" : "mine";
+  activeSection.value = section === "members" ? "projects" : section;
   await nextTick();
   window.scrollTo({ top: 0, behavior: "instant" });
 }
@@ -733,6 +762,8 @@ async function createProject(fromPrompt = true) {
           align-items: center;
           flex-wrap: wrap;
           gap: 6px;
+
+          .ownerSelect { width: 260px; max-width: 100%; }
 
           .projectSearch { width: 212px; margin-inline-end: 4px; font-size: 12px; }
 

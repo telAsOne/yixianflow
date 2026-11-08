@@ -43,13 +43,16 @@ export async function listMediaModels(): Promise<MediaModel[]> {
   const installedProviders = await listMediaProviders();
   const { limits: uploadLimits, imageTotalMaxBytes } = getConfigState();
   const defaults = getSettings().defaultModels as Record<string, { modelId: string } | null> | undefined;
+  const defaultImage = installedProviders.flatMap(provider => provider.models.map(model => ({ providerId: provider.id, ...model })))
+    .find(model => model.type === "image" && model.id === "gpt-image-2.6");
   return installedProviders.flatMap(provider => provider.models.flatMap(model => {
     if (model.type !== "image" && model.type !== "video") return [];
     const builtIn = (mediaProviders as readonly Provider[]).find(item => item.id === provider.id)?.models.find(item => item.id === model.id);
     return [{
       providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label, type: model.type,
       uploadLimits: model.type === "image" ? { ...uploadLimits, requestTotalMaxBytes: imageTotalMaxBytes } : uploadLimits,
-      isDefault: defaults?.[model.type]?.modelId === model.id,
+      isDefault: model.type === "image" && defaultImage ? provider.id === defaultImage.providerId && model.id === defaultImage.id
+        : defaults?.[model.type]?.modelId === model.id,
       mode: model.mode, durationResolutionMap: model.durationResolutionMap, audio: model.audio,
       ...(model.type === "video" ? {
         videoRatios: imageOptions(model.videoRatios, /^[1-9]\d{0,3}:[1-9]\d{0,3}$/),

@@ -45,9 +45,18 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
     writeFile: (path, content, exclusive = false) => withWritePaths([path], async ([target]) => {
       await writeWorkspaceFile(target, content, exclusive);
     }),
-    mkdir: (path, recursive = false) => withWritePaths([path], async ([target]) => {
-      await mkdir(target, { recursive });
-    }),
+    mkdir: async (path, recursive = false) => {
+      if (recursive) {
+        const info = await stat(await resolvePath(path)).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+        // 已存在的父目录无需修改，避免目录锁与当前会话文件锁冲突。
+        if (info?.isDirectory()) return;
+      }
+      await withWritePaths([path], async ([target]) => {
+        await mkdir(target, { recursive });
+      });
+    },
     rename: (path, target) => withWritePaths([path, target], async ([source, destination]) => {
       protectWorkspaceRoot(cwd, source);
       protectWorkspaceRoot(cwd, destination);

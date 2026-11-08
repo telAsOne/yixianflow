@@ -184,10 +184,12 @@
 <script setup lang="ts">
 import { validateReferenceSelection } from "@toonflow/node-shared/mediaLimits";
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
+import { useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem, ElInput, ElMessage, ElMessageBox } from "element-plus";
 import { IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle, type VideoTaskStatus, type NodeInputValue } from "@toonflow/nodes-scaffold/runtime";
 import { registerGenerationTools } from "@toonflow/node-shared/generationTools";
+import { assetIdentitySchema } from "@toonflow/node-shared/assetIdentity";
 import { useMediaModels } from "@toonflow/node-shared/useMediaModels";
 import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
 import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
@@ -208,7 +210,7 @@ import h3PromptEditor from "./components/h3PromptEditor.vue";
 import h3MediaLibrary from "./components/h3MediaLibrary.vue";
 import promptReviewPanel from "./components/promptReviewPanel.vue";
 import { usePromptReview, samePromptReviewInput, applyPromptReviewEdits, type PromptReviewInput, type PromptReviewRecord, type PromptReviewRun, type PromptReviewEdit, type PromptReviewSubmission } from "./promptReview";
-import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
+import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, h3Sections, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
 import { getCameraPresets } from "./cameraPresets";
 import { loadZealmanOptions, validateZealmanSettings, zealmanAssetUrl, type ZealmanOptions, type ZealmanAsset } from "./zealmanOptions";
 
@@ -221,6 +223,7 @@ defineOptions({
   ] satisfies NodeHandle[],
 });
 const vLoading = ElLoading.directive;
+const { findNode } = useVueFlow();
 const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview } = useNode({
   label: "视频生成",
 });
@@ -859,7 +862,10 @@ async function getConfig() {
       generateAudio: data.value.generateAudio,
       seed: data.value.seed ?? null,
       ...(isZealmanU06.value ? { other: { ...data.value.zealmanSettings, voiceReferences: data.value.h3Prompt.voices }, queueLength: data.value.zealmanQueue.length } : {}),
-      ...(isH3Prompt.value ? { subjects: data.value.h3Prompt.subjects, audioBindings: data.value.h3Prompt.audioBindings, references: h3ReferenceList.value.map(item => ({ id: item.id, label: item.name, tag: item.value })) } : {}),
+      ...(isH3Prompt.value ? { subjects: data.value.h3Prompt.subjects, audioBindings: data.value.h3Prompt.audioBindings, references: h3ReferenceList.value.map(item => ({
+        id: item.id, label: item.name, tag: item.value, sourceNodeId: item.input?.source,
+        assetIdentity: item.input ? findNode(item.input.source)?.data.assetIdentity : undefined,
+      })) } : {}),
       referenceImageUrls: referenceUrls(selectedModel.value),
     },
     models: models.value,
@@ -921,7 +927,7 @@ registerGenerationTools({
     if (!isZealmanU06.value && (generating.value || pendingTask.value)) throw new Error("节点存在未完成任务，请先查询或恢复原视频任务；其他创作可使用 createNewGeneration");
     setReviewPrompt(value);
   },
-  updateDescription: "修改视频节点配置，不启动生成。先用 getConfig 查询能力，providerId 与 modelId 同时提供。seed 为非负安全整数，0 有效，null 使用随机值；U06 支持 other 中的 modelKey、clipKey、loraKey、loraStrength、extraLoraKey、extraLoraStrength、accelerated、steps、upscale、forceVramCleanupBeforeVae，选项键取自 videoOptions。referenceImageInput 为 url 的模型支持 referenceImageUrls；mode 使用 getConfig 返回的原始值，须匹配引用",
+  updateDescription: "修改视频配置，不启动生成。H3 的 subjects 使用 getConfig 返回的 references.id 绑定主体；同一人物的多个形态放在同一主体，referenceNotes 按引用 id 写清每个形态适用的镜头和状态。providerId 与 modelId 同时提供。seed 为非负安全整数，null 随机；U06 专属参数取自 videoOptions。mode 使用 matchingModes 原值，referenceImageUrls 须有实际能力支持",
   configSchema: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
@@ -937,6 +943,12 @@ registerGenerationTools({
       accelerated: z.boolean().optional(), steps: z.number().int().min(1).max(99).optional(), upscale: z.boolean().optional(), forceVramCleanupBeforeVae: z.boolean().optional(),
     }).optional(),
     referenceImageUrls: z.array(z.string().min(1).max(8192)).max(9).optional(),
+    subjects: z.array(z.strictObject({
+      id: z.number().int().min(1).max(128), name: z.string().trim().min(1).max(200),
+      references: z.array(z.string().min(1).max(2048)).min(1).max(12),
+      speaker: z.number().int().min(1).max(128).optional(),
+      referenceNotes: z.record(z.string().min(1).max(2048), z.string().trim().min(1).max(1000)).optional(),
+    })).max(32).optional(),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async setConfig(args, signal) {
     signal?.throwIfAborted();
@@ -980,6 +992,21 @@ registerGenerationTools({
     const modes = getMatchingModes(choice, urls);
     if (mode !== undefined && !modes.some(item => JSON.stringify(item) === JSON.stringify(mode))) throw new Error(`当前素材不支持所选 mode，可选：${modes.map(item => JSON.stringify(item)).join("、") || "无，请先调整参考素材"}`);
     if (args.generateAudio !== undefined && choice.audio !== "optional" && args.generateAudio !== (choice.audio === true)) throw new Error("当前模型不支持切换声音，请查看 getConfig 返回的 audio 能力");
+    if (args.subjects) {
+      if (!(choice.providerId === "yixianVideo" && choice.modelId.startsWith("yixian-h3-") || u06)) throw new Error("subjects 仅用于 H3 主体绑定");
+      if (new Set(args.subjects.map(subject => subject.id)).size !== args.subjects.length) throw new Error("主体 id 不能重复");
+      const references = new Map(h3ReferenceList.value.map(reference => [reference.id, reference]));
+      const owners = new Set<string>();
+      for (const subject of args.subjects) {
+        for (const referenceId of subject.references) {
+          const reference = references.get(referenceId);
+          if (!reference || !["picture", "video"].includes(reference.category)) throw new Error("主体引用必须使用 getConfig 返回的真实图片或视频 references.id；空输出先等待素材就绪");
+          if (owners.has(referenceId)) throw new Error("同一参考素材不能分配给多个不同主体");
+          owners.add(referenceId);
+        }
+        if (Object.keys(subject.referenceNotes ?? {}).some(referenceId => !subject.references.includes(referenceId))) throw new Error("referenceNotes 只能说明该主体实际绑定的参考");
+      }
+    }
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
     if (options && other) {
       zealmanOptions.value = options;
@@ -993,12 +1020,35 @@ registerGenerationTools({
     if (mode !== undefined) data.value.mode = JSON.stringify(mode);
     if (args.generateAudio !== undefined) data.value.generateAudio = args.generateAudio;
     if (args.seed !== undefined) data.value.seed = args.seed;
+    if (args.subjects) data.value.h3Prompt.subjects = args.subjects;
     return getConfig();
   },
   generate: {
     name: "generateVideo",
     description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，默认不轮询等待。提示词审查为可选辅助，无需先审查，审查失败或有问题也可生成。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 仅停止本地等待，不能保证取消远端任务或费用。有旧任务时恢复原任务；如用户要继续其他创作，可用 createNewGeneration 在新节点继续",
-    execute: () => generating.value && !isZealmanU06.value ? { status: "generating" } : startGeneration(),
+    execute: () => {
+      if (generating.value && !isZealmanU06.value) return { status: "generating" };
+      if (!pendingTask.value && isH3Prompt.value) {
+        const prompt = generationPrompt.value;
+        if (h3Sections.some(([key]) => !new RegExp(`(?:^|\\n)\\s*${key}\\s*:`).test(prompt))) throw new Error("AI 生成 H3 前须按已装载技能填写六段正文；不能把普通镜头描述当作已完成的 H3 提示词");
+        const identities = new Map<string, { subjectId: number; references: string[] }>();
+        for (const reference of h3ReferenceList.value.filter(item => item.category === "picture")) {
+          if (!prompt.includes(reference.value)) throw new Error(`参考 ${reference.value} 尚未说明用途，请在提示词中绑定真实素材，不能只接连线`);
+          const asset = assetIdentitySchema.safeParse(reference.input && findNode(reference.input.source)?.data.assetIdentity);
+          if (!asset.success || asset.data.kind !== "character") continue;
+          const subject = data.value.h3Prompt.subjects.find(subject => subject.references.includes(reference.id));
+          if (!subject) throw new Error(`人物 ${asset.data.identity} 尚未绑定主体，请用 setConfig.subjects 绑定真实 references.id`);
+          const previous = identities.get(asset.data.identity);
+          if (previous && previous.subjectId !== subject.id) throw new Error(`人物 ${asset.data.identity} 的不同形态必须属于同一主体，不能拆成两个人`);
+          identities.set(asset.data.identity, { subjectId: subject.id, references: [...previous?.references ?? [], reference.id] });
+        }
+        for (const [identity, binding] of identities) {
+          const subject = data.value.h3Prompt.subjects.find(subject => subject.id === binding.subjectId)!;
+          if (binding.references.length > 1 && binding.references.some(id => !subject.referenceNotes?.[id]?.trim())) throw new Error(`人物 ${identity} 引用了多张形态图，请用 subjects.referenceNotes 逐一说明适用镜头与状态`);
+        }
+      }
+      return startGeneration();
+    },
   },
 });
 if (duplicateCanvasNode) nodeTools.register({
