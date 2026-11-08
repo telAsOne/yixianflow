@@ -16,6 +16,7 @@ const stateSchema = z.object({
 });
 const recordSchema = z.object({
   version: z.literal(1), id: taskIdSchema, identity: z.string(), request: imageGenerationSchema,
+  recovery: z.enum(["provider", "result"]).optional(),
   state: stateSchema, createdAt: z.number(), updatedAt: z.number(), finishedAt: z.number().optional(), lastError: z.string().optional(),
   result: z.array(z.object({ path: z.string(), mimeType: z.string(), mediaType: z.literal("image") })).min(1).max(4).optional(),
 });
@@ -81,7 +82,7 @@ export async function getImageTaskRequest(cwd: string, outputDirectory: string, 
 export async function runImageTask(
   cwd: string, input: MediaGenerationRequest, config: Record<string, unknown>,
   generate: (request: MediaGenerationRequest, context: ImageTaskContext) => Promise<GeneratedMedia[]>,
-  sanitize: (error: unknown) => string, signal?: AbortSignal,
+  sanitize: (error: unknown) => string, signal?: AbortSignal, recovery: "provider" | "result" = "provider",
 ) {
   const outputDirectory = input.outputDirectory ?? "assets/generated";
   const directory = await taskDirectory(cwd, outputDirectory);
@@ -103,7 +104,7 @@ export async function runImageTask(
       if (record.identity !== identity) invalid("恢复图片任务须使用原 API 地址和密钥，请恢复原配置");
       if (["failed", "expired"].includes(record.state.phase)) invalid(record.state.error || "原图片任务已结束");
     } else {
-      record = { version: 1, id: operationId, identity, request, state: { phase: "prepared" }, createdAt: Date.now(), updatedAt: Date.now() };
+      record = { version: 1, id: operationId, identity, request, recovery, state: { phase: "prepared" }, createdAt: Date.now(), updatedAt: Date.now() };
       await writeAtomic(recordPath, JSON.stringify(record), { exclusive: true });
     }
     await writeAtomic(join(directory, "current.json"), JSON.stringify(operationId));
@@ -116,7 +117,9 @@ export async function runImageTask(
     const requestPath = (await resolveWorkspacePath(cwd, relative(cwd, join(directory, `${operationId}.request.json`)))).path;
     const resultPath = (await resolveWorkspacePath(cwd, relative(cwd, join(directory, `${operationId}.result.json`)))).path;
     let requestSaved = !!(await stat(requestPath).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; }));
-    if (!requestSaved && task.state.phase !== "prepared") invalid("原图片请求快照缺失，不能重新生成，请保留记录并核查");
+    if (!requestSaved && task.state.phase !== "prepared" && !(task.recovery === "result" && await readJson(resultPath, 140 * 1024 * 1024))) {
+      invalid(task.recovery === "result" ? "原图片请求已提交，但尚未收到结果；请核查使用日志，不能重复生成" : "原图片请求快照缺失，不能重新生成，请保留记录并核查");
+    }
     const context: ImageTaskContext = {
       id: operationId,
       get state() { return task.state; },
@@ -156,7 +159,7 @@ export async function runImageTask(
       return result;
     } catch (error) {
       task.lastError = signal?.aborted ? "已停止本地等待；原任务和费用不会因此取消，请恢复原任务" : sanitize(error);
-      if (!requestSaved) task.state = { phase: "failed", error: task.lastError };
+      if (!requestSaved && task.state.phase === "prepared") task.state = { phase: "failed", error: task.lastError };
       await save();
       throw error;
     }

@@ -19,9 +19,9 @@
       <el-button :icon="IconSun" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="打光" aria-label="打光" @click.stop="openLighting">打光</el-button>
       <el-button :icon="IconCameraRotate" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="多角度" aria-label="多角度" @click.stop="openMultiAngle">多角度</el-button>
       <el-button :icon="IconLayoutGrid" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl" :loading="gridSplit?.splitting" text title="宫格切分" aria-label="宫格切分" @click.stop="gridSplit?.open($event)">宫格切分</el-button>
-      <mediaHistory mediaType="image" :current="outputFile" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @select="outputs.image = { dataType: 'IMAGE', value: $event }" />
-      <el-button :icon="IconTransfer" :loading="uploading" :disabled="generating || deleting || lighting?.generating || multiAngle?.generating || panorama?.busy" text title="替换图片" aria-label="替换图片" @click.stop="fileInput?.click()">替换图片</el-button>
-      <input ref="fileInput" type="file" accept="image/*" hidden aria-label="选择替换图片" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @change="replaceOutput" />
+      <mediaHistory mediaType="image" :current="outputFile" :disabled="taskRunning || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @select="selectHistoryOutput" />
+      <el-button :icon="IconTransfer" :loading="uploading" :disabled="taskRunning || pendingTask || taskChecking || deleting || lighting?.generating || multiAngle?.generating || panorama?.busy" text title="替换图片" aria-label="替换图片" @click.stop="fileInput?.click()">替换图片</el-button>
+      <input ref="fileInput" type="file" accept="image/*" hidden aria-label="选择替换图片" :disabled="taskRunning || pendingTask || taskChecking || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @change="replaceOutput" />
     </template>
     <template #topRightActions>
       <el-button :icon="IconPencil" :disabled="generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="标记" aria-label="标记" @click.stop="startEditor('mark')" />
@@ -187,7 +187,7 @@ data.value.size ??= "";
 data.value.ratio ??= "";
 const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
 const { models, modelsLoading, modelGroups, loadModels } = useMediaModels("image", data, () => generating.value || deleting.value, ai.getMediaModels);
-const { uploading, replaceOutput } = useOutputReplace("image", files, () => generating.value || deleting.value || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy,
+const { uploading, replaceOutput } = useOutputReplace("image", files, () => taskRunning.value || pendingTask.value || taskChecking.value || deleting.value || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy,
   value => { outputs.value.image = { dataType: "IMAGE", value }; });
 const fileInput = ref<HTMLInputElement>();
 const gridSplit = ref<InstanceType<typeof imageGridSplit>>();
@@ -261,7 +261,7 @@ onMounted(async () => {
   try {
     await loadModels();
     await refreshImageTask();
-    if (pendingTask.value && imageTask.value?.taskId) {
+    if (pendingTask.value && (imageTask.value?.running || imageTask.value?.taskId || imageTask.value?.result || imageTask.value?.phase === "downloading")) {
       resumeWhenReady = true;
       if (imageTask.value.running || (imageTask.value.retryAt ?? 0) > Date.now()) pollImageTask();
       else await resumeGeneration();
@@ -312,12 +312,12 @@ async function startGeneration() {
   const inpaintData = data.value.inpaint;
   const input: Omit<NodeImageRequest, "directory"> = {
     providerId: choice.providerId,
-    ...(choice.taskRecovery ? { operationId: crypto.randomUUID() } : {}),
+    operationId: crypto.randomUUID(),
     modelId: choice.modelId,
     prompt: generationPrompt.value,
     size: data.value.size,
     ratio: data.value.ratio,
-    outputDirectory: choice.taskRecovery ? taskOutputDirectory.value : `assets/${id}`,
+    outputDirectory: taskOutputDirectory.value,
     images: references.flatMap(item => item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []),
   };
   if (inpaintData) {
@@ -327,8 +327,8 @@ async function startGeneration() {
     if (mapping.length) input.prompt += `\n当前节点参考编号对应关系：${mapping.join("；")}。`;
   }
   generationController = controller;
-  if (choice.taskRecovery) pollImageTask();
-  // ACT: 工具立即返回，任务由节点持有，停止或卸载时取消。
+  pollImageTask();
+  // ACT: 节点只持有页面等待，付费请求与结果由服务端保存；退出后按同一操作恢复。
   generation = generationState.run(() => workspace.list()
     .then(({ directory }) => {
       controller.signal.throwIfAborted();
@@ -342,11 +342,11 @@ async function startGeneration() {
       outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
       if (input.operationId) data.value.appliedImageTaskId = input.operationId;
     }), { operationId: input.operationId })
-    .catch((error) => showNodeError(error, "图片生成失败"))
+    .catch((error) => { if (!disposed) showNodeError(error, "图片结果接收中断，请恢复原任务"); })
     .finally(() => {
       generationController = undefined;
       clearTimeout(taskTimer);
-      if (choice.taskRecovery && !disposed) refreshImageTask().catch(error => { taskStatusError.value = error.message; });
+      if (!disposed) refreshImageTask().catch(error => { taskStatusError.value = error.message; });
     });
   return { status: "generating" };
 }
@@ -358,7 +358,7 @@ async function refreshImageTask() {
   imageTask.value = task;
   if (task) generationState.syncTask(task);
   taskStatusError.value = "";
-  if (task?.running && !generating.value) pollImageTask();
+  if (task?.running && !generating.value) { resumeWhenReady = true; pollImageTask(); }
 }
 
 function pollImageTask() {
@@ -398,7 +398,7 @@ async function resumeGeneration() {
     if (!result) throw new Error("重绘未返回图片");
     outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
     data.value.appliedImageTaskId = task.operationId;
-  }, { operationId: task.operationId, startedAt: task.startedAt }).catch(error => showNodeError(error, "原图片任务恢复中断"))
+  }, { operationId: task.operationId, startedAt: task.startedAt }).catch(error => { if (!disposed) showNodeError(error, "原图片任务恢复中断"); })
     .finally(() => {
       generationController = undefined;
       clearTimeout(taskTimer);
@@ -412,11 +412,16 @@ function stopGeneration() {
   generationController?.abort();
 }
 
+function selectHistoryOutput(value: { url: string; mimeType: string }) {
+  outputs.value.image = { dataType: "IMAGE", value };
+  if (imageTask.value?.phase === "completed") data.value.appliedImageTaskId = imageTask.value.operationId;
+}
+
 nodeEvent.on("save", (reason) => {
   if (reason === "reload" && (generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
 });
 nodeEvent.on("delete", async () => {
-  if (generating.value) throw new Error("请先停止等待再删除节点；已经提交的生成任务和素材记录会保留");
+  if (taskRunning.value || pendingTask.value) throw new Error("图片任务尚未结束，请先恢复并确认结果再删除节点");
   if (uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
   deleting.value = true;
   generationController?.abort();

@@ -6,7 +6,9 @@
         <span v-if="record">{{ new Date(record.finishedAt).toLocaleString() }}</span>
       </div>
       <p class="scopeHint">检查当前节点的文字、连接文本和文字描述的素材约束。图片与视频内容、后端优化和运镜标签展开后的文本不在本次审查范围内。生成按钮可随时使用。</p>
+      <p class="scopeHint">AI 一键审查会自动采用可直接执行的局部修改并复审，最多 3 轮，每轮按用量计费；遇到待确认项即停止。</p>
       <p v-if="reviewing" class="scopeHint">正在审查本次快照，期间可以继续编辑或生成。</p>
+      <p v-if="run" class="scopeHint" role="status" aria-live="polite">最近一次多轮审查：{{ run.message }}</p>
       <el-alert v-if="error" :title="error" type="warning" :closable="false" showIcon />
       <el-alert v-if="record && !current" title="当前内容已变化，以下报告仅对应此前的编辑稿。采用建议前请重新审查。" type="info" :closable="false" />
       <template v-if="record?.result">
@@ -24,7 +26,19 @@
           <p v-else class="scopeHint">请确认创作意图后手动修改，也可保留原文继续生成。</p>
         </article>
       </template>
-      <p v-else-if="!error && !reviewing" class="scopeHint">点击审查后生成参考报告。审查按文本模型实际用量计费。</p>
+      <details v-if="run" class="reviewRun">
+        <summary>最近一次多轮审查记录 · {{ run.rounds.length }}/3 轮</summary>
+        <details class="runRound"><summary>开始前的原稿</summary><pre>{{ run.input.editorPrompt }}</pre></details>
+        <details v-for="(round, index) in run.rounds" :key="index" class="runRound">
+          <summary>第 {{ index + 1 }} 轮 · {{ round.record.error ? '未完成' : round.record.result?.status === 'pass' ? '通过' : round.record.result?.status === 'needs_clarification' ? '待确认' : '有待处理项' }}</summary>
+          <p v-if="round.record.result || round.record.reviewId" class="reviewTrace">审查记录 #{{ round.record.result?.review_id ?? round.record.reviewId }}<template v-if="round.record.result"> · {{ round.record.result.model }}</template></p>
+          <p>{{ round.record.error || round.record.result?.summary }}</p>
+          <ul v-if="round.record.result?.issues.length"><li v-for="issue in round.record.result.issues" :key="issue.id">{{ issue.reason }} 建议：{{ issue.suggestion }}</li></ul>
+          <details><summary>送审提示词</summary><pre>{{ round.record.input.content }}</pre></details>
+          <template v-if="round.appliedPrompt !== undefined"><p>采用修改后的节点提示词</p><pre>{{ round.appliedPrompt }}</pre></template>
+        </details>
+      </details>
+      <p v-if="!record?.result && !error && !reviewing" class="scopeHint">点击审查后生成参考报告。审查按文本模型实际用量计费。</p>
       <p class="scopeHint">审查建议需结合创作意图核对；重试会发起新的审查请求，可能产生费用。</p>
     </section>
     <template #footer>
@@ -42,10 +56,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { ElAlert, ElButton, ElDialog, ElTag } from "element-plus";
-import type { PromptReviewEdit, PromptReviewRecord, PromptReviewTarget } from "../promptReview";
+import type { PromptReviewEdit, PromptReviewRecord, PromptReviewRun, PromptReviewTarget } from "../promptReview";
 
 const visible = defineModel<boolean>({ default: false });
-const props = defineProps<{ record?: PromptReviewRecord; current: boolean; reviewing: boolean; status: string; label: string; error: string; editable: boolean; canReview: boolean }>();
+const props = defineProps<{ record?: PromptReviewRecord; run?: PromptReviewRun; current: boolean; reviewing: boolean; status: string; label: string; error: string; editable: boolean; canReview: boolean }>();
 const emit = defineEmits<{ review: [force: boolean]; cancel: []; apply: [edits: PromptReviewEdit[]] }>();
 const sourceVisible = ref(false);
 const selectedTarget = ref<PromptReviewTarget>();
@@ -66,6 +80,13 @@ const sourceParts = computed(() => {
   .reviewHeading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; span { color: var(--el-text-color-secondary); font-size: 12px; } }
   .scopeHint, .reviewTrace, .issueImpact { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.65; margin: 0; }
   .reviewSummary { margin: 0; white-space: pre-wrap; line-height: 1.7; }
+  .reviewRun {
+    border-top: 1px solid var(--el-border-color-lighter); padding-top: 12px; line-height: 1.7;
+    summary { cursor: pointer; color: var(--el-color-primary); }
+    .runRound { margin-top: 10px; }
+    p, li { white-space: pre-wrap; overflow-wrap: anywhere; }
+    pre { max-height: 240px; overflow: auto; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--el-fill-color-light); border-radius: 4px; }
+  }
   .reviewIssue { border-top: 1px solid var(--el-border-color-lighter); padding-top: 14px; display: grid; gap: 10px;
     p { margin: 0; white-space: pre-wrap; line-height: 1.7; }
     .sourceQuote { display: block; width: 100%; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; padding: 8px 10px; border: 0; border-left: 3px solid var(--el-color-warning); border-radius: 4px; background: var(--el-fill-color-light); color: var(--el-text-color-primary); cursor: pointer;
