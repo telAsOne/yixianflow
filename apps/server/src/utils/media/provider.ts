@@ -31,7 +31,7 @@ function invalid(message: string, status = 400): never {
   throw Object.assign(new Error(message), { status });
 }
 
-function mediaErrorMessage(value: unknown, config: Record<string, unknown>, depth = 0): string {
+export function mediaErrorMessage(value: unknown, config: Record<string, unknown>, depth = 0): string {
   if (depth > 6 || value == null) return "";
   let message = "";
   if (typeof value === "string") {
@@ -367,10 +367,12 @@ export async function loadMediaProviderSource(source: string, config: Record<str
     videoTask,
     imageTask,
     tool: {
-      fetch: signal ? Object.assign((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-        signal.throwIfAborted();
+      fetch: signal || imageTask ? Object.assign(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        signal?.throwIfAborted();
+        // ACT: 同步图片接口没有可查询的提交回执；先落盘标记，断线或重启后只恢复结果，不能重发付费请求。
+        if (imageTask && !imageTask.requestSaved) await imageTask.update({ phase: "submitting" });
         const requestSignal = init?.signal === null ? undefined : init?.signal ?? (input instanceof Request ? input.signal : undefined);
-        return fetchRequest(input, { ...init, signal: requestSignal ? AbortSignal.any([signal, requestSignal]) : signal });
+        return fetchRequest(input, { ...init, signal: signal && requestSignal ? AbortSignal.any([signal, requestSignal]) : signal ?? requestSignal });
       }, { preconnect: fetchRequest.preconnect }) as typeof fetch : fetchRequest,
       hash: Bun.hash,
       sha256: (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex"),

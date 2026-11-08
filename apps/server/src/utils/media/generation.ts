@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mediaProviders, type Provider, type VideoTaskContext, type ImageTaskContext } from "@toonflow/providers";
 import type { GeneratedMedia, MediaGenerationRequest, MediaModel, MediaReference } from "@toonflow/tools-scaffold/runtime";
 import { getSettings } from "@/utils/conf";
-import { getMediaProvider, listMediaProviders, loadMediaProviderSource } from "@/utils/media/provider";
+import { getMediaProvider, listMediaProviders, loadMediaProviderSource, mediaErrorMessage } from "@/utils/media/provider";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { beginWorkspaceOperation } from "@/utils/workspace/activity";
 import { runVideoTask } from "@/utils/media/videoTasks";
@@ -13,7 +13,7 @@ export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
 import { file } from "@toonflow/file/bun";
-import { requireAccount, getAccount, getConfigState, refreshConfig } from "@/utils/account";
+import { requireAccount, getAccount, getApiKey, getBaseUrl, getConfigState, refreshConfig } from "@/utils/account";
 import { detectMimeType } from "@/utils/media/mimeType";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
 
@@ -175,7 +175,14 @@ export async function generateMedia(
   if (key && activeNodeGenerations.has(key)) throw Object.assign(new Error("此节点已有设备正在生成，请等待完成，未提交新的生成任务"), { status: 409 });
   const releaseOperation = beginWorkspaceOperation(directory);
   if (key) activeNodeGenerations.add(key);
-  try { return await generateMediaResult(directory, mediaType, request, signal, videoTask, imageTask); }
+  try {
+    if (mediaType === "image" && !imageTask) {
+      return await runImageTask(directory, request, { apiKey: getApiKey(), apiUrl: getBaseUrl() },
+        (saved, context) => generateMedia(directory, "image", saved, signal, undefined, context),
+        error => mediaErrorMessage(error, { apiKey: getApiKey(), apiUrl: getBaseUrl() }) || "图片生成失败", signal, "result");
+    }
+    return await generateMediaResult(directory, mediaType, request, signal, videoTask, imageTask);
+  }
   finally { if (key) activeNodeGenerations.delete(key); releaseOperation(); }
 }
 
@@ -189,7 +196,8 @@ async function generateMediaResult(
 ): Promise<GeneratedMedia[]> {
   signal?.throwIfAborted();
   if (!request.prompt.trim()) invalid("请输入生成提示词");
-  const restoring = videoTask?.requestSaved === true || imageTask?.requestSaved === true;
+  const savedImages = imageTask ? await imageTask.readResult() : undefined;
+  const restoring = videoTask?.requestSaved === true || imageTask?.requestSaved === true || !!savedImages;
   if (!restoring) await refreshConfig(false);
   signal?.throwIfAborted();
   const outputDirectory = request.outputDirectory ?? "assets/generated";
@@ -223,10 +231,6 @@ async function generateMediaResult(
       (saved, context) => generateMedia(directory, "video", saved, signal, context),
       () => Promise.all((request.images ?? []).map(image => readReference(directory, image, "image", signal))), provider.tool.errorMessage, signal);
   }
-  if (mediaType === "image" && model.taskRecovery === true && !imageTask) {
-    return runImageTask(directory, request, provider.config,
-      (saved, context) => generateMedia(directory, "image", saved, signal, undefined, context), provider.tool.errorMessage, signal);
-  }
   // 恢复使用首次保存的原始请求，不重新读取可能已修改或删除的参考素材。
   let images: MediaInput[] | undefined;
   let audios: MediaInput[] | undefined;
@@ -256,7 +260,7 @@ async function generateMediaResult(
     }
   }
   signal?.throwIfAborted();
-  const assets = mediaType === "audio"
+  const assets = savedImages ?? (mediaType === "audio"
     ? await provider.generateAudio!({
       model: request.modelId, text: request.prompt, images, audios,
       voice: request.voice, speed: request.speed, volume: request.volume, pitch: request.pitch, language: request.language, format: request.format, sampleRate: request.sampleRate,
@@ -270,10 +274,15 @@ async function generateMediaResult(
       ratio: request.ratio, resolution: request.resolution, duration: request.duration,
       generateAudio: request.generateAudio, mode: request.mode, seed: request.seed,
       other: request.other,
-    });
+    }));
   if (!Array.isArray(assets) || !assets.length) invalid("供应商未返回生成结果");
   if (videoTask && assets.length !== 1) invalid("此任务应生成一条视频");
   if (imageTask && assets.length !== 1) invalid("图片任务返回的数量与渠道约定不符，已保留原任务");
+  const imageAssets = imageTask ? assets.map(asset => {
+    if (asset.mediaType !== "image" || asset.type !== "url" && asset.type !== "base64") invalid("供应商未返回可保存的图片回执");
+    return { ...asset, mediaType: "image" as const };
+  }) : undefined;
+  if (imageTask && imageAssets && !savedImages) await imageTask.saveResult(imageAssets);
   if (videoTask?.downloaded) {
     if (assets[0] !== videoTask.downloaded) invalid("供应商返回的文件不是本任务下载结果");
     signal?.throwIfAborted();
@@ -287,6 +296,10 @@ async function generateMediaResult(
       signal?.throwIfAborted();
       const { bytes, mimeType } = await assetBytes(asset, mediaType, signal);
       signal?.throwIfAborted();
+      if (imageTask && imageAssets && asset.type === "url") {
+        imageAssets[index] = { type: "base64", data: Buffer.from(bytes).toString("base64"), mimeType, mediaType: "image" };
+        await imageTask.saveResult(imageAssets);
+      }
       const output = await resolveWorkspacePath(directory, outputDirectory, true);
       const release = lockWorkspaceFiles([output.path]);
       try {
