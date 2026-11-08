@@ -87,7 +87,9 @@
         <div class="promptReviewTools" role="status" aria-live="polite">
           <el-button text size="small" @click="reviewPanelVisible = true">编辑稿 · {{ reviewLabel }}</el-button>
           <el-button v-if="reviewing" size="small" @click="cancelPromptReview">停止等待审查</el-button>
-          <el-button v-else size="small" :disabled="deleting || !generationPrompt.trim()" @click="openPromptReview">审查</el-button>
+          <el-button v-else size="small" :disabled="deleting || !generationPrompt.trim()" @click="openPromptReview()">审查</el-button>
+          <el-button v-if="reviewStatus !== 'pass'" size="small" type="primary" plain :icon="IconSparkles" :loading="reviewing" :disabled="!reviewEditable || !generationPrompt.trim()"
+            title="最多 3 轮审查、自动局部修改与复审；遇到待确认项即停止，每轮按用量计费" @click="openPromptReview(true)">AI 一键审查</el-button>
           <span>按用量计费 · 可直接生成</span>
         </div>
         <p v-if="data.model && !selectedModel && !modelsLoading" role="alert">模型不可用，请选择其他模型</p>
@@ -175,7 +177,7 @@
   </nodeSkeleton>
   <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="generating || deleting || uploading" />
   <h3MediaLibrary v-if="isZealmanU06" v-model="libraryVisible" :importReferences="importPanelReferences" />
-  <promptReviewPanel v-model="reviewPanelVisible" :record="reviewRecord" :current="reviewCurrent" :reviewing="reviewing" :status="reviewStatus" :label="reviewLabel" :error="reviewError"
+  <promptReviewPanel v-model="reviewPanelVisible" :record="reviewRecord" :run="reviewRun" :current="reviewCurrent" :reviewing="reviewing" :status="reviewStatus" :label="reviewLabel" :error="reviewError"
     :editable="reviewEditable" :canReview="!deleting && !!generationPrompt.trim()" @review="force => reviewPrompt(force)" @cancel="cancelPromptReview" @apply="applyReviewEdits" />
 </template>
 
@@ -205,7 +207,7 @@ import zealmanSettings from "./components/zealmanSettings.vue";
 import h3PromptEditor from "./components/h3PromptEditor.vue";
 import h3MediaLibrary from "./components/h3MediaLibrary.vue";
 import promptReviewPanel from "./components/promptReviewPanel.vue";
-import { usePromptReview, samePromptReviewInput, applyPromptReviewEdits, type PromptReviewInput, type PromptReviewRecord, type PromptReviewEdit, type PromptReviewSubmission } from "./promptReview";
+import { usePromptReview, samePromptReviewInput, applyPromptReviewEdits, type PromptReviewInput, type PromptReviewRecord, type PromptReviewRun, type PromptReviewEdit, type PromptReviewSubmission } from "./promptReview";
 import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
 import { getCameraPresets } from "./cameraPresets";
 import { loadZealmanOptions, validateZealmanSettings, zealmanAssetUrl, type ZealmanOptions, type ZealmanAsset } from "./zealmanOptions";
@@ -225,7 +227,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals,
 const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
 const creatingGeneration = ref(false);
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; submittedPromptReview?: PromptReviewSubmission });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; promptReviewRun?: PromptReviewRun; submittedPromptReview?: PromptReviewSubmission });
 const rememberPreferences = useGenerationPreferences("video", () => data.value);
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
@@ -402,13 +404,28 @@ const reviewInput = computed<PromptReviewInput>(() => ({
     referenceImageUrlsText: data.value.referenceImageUrlsText, references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, value: item.value })),
     voices: data.value.h3Prompt.voices }),
 }));
-const { record: reviewRecord, current: reviewCurrent, reviewing, status: reviewStatus, label: reviewLabel, error: reviewError,
-  review: reviewPrompt, cancel: cancelPromptReview, submission: promptReviewSubmission } = usePromptReview({
+const { record: reviewRecord, run: reviewRun, current: reviewCurrent, reviewing, status: reviewStatus, label: reviewLabel, error: reviewError,
+  review: reviewPrompt, reviewAutomatically: reviewPromptAutomatically, cancel: cancelPromptReview, submission: promptReviewSubmission } = usePromptReview({
     input: () => reviewInput.value, record: () => data.value.promptReview, save: record => { data.value.promptReview = record; },
+    run: () => data.value.promptReviewRun, saveRun: run => { data.value.promptReviewRun = run; },
+    editable: () => reviewEditable.value, apply: setReviewPrompt,
   });
 const reviewEditable = computed(() => !deleting.value && !uploadingReferences.value && !zealmanEnqueuing.value && (isZealmanU06.value || !generating.value && !pendingTask.value));
 
-function openPromptReview() { reviewPanelVisible.value = true; }
+function openPromptReview(oneClick = false) {
+  reviewPanelVisible.value = true;
+  if (oneClick) void reviewPromptAutomatically().catch(() => {});
+}
+
+function setReviewPrompt(prompt: string) {
+  data.value.prompt = prompt;
+  data.value.promptModel = prompt.split("\n").map(text => [{ type: "Write", text }]);
+}
+
+function getPromptReviewState() {
+  return { status: reviewStatus.value, label: reviewLabel.value, current: reviewCurrent.value, error: reviewError.value || undefined,
+    record: reviewRecord.value, run: reviewRun.value };
+}
 
 async function applyReviewEdits(edits: PromptReviewEdit[]) {
   try {
@@ -417,8 +434,7 @@ async function applyReviewEdits(edits: PromptReviewEdit[]) {
     const prompt = applyPromptReviewEdits(input, edits);
     await ElMessageBox.confirm("将采用详情中展示的这组局部修改。请确认符合创作意图，采用后审查状态会变为待重审。", "确认修改提示词", { confirmButtonText: "采用修改", cancelButtonText: "保留原文", type: "warning" });
     if (!reviewCurrent.value || !reviewEditable.value || reviewing.value || !samePromptReviewInput(input, reviewInput.value)) throw new Error("确认期间编辑稿已变化，请重新核对修改建议");
-    data.value.prompt = prompt;
-    data.value.promptModel = prompt.split("\n").map(text => [{ type: "Write", text }]);
+    setReviewPrompt(prompt);
   } catch (failure) {
     if (failure !== "cancel" && failure !== "close") ElMessage.warning(failure instanceof Error ? failure.message : "未能采用修改，请手动修改提示词");
   }
@@ -812,6 +828,7 @@ nodeEvent.on("delete", async () => {
   if (generating.value) throw new Error("请先停止等待再删除节点；已经提交的生成任务和素材记录会保留");
   if (uploading.value || uploadingReferences.value) throw new Error("素材正在处理，请完成后再删除节点");
   deleting.value = true;
+  cancelPromptReview();
   stopGeneration();
   try {
     await generation;
@@ -864,19 +881,35 @@ nodeTools.register({
 
 nodeTools.register({
   name: "reviewPrompt",
-  description: "仅在用户要求审查时启动当前视频节点编辑稿的辅助审查，按文本模型用量计费，不启动视频生成、不修改原文。返回 reviewing 后可继续其他工作，按需用 getPromptReview 查询；同一内容已有有效结果时复用，force=true 会重新计费审查。审查失败或未通过均不妨碍 generateVideo、排队和恢复原任务，不循环重试",
+  description: "仅对当前视频节点编辑稿做一次辅助审查，不修改原文、不启动视频生成，按文本模型用量计费。用户要求「AI 一键审查」或自动修改并复审时使用 autoReviewPrompt。返回 reviewing 后可继续其他工作，按需用 getPromptReview 查询报告；同一内容已有有效报告时复用，force=true 会重新计费审查。审查失败或未通过不妨碍生成、排队和恢复原任务，不循环重试",
   parameters: z.strictObject({ force: z.boolean().optional() }),
   execute({ force }) {
     if (deleting.value) throw new Error("节点正在删除，请稍后审查");
     void reviewPrompt(force).catch(() => {});
-    return { status: reviewStatus.value, label: reviewLabel.value };
+    return getPromptReviewState();
+  },
+});
+nodeTools.register({
+  name: "autoReviewPrompt",
+  description: "执行视频节点「AI 一键审查」：仅在用户要求一键审查或自动修改并复审时使用，最多 3 轮审查，每轮按文本模型用量计费。自动采用报告中可安全应用的局部修改并复审；遇到创作意图待确认、修改无法安全定位、编辑稿变化或请求失败即停止，不自动重试。保留原稿、修改和每轮报告，审查通过后隐藏按钮。不启动视频生成、不阻塞生成或队列。立即返回状态，按需用 getPromptReview 查看轮次、报告和停止原因；不得循环调用或查询，取消用 cancelPromptReview",
+  parameters: z.strictObject({}),
+  execute() {
+    if (deleting.value) throw new Error("节点正在删除，请稍后审查");
+    void reviewPromptAutomatically().catch(() => {});
+    return getPromptReviewState();
   },
 });
 nodeTools.register({
   name: "getPromptReview",
-  description: "按需读取当前编辑稿的辅助审查状态、报告及原文快照。current=false 表示报告已失效；未发现文字问题也不保证生成效果。reviewing 时继续其他工作，不循环查询，不会启动审查或视频生成",
+  description: "按需读取当前编辑稿的辅助审查状态、报告及原文快照，run 包含多轮审查的原稿、逐轮报告、已采用的修改和停止原因。current=false 表示当前报告已失效；未发现文字问题也不保证生成效果。reviewing 时继续其他工作，不循环查询，不会启动审查或视频生成",
   parameters: z.strictObject({}),
-  execute: () => ({ status: reviewStatus.value, label: reviewLabel.value, current: reviewCurrent.value, error: reviewError.value || undefined, record: reviewRecord.value }),
+  execute: getPromptReviewState,
+});
+nodeTools.register({
+  name: "cancelPromptReview",
+  description: "用户要求停止审查时，停止本节点单次或多轮审查的本地等待及后续自动修改，保留已完成的修改和报告；已发出的请求可能产生费用。不会停止视频生成或队列",
+  parameters: z.strictObject({}),
+  execute() { cancelPromptReview(); return getPromptReviewState(); },
 });
 
 registerGenerationTools({
@@ -886,8 +919,7 @@ registerGenerationTools({
   setPrompt(value) {
     if (deleting.value) throw new Error("节点正在删除，请稍后修改");
     if (!isZealmanU06.value && (generating.value || pendingTask.value)) throw new Error("节点存在未完成任务，请先查询或恢复原视频任务；其他创作可使用 createNewGeneration");
-    data.value.prompt = value;
-    data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
+    setReviewPrompt(value);
   },
   updateDescription: "修改视频节点配置，不启动生成。先用 getConfig 查询能力，providerId 与 modelId 同时提供。seed 为非负安全整数，0 有效，null 使用随机值；U06 支持 other 中的 modelKey、clipKey、loraKey、loraStrength、extraLoraKey、extraLoraStrength、accelerated、steps、upscale、forceVramCleanupBeforeVae，选项键取自 videoOptions。referenceImageInput 为 url 的模型支持 referenceImageUrls；mode 使用 getConfig 返回的原始值，须匹配引用",
   configSchema: z.strictObject({
