@@ -42,8 +42,12 @@ export async function preparePlatformReferences(directory: string, references: R
   return prepared;
 }
 
-export async function uploadPlatformReferences(directory: string, references: Reference[], signal?: AbortSignal): Promise<Extract<MediaInput, { type: "url" }>[]> {
-  const account = requireAccount();
+export async function uploadPlatformReferences(directory: string, references: Reference[], signal?: AbortSignal, options?: {
+  account?: ReturnType<typeof requireAccount>;
+  request?: (input: Parameters<typeof fetch>[0], init?: RequestInit) => Promise<Response>;
+}): Promise<Extract<MediaInput, { type: "url" }>[]> {
+  const account = options?.account ?? requireAccount();
+  const request = options?.request ?? platformFetch;
   const prepared = await preparePlatformReferences(directory, references, signal);
   const withCache = createReferenceCache("yixianMedia", { apiUrl: account.baseUrl, userId: account.user.id }, directory, signal);
   return withCache(async cache => {
@@ -65,7 +69,7 @@ export async function uploadPlatformReferences(directory: string, references: Re
       const cached = await cache.get(digest);
       let asset: z.infer<typeof assetSchema>["data"] | undefined;
       if (cached?.ref) {
-        const response = await platformFetch(`${account.baseUrl}/v1/media/${encodeURIComponent(cached.ref)}`, {
+        const response = await request(`${account.baseUrl}/v1/media/${encodeURIComponent(cached.ref)}`, {
           signal: AbortSignal.any([AbortSignal.timeout(30000), ...(signal ? [signal] : [])]), headers: { Authorization: `Bearer ${account.key}` },
         });
         if (response.status === 404) { await response.body?.cancel(); await cache.remove(digest); }
@@ -80,7 +84,7 @@ export async function uploadPlatformReferences(directory: string, references: Re
         const form = new FormData();
         form.append("media_type", reference.mediaType);
         form.append("file", blob, reference.name);
-        const response = await platformFetch(`${account.baseUrl}/v1/media?media_type=${reference.mediaType}`, { method: "POST", body: form,
+        const response = await request(`${account.baseUrl}/v1/media?media_type=${reference.mediaType}`, { method: "POST", body: form,
           headers: { Authorization: `Bearer ${account.key}` }, signal: AbortSignal.any([AbortSignal.timeout(300000), ...(signal ? [signal] : [])]) });
         if (!response.ok) {
           const failure = await response.json().catch(() => undefined) as { error_code?: string; message?: string; error?: { code?: string; message?: string } } | undefined;

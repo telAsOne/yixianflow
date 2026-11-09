@@ -12,16 +12,21 @@ const reviewEditSchema = z.object({
 const reviewResultSchema = z.object({
   review_id: z.number().int().positive(), request_id: z.string().max(256), model: z.string().max(200),
   status: z.enum(["pass", "needs_revision", "needs_clarification"]), summary: z.string().max(20000),
+  media_input_complete: z.boolean().optional(),
+  media_coverage: z.array(z.object({ id: z.string(), type: z.enum(["image", "video", "audio"]), asset_id: z.string(), sha256: z.string(), status: z.string(), purpose: z.string().optional(), frame_seconds: z.array(z.number()).optional(), duration_seconds: z.number().optional(), warning: z.string().optional() })).max(16).nullable().optional(),
   issues: z.array(z.object({
     id: z.string().max(128), category: z.string().max(64), kind: z.enum(["conflict", "risk", "needs_clarification"]),
     severity: z.enum(["error", "warning"]), next_action: z.enum(["revise", "confirm"]),
     targets: z.array(reviewTargetSchema).min(1).max(8), reason: z.string().max(20000), impact: z.string().max(20000),
     suggestion: z.string().max(20000), edits: z.array(reviewEditSchema).max(16),
+    media_evidence: z.array(z.object({ media_id: z.string(), observation: z.string().max(2000), frame_seconds: z.number().nonnegative().optional(), audio_start_seconds: z.number().nonnegative().optional(), audio_end_seconds: z.number().positive().optional() })).max(8).optional(),
   })).max(16),
 });
 const reviewInputSchema = z.object({
   content: z.string().max(20000), context: z.string().max(20000), editorPrompt: z.string().max(20000),
   dependencies: z.string().max(100000), durationSeconds: z.number().positive().max(3600).optional(),
+  directory: z.string().max(4096).optional(), model: z.string().max(200).optional(), audioInput: z.boolean().optional(),
+  media: z.array(z.object({ id: z.string().min(1).max(128), type: z.enum(["image", "video", "audio"]), path: z.string().min(1).max(8192), mimeType: z.string().max(100), purpose: z.string().max(1000).optional() })).max(16).optional(),
 });
 const reviewRecordSchema = z.object({
   input: reviewInputSchema, finishedAt: z.number(), result: reviewResultSchema.optional(),
@@ -42,8 +47,16 @@ export type PromptReviewRun = z.infer<typeof reviewRunSchema>;
 export type PromptReviewSubmission = { status: string; label: string; reviewId?: number; recordedAt: number };
 
 export function samePromptReviewInput(first: PromptReviewInput, second: PromptReviewInput) {
+  const firstMedia = first.media ?? [];
+  const secondMedia = second.media ?? [];
   return first.content === second.content && first.context === second.context && first.editorPrompt === second.editorPrompt
-    && first.dependencies === second.dependencies && first.durationSeconds === second.durationSeconds;
+    && first.dependencies === second.dependencies && first.durationSeconds === second.durationSeconds
+    && (first.model ?? "") === (second.model ?? "") && !!first.audioInput === !!second.audioInput
+    && (first.directory ?? "") === (second.directory ?? "") && firstMedia.length === secondMedia.length
+    && firstMedia.every((media, index) => {
+      const other = secondMedia[index]!;
+      return media.id === other.id && media.type === other.type && media.path === other.path && media.mimeType === other.mimeType && (media.purpose ?? "") === (other.purpose ?? "");
+    });
 }
 
 export function usePromptReview(options: {
@@ -73,9 +86,9 @@ export function usePromptReview(options: {
     catch { return false; }
   });
   const status = computed(() => reviewing.value ? "reviewing" : transientError.value ? "failed" : !record.value ? "unreviewed"
-    : !current.value ? "stale" : record.value.error ? "failed" : record.value.result?.status ?? "unreviewed");
+    : !current.value ? "stale" : record.value.error ? "failed" : record.value.result?.media_input_complete === false ? "incomplete" : record.value.result?.status ?? "unreviewed");
   const label = computed(() => ({ unreviewed: "未审查", reviewing: "审查中", stale: "内容已变更 · 待重审", failed: "审查未完成",
-    pass: "未发现文字问题", needs_revision: "有待处理项", needs_clarification: "有待确认项" })[status.value]);
+    pass: "本次范围内未发现问题", incomplete: "素材未完整读取", needs_revision: "有待处理项", needs_clarification: "有待确认项" })[status.value]);
   const error = computed(() => transientError.value || record.value?.error || "");
 
   async function reviewOnce(force = false) {
@@ -93,7 +106,8 @@ export function usePromptReview(options: {
       const signal = AbortSignal.any([activeController.signal, AbortSignal.timeout(630000)]);
       const response = await fetch("/api/ai/videoPromptReview", {
         method: "POST", headers: { "Content-Type": "application/json", "X-Toonflow-Workspace": "1" }, cache: "no-store", signal,
-        body: JSON.stringify({ content: input.content, context: input.context, ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}) }),
+        body: JSON.stringify({ content: input.content, context: input.context, ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
+          ...(input.media?.length ? { directory: input.directory, media: input.media, audioInput: input.audioInput } : {}), ...(input.model ? { model: input.model } : {}) }),
       });
       const body = await response.json();
       signal.throwIfAborted();
@@ -102,8 +116,15 @@ export function usePromptReview(options: {
         throw Object.assign(failure, { reviewId: body?.data?.reviewId, requestId: body?.data?.requestId });
       }
       const result = reviewResultSchema.parse(body.data);
+      if (input.media?.length && (result.media_coverage?.length !== input.media.length || input.media.some(media => !result.media_coverage?.some(item => item.id === media.id && item.type === media.type))))
+        throw new Error("审查服务未返回完整的素材读取范围，请核对后手动重试");
       if ((result.status === "pass") !== (result.issues.length === 0)) throw new Error("审查报告的结论与问题列表不一致，请手动重试");
       for (const issue of result.issues) {
+        for (const evidence of issue.media_evidence ?? []) {
+          const media = result.media_coverage?.find(item => item.id === evidence.media_id);
+          if (!media || ["unavailable", "audio_metadata"].includes(media.status) || evidence.frame_seconds !== undefined && !media.frame_seconds?.includes(evidence.frame_seconds))
+            throw new Error("审查报告的素材证据无效，请核对后手动重试");
+        }
         for (const target of issue.targets) {
           const source = input[target.field];
           if (target.shot_id !== null || Array.from(source).slice(target.start_char, target.end_char).join("") !== target.quote)
@@ -138,7 +159,7 @@ export function usePromptReview(options: {
 
   async function reviewAutomatically() {
     if (disposed || reviewing.value) return;
-    if (current.value && record.value?.result?.status === "pass" && !error.value) return;
+    if (current.value && record.value?.result?.status === "pass" && record.value.result.media_input_complete !== false && !error.value) return;
     if (!options.editable()) { transientError.value = "当前节点暂不可自动修改提示词，请稍后发起一键审查；仍可单次审查。"; return; }
     const activeController = new AbortController();
     automaticController = activeController;
@@ -171,6 +192,7 @@ export function usePromptReview(options: {
         if (!current.value || !samePromptReviewInput(input, options.input())) { finish("stopped", "审查期间编辑稿或参考配置已变化，已保留本轮报告并停止自动修改。"); return; }
         if (error.value || latest.error || !latest.result) { finish("failed", error.value || latest.error || "本轮审查未完成，已停止，不会自动重试。"); return; }
         const result = latest.result;
+        if (result.media_input_complete === false) { finish("needs_confirmation", "部分素材未完整读取，已停止自动修改；请核对素材范围或选择支持原音的模型后重审。"); return; }
         if (result.status === "pass") { finish("pass", `第 ${round}/3 轮审查通过，已保留原稿、修改与每轮报告。`); return; }
         if (result.status === "needs_clarification" || result.issues.some(issue => issue.next_action === "confirm" || issue.kind === "needs_clarification")) {
           finish("needs_confirmation", "报告中有需要确认创作意图的问题，已停止自动修改，请查看报告后决定。"); return;

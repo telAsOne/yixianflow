@@ -11,14 +11,16 @@
   <el-image-viewer v-if="previewUrl" :urlList="[previewUrl]" teleported @close="previewReferenceId = undefined" />
   <teleport v-if="mentionTarget" :to="mentionTarget">
     <div class="referenceColumns" @mousedown.prevent @pointerdown.stop @wheel.stop @keydown.stop="handleMentionKey">
-      <section v-for="group in mentionGroups" :key="group.label" class="referenceColumn" :aria-label="group.label">
+      <section v-for="group in mentionGroups" :key="group.label" class="referenceColumn" :class="{ customReferenceGroup: !!group.slot }" :aria-label="group.label">
         <h4>{{ group.label }} <span>{{ group.items.length }}</span></h4>
+        <slot :name="group.slot || 'referenceGroup'" :items="group.items" :insert="insertReference" :close="closeMentions" :open="mentionOpen">
         <div class="referenceOptions" role="listbox" :aria-label="group.label">
           <button v-for="item in group.items" :key="item.id" type="button" class="referenceOption" :class="{ active: activeMentionId === item.id }" :data-id="item.id" role="option" :aria-selected="activeMentionId === item.id" :title="item.hideValue ? item.name : `${item.name} · ${item.value}`" @mouseenter="activeMentionId = item.id" @click.stop="insertReference(item)">
             <img v-if="item.avatar" :src="String(item.avatar)" alt="" />
             <span><strong>{{ item.name }}</strong><small v-if="!item.hideValue">{{ item.value }}</small></span>
           </button>
         </div>
+        </slot>
       </section>
     </div>
   </teleport>
@@ -32,8 +34,8 @@ import xSender, { type AnyTagProps, type MentionItem } from "x-sender";
 import "x-sender/lib/XSender.css";
 
 type PromptReference = MentionItem & { value: string; previewUrl?: string; category?: string; action?: boolean; hideValue?: boolean };
-const props = defineProps<{ references: PromptReference[]; referenceGroups?: { label: string; categories: string[] }[]; expandable?: boolean; placeholder?: string; recognizeTokens?: boolean; preserveMissingReferences?: boolean; disabled?: boolean; maxHeight?: string }>();
-const emit = defineEmits<{ activateReference: [reference: PromptReference, occurrence: number]; insertReference: [reference: PromptReference, offset: number] }>();
+const props = defineProps<{ references: PromptReference[]; referenceGroups?: { label: string; categories: string[]; slot?: string }[]; expandable?: boolean; placeholder?: string; recognizeTokens?: boolean; preserveMissingReferences?: boolean; disabled?: boolean; maxHeight?: string }>();
+const emit = defineEmits<{ activateReference: [reference: PromptReference, occurrence: number]; insertReference: [reference: PromptReference, offset: number]; referenceMenuOpen: [] }>();
 const model = defineModel<AnyTagProps[][]>({ required: true });
 const text = defineModel<string>("text", { default: "" });
 const senderElement = ref<HTMLElement>();
@@ -41,10 +43,12 @@ const expanded = ref(false);
 const expandedTarget = ref<HTMLElement>();
 const mentionTarget = ref<HTMLElement>();
 const mentionMatches = ref<string[]>([]);
+const mentionOpen = ref(false);
+watch(mentionOpen, open => { if (open) emit("referenceMenuOpen"); });
 const activeMentionId = ref<string>();
 const mentionGroups = computed(() => {
   const matches = new Set(mentionMatches.value);
-  return (props.referenceGroups ?? []).map(group => ({ label: group.label, items: props.references.filter(item => matches.has(item.id) && group.categories.includes(item.category ?? "")) })).filter(group => group.items.length);
+  return (props.referenceGroups ?? []).map(group => ({ label: group.label, slot: group.slot, items: props.references.filter(item => matches.has(item.id) && group.categories.includes(item.category ?? "")) })).filter(group => group.items.length);
 });
 const { nextZIndex } = useZIndex();
 const previewReferenceId = ref<string>();
@@ -318,6 +322,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
     mentionDialog.appendChild(target);
     mentionTarget.value = target;
     const updateMentions = () => {
+      mentionOpen.value = mentionDialog.classList.contains("chat-view-show");
       const matches = Array.from(mentionDialog.querySelectorAll<HTMLElement>(".chat-mention-dialog-main > .chat-mention-dialog-item.chat-view-show"), item => item.dataset.id!);
       if (matches.join("\0") !== mentionMatches.value.join("\0")) mentionMatches.value = matches;
       if (!matches.includes(activeMentionId.value ?? "")) activeMentionId.value = matches[0];
@@ -491,6 +496,8 @@ async function insertReference(reference: MentionItem) {
   }
 }
 
+function closeMentions() { sender?.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE); }
+
 function handleMentionKey(event: KeyboardEvent) {
   if (!sender || event.isComposing || !["ArrowUp", "ArrowDown", "Enter", "Escape", ...(props.referenceGroups ? ["ArrowLeft", "ArrowRight"] : [])].includes(event.key)) return;
   const dialog = sender.chatElement.dialogRoot.querySelector<HTMLElement>(".chat-mention-dialog-wrap");
@@ -600,6 +607,7 @@ function handleMentionKey(event: KeyboardEvent) {
   overflow: auto;
   .referenceColumn {
     min-width: 0;
+    &.customReferenceGroup { grid-column: span 2; min-width: min(350px, calc(100vw - 64px)); }
     h4 {
       display: flex; justify-content: space-between; margin: 0 0 6px; padding: 6px;
       color: var(--el-text-color-primary); font-size: 13px; border-bottom: 1px solid var(--el-border-color-lighter);

@@ -177,7 +177,7 @@
   </nodeSkeleton>
   <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="generating || deleting || uploading" />
   <h3MediaLibrary v-if="isZealmanU06" v-model="libraryVisible" :importReferences="importPanelReferences" />
-  <promptReviewPanel v-model="reviewPanelVisible" :record="reviewRecord" :run="reviewRun" :current="reviewCurrent" :reviewing="reviewing" :status="reviewStatus" :label="reviewLabel" :error="reviewError"
+  <promptReviewPanel v-model="reviewPanelVisible" v-model:includeMedia="data.promptReviewMedia" v-model:audioInput="data.promptReviewAudio" v-model:model="data.promptReviewModel" :models="reviewModels" :record="reviewRecord" :run="reviewRun" :current="reviewCurrent" :reviewing="reviewing" :status="reviewStatus" :label="reviewLabel" :error="reviewError"
     :editable="reviewEditable" :canReview="!deleting && !!generationPrompt.trim()" @review="force => reviewPrompt(force)" @cancel="cancelPromptReview" @apply="applyReviewEdits" />
 </template>
 
@@ -230,8 +230,12 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals,
 const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
 const creatingGeneration = ref(false);
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; promptReviewRun?: PromptReviewRun; submittedPromptReview?: PromptReviewSubmission });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; promptReviewRun?: PromptReviewRun; promptReviewMedia: boolean; promptReviewAudio: boolean; promptReviewModel: string; submittedPromptReview?: PromptReviewSubmission });
 const rememberPreferences = useGenerationPreferences("video", () => data.value);
+const reviewModels = ref<{ modelId: string; label: string }[]>([]);
+data.value.promptReviewMedia ??= true;
+data.value.promptReviewAudio ??= false;
+data.value.promptReviewModel ??= "";
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
 data.value.model ??= "";
@@ -394,15 +398,32 @@ const generationPrompt = computed(() => {
 });
 
 const reviewPanelVisible = ref(false);
+watch(reviewPanelVisible, visible => {
+  if (visible && !reviewModels.value.length) void ai.getModels().then(models => { if (!disposed) reviewModels.value = models; }).catch(() => {});
+});
 const reviewInput = computed<PromptReviewInput>(() => ({
   content: generationPrompt.value,
   editorPrompt: data.value.prompt,
-  context: ["审查范围：当前视频节点的编辑稿。未提供图片、视频或音频的实际内容，只核对可见文字及素材约束。",
-    `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；生成声音：${selectedModel.value?.audio === 'optional' ? data.value.generateAudio : selectedModel.value?.audio === true}。`,
-    `素材数量：图片 ${mediaCounts.value.image}，视频 ${mediaCounts.value.video}，音频 ${mediaCounts.value.audio}。`,
+  context: [data.value.promptReviewMedia ? "审查范围：当前视频节点编辑稿与实际读取的参考素材。严格按素材用途核对，未读取的素材不视为已审查。" : "审查范围：当前视频节点的编辑稿，仅核对文字及文字描述的素材约束。",
+    `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；生成声音：${selectedModel.value?.audio === 'optional' ? data.value.generateAudio : selectedModel.value?.audio === true}；生成模式：${JSON.stringify(selectedMode.value ?? '默认')}。`,
+    `素材数量：图片 ${mediaCounts.value.image + referenceUrls(selectedModel.value).length}，视频 ${mediaCounts.value.video}，音频 ${mediaCounts.value.audio}。`,
     ...(isH3Prompt.value ? [`引用名称与标签：${JSON.stringify(h3ReferenceList.value.map(item => ({ name: item.name, tag: item.value, category: item.category })))}`] : []),
     "CameraPreset 运镜标签由后端展开，本次未提供其隐藏指令，不推断隐藏内容；后端可能继续优化提示词。"].join("\n"),
   ...(data.value.duration ? { durationSeconds: data.value.duration } : {}),
+  directory: files.getWorkspaceDirectory(), model: data.value.promptReviewModel, audioInput: data.value.promptReviewAudio,
+  media: data.value.promptReviewMedia ? h3ReferenceList.value.flatMap(item => {
+    if (!["picture", "video", "audio"].includes(item.category)) return [];
+    const value = item.input?.value as { url?: string; mimeType?: string } | undefined;
+    const path = value?.url ?? item.voice?.url;
+    if (!path) throw new Error(`素材 ${item.value} 缺少可读取的来源，请替换素材或取消结合素材审查；仍可直接生成`);
+    let purpose = "仅按提示词指定的用途参考；未指定的属性不作为硬约束。";
+    if (frameMode.value && item.category === "picture") {
+      const boundary = selectedMode.value === "startFrameOptional" || item.value !== "<Picture 1>" ? "尾帧" : "首帧";
+      purpose = `生成参数指定的${boundary}，只约束该边界的构图和状态，中间动作按提示词演进。`;
+    } else if (item.voice) purpose = "仅作提示词指定人物的音色参考，不复用参考台词。";
+    return [{ id: item.value, type: (item.category === "picture" ? "image" : item.category) as "image" | "video" | "audio", path,
+      mimeType: value?.mimeType ?? "audio/wav", purpose }];
+  }) : [],
   dependencies: JSON.stringify({ model: data.value.model, mode: data.value.mode, resolution: data.value.resolution,
     referenceImageUrlsText: data.value.referenceImageUrlsText, references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, value: item.value })),
     voices: data.value.h3Prompt.voices }),

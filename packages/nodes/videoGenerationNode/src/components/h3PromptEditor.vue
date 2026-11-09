@@ -52,7 +52,11 @@
         <span>输入 @ 插入彩色标签；点对白标签可修改台词</span>
         <el-segmented v-model="state.editorMode" :options="[{ label: '标签', value: 'tags' }, { label: '代码', value: 'code' }]" :disabled="editingDisabled" size="small" aria-label="提示词编辑模式" />
       </div>
-      <promptInput v-if="state.editorMode !== 'code'" ref="editor" v-model="promptModel" v-model:text="prompt" :references="mentions" :referenceGroups="referenceGroups" :disabled="editingDisabled" :maxHeight="expanded ? '52vh' : '260px'" recognizeTokens preserveMissingReferences placeholder="描述画面，输入 @ 插入素材、主体、对白或镜头" @activateReference="activateMention" @insertReference="insertMention" />
+      <promptInput v-if="state.editorMode !== 'code'" ref="editor" v-model="promptModel" v-model:text="prompt" :references="mentions" :referenceGroups="referenceGroups" :disabled="editingDisabled" :maxHeight="expanded ? '52vh' : '260px'" recognizeTokens preserveMissingReferences placeholder="描述画面，输入 @ 插入素材、主体、对白或镜头" @activateReference="activateMention" @insertReference="insertMention" @referenceMenuOpen="refreshCameraPresets">
+        <template #cameraGroup="{ items, insert, close, open }">
+          <cameraPresetGrid v-if="open" :presets="(cameraPresets ?? []).filter(preset => items.some(item => item.id === `camera:${preset.id}`))" :loading="cameraLoading" :disabled="editingDisabled" compact @confirm="preset => insert({ id: `camera:${preset.id}`, name: preset.name })" @cancel="close" />
+        </template>
+      </promptInput>
       <h3CodeEditor v-else ref="codeEditor" v-model="prompt" class="codeEditor" :maxHeight="expanded ? '52vh' : '260px'" :disabled="editingDisabled" @update:modelValue="syncCodeModel" />
       <div class="editorActions">
         <el-button text size="small" :disabled="editingDisabled || historyIndex === 0" @click="restoreHistory(-1)">撤销</el-button>
@@ -63,12 +67,7 @@
         <el-button text size="small" @click="helpVisible = true">对白写法</el-button>
       </div>
       <div v-if="issues.length" class="promptIssues" role="status"><p v-for="issue in issues" :key="issue">{{ issue }}</p></div>
-      <el-dialog v-model="cameraVisible" :title="cameraLoading ? '运镜库（读取中）' : '运镜库'" width="min(640px, 92vw)" appendToBody>
-        <el-alert v-if="cameraError" :title="cameraError" type="error" :closable="false" />
-        <div class="cameraLibrary">
-          <el-button v-for="preset in cameraPresets" :key="preset.id" :disabled="editingDisabled" @click="insertCameraPreset(preset)">{{ preset.name }}</el-button>
-        </div>
-      </el-dialog>
+      <cameraPresetPicker v-model="cameraVisible" :presets="cameraPresets" :loading="cameraLoading" :error="cameraError" :disabled="editingDisabled" @confirm="insertCameraPreset" @retry="refreshCameraPresets" />
       <el-dialog v-model="dialogueVisible" title="插入对白" width="min(560px, 92vw)" appendToBody :closeOnClickModal="false">
         <el-form labelPosition="top" class="dialogueForm">
           <el-form-item v-if="!independentVoice" label="发声主体（多选为齐声）"><el-select v-model="dialogue.subjects" multiple aria-label="对白主体"><el-option v-for="subject in dialogueSubjects" :key="subject.id" :value="subject.id" :label="subject.name" /></el-select></el-form-item>
@@ -109,6 +108,8 @@ import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
 import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
 import h3ReferenceList from "./h3ReferenceList.vue";
 import h3CodeEditor from "./h3CodeEditor.vue";
+import cameraPresetPicker from "./cameraPresetPicker.vue";
+import cameraPresetGrid from "./cameraPresetGrid.vue";
 import { h3CameraInsertRange, h3DetailPattern, h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, type H3PromptState, type H3Reference } from "../h3Prompt";
 import { getCameraPresets, type CameraPreset } from "../cameraPresets";
 import type { ZealmanVoice } from "../zealmanOptions";
@@ -171,7 +172,7 @@ const referenceGroups = [
   { label: "主体人物", categories: ["subject"] },
   { label: "说话人", categories: ["speaker"] },
   { label: "镜头", categories: ["shot"] },
-  { label: "运镜", categories: ["camera"] },
+  { label: "运镜", categories: ["camera"], slot: "cameraGroup" },
   { label: "对白", categories: ["dialogue", "transition"] },
   { label: "任务与段落", categories: ["task", "section"] },
 ];
@@ -204,15 +205,17 @@ const mentions = computed<H3Reference[]>((previous) => {
 });
 
 async function refreshCameraPresets() {
+  cameraController?.abort();
+  const controller = new AbortController();
+  cameraController = controller;
   cameraLoading.value = true;
   cameraError.value = "";
-  cameraPresets.value = undefined;
-  cameraController = new AbortController();
   try {
-    cameraPresets.value = await getCameraPresets(cameraController.signal);
+    const presets = await getCameraPresets(controller.signal);
+    if (cameraController === controller) cameraPresets.value = presets;
   } catch (cause) {
-    if (!cameraController.signal.aborted) cameraError.value = cause instanceof Error ? cause.message : "读取运镜库失败";
-  } finally { cameraLoading.value = false; }
+    if (!controller.signal.aborted) cameraError.value = cause instanceof Error ? cause.message : "读取运镜库失败";
+  } finally { if (cameraController === controller) cameraLoading.value = false; }
 }
 function openCameraLibrary() {
   remember();

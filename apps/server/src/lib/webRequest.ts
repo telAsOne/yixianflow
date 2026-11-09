@@ -26,7 +26,7 @@ const privateRoutes = new Set([
   "GET /api/workspaces/canvas/events", "POST /api/workspaces/canvas/save", "GET /api/workspaces/canvas/recovery/get",
   "POST /api/workspaces/canvas/recovery/save", "DELETE /api/workspaces/canvas/recovery/remove",
   "GET /api/workspaces/recycleBin/list", "POST /api/workspaces/recycleBin/restore", "DELETE /api/workspaces/recycleBin/purge", "PUT /api/workspaces/recycleBin/protect",
-  "GET /api/account/cameraPresets", "POST /api/account/refreshModels", "POST /api/workspaces/selectDirectory", "GET /api/workspaces/list",
+  "GET /api/account/cameraPresets", "GET /api/account/cameraPresets/media", "POST /api/account/refreshModels", "POST /api/workspaces/selectDirectory", "GET /api/workspaces/list",
   "POST /api/workspaces/files/importImage", "POST /api/workspaces/presence/update",
   "GET /api/settings/systemPrompt", "GET /api/settings/personalization/get", "PUT /api/settings/personalization/save",
   "GET /api/providers/media/list", "GET /api/ffmpeg/status", "POST /api/ffmpeg/execute", "GET /api/ffmpeg/progress",

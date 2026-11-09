@@ -16,9 +16,22 @@ const webUserChecks = new Map<number, { identity: string; expiresAt: number; inf
 
 async function requireWebUser(account: WebAccount, version: string) {
   const unavailable = () => Object.assign(new Error("暂时无法确认账户身份，请稍后重试"), { status: 503 });
-  const response = await fetch(`${account.baseUrl}/v1/toonflow/me`, { cache: "no-store", redirect: "error",
-    signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${account.key}`, "X-Toonflow-Version": version } })
-    .catch(() => { throw unavailable(); });
+  // ACT: 平台更新时只重试网络故障和 5xx 的只读身份查询，最多等待 45 秒；身份校验成功后才继续原请求。
+  const retryUntil = Date.now() + 45_000;
+  let response: Awaited<ReturnType<typeof fetch>>;
+  for (;;) {
+    const remaining = retryUntil - Date.now();
+    if (remaining <= 0) throw unavailable();
+    const received = await fetch(`${account.baseUrl}/v1/toonflow/me`, { cache: "no-store", redirect: "error",
+      signal: AbortSignal.timeout(Math.min(10000, remaining)), headers: { Authorization: `Bearer ${account.key}`, "X-Toonflow-Version": version } })
+      .catch(() => undefined);
+    if (received && received.status < 500) {
+      response = received;
+      break;
+    }
+    await received?.body?.cancel().catch(() => {});
+    await Bun.sleep(Math.min(1000, Math.max(0, retryUntil - Date.now())));
+  }
   if (response.status === 401 || response.status === 403)
     throw Object.assign(new Error("登录已失效，请重新登录"), { status: response.status });
   const body = await response.json().catch(() => undefined) as { success?: boolean; data?: { user?: unknown } } | undefined;

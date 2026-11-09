@@ -6,6 +6,7 @@ import { createSkillContext } from "@/agent/skills";
 
 const documentSchema = z.strictObject({ name: z.enum(["workflow", "canvas"]), path: z.string().min(1).max(4096) });
 const requirementsSchema = z.array(documentSchema).max(16);
+const documentResultSchema = documentSchema.extend({ scope: z.enum(["workspace", "global"]), content: z.string() });
 type RequiredDocument = z.infer<typeof documentSchema>;
 const canvasReads = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools", "selectNodes", "fitCanvas"]);
 const canvasChanges = new Set(["addCanvas", "switchCanvas", "renameCanvas", "addNode", "addMediaNodes", "deleteNodes", "moveNodes", "renameNodes", "connectNodes", "deleteEdges", "arrangeCanvas"]);
@@ -88,7 +89,7 @@ export function installSkillExecution(session: AgentSession, cwd: string, tools:
         if (sent.get(key(document)) !== current.revision) missing.push(key(document));
       }
       if (changed) session.sessionManager.appendCustomEntry("toonflowSkillRequirements", [...required.values()]);
-      if (missing.length) throw new Error(`必需技能尚未进入当前模型请求：${missing.join("、")}。运行时已安排装载，本次操作未执行；请先依据下一次请求中的技能正文重新核对方案，再执行操作`);
+      if (missing.length) throw new Error(`必需技能尚未进入当前模型请求：${missing.join("、")}。本次操作未执行；运行时将在紧接着的模型请求中补齐正文。正文就绪后应在本轮重新核对并继续已授权操作，无需用户再次发送继续`);
       if (input.toolCall.name === "generateVideo") {
         const args = input.args as { modelId?: string; prompt?: string; images?: unknown[]; referenceImageUrls?: unknown[] };
         if (args.modelId?.startsWith("yixian-h3-")) {
@@ -110,16 +111,38 @@ export function installSkillExecution(session: AgentSession, cwd: string, tools:
   session.agent.streamFunction = async (model, context, options) => {
     if (session.isCompacting) return streamFunction(model, context, options);
     restore();
-    const documents: (SkillDocument & { revision: string })[] = [];
+    const provided = new Map<string, z.infer<typeof documentResultSchema>>();
+    let changed = false;
+    for (const message of context.messages) {
+      if (message.role !== "toolResult" || message.toolName !== "skillOperator" || message.isError) continue;
+      for (const part of message.content) {
+        if (part.type !== "text") continue;
+        try {
+          const document = documentResultSchema.safeParse(JSON.parse(part.text));
+          if (!document.success) continue;
+          provided.set(key(document.data), document.data);
+          if (!required.has(key(document.data))) {
+            required.set(key(document.data), { name: document.data.name, path: document.data.path });
+            changed = true;
+          }
+        } catch { /* 非技能正文的工具结果不作为读取凭证。 */ }
+      }
+    }
+    if (changed) session.sessionManager.appendCustomEntry("toonflowSkillRequirements", [...required.values()]);
+    const documents: (SkillDocument & { revision: string; inContext: boolean })[] = [];
     const unavailable: string[] = [];
     sent.clear();
     for (const document of required.values()) {
-      try { documents.push(await read(document, options?.signal)); }
+      try {
+        const current = await read(document, options?.signal);
+        const previous = provided.get(key(document));
+        documents.push({ ...current, inContext: previous?.scope === current.scope && previous.content === current.content });
+      }
       catch (error) { unavailable.push(`${key(document)}：${error instanceof Error ? error.message : "读取失败"}`); }
     }
     if (!documents.length && !unavailable.length) return streamFunction(model, context, options);
-    const prompt = ["## 本次制作必需技能\n以下正文由运行时从当前启用的技能原文件装载。按用户本次授权与当前阶段执行；不能以已读代替实际完成。",
-      ...documents.map(document => `### ${document.name}/${document.path}（${document.scope}，SHA-256 ${document.revision}）\n${document.content}`),
+    const prompt = ["## 本次制作必需技能\n本次请求中已完整提供下列可用技能：正文来自先前 skillOperator 的完整读取结果或下方运行时装载，均已核对当前启用文件的内容与范围。按用户本次授权与当前阶段执行；不能以已读代替实际完成。此前仅因缺少技能正文被拦截的操作没有执行，相关正文就绪后应在本轮重新核对并继续，不要等待用户再次发送继续。不可用项仍禁止执行。",
+      ...documents.map(document => `### ${document.name}/${document.path}（${document.scope}，SHA-256 ${document.revision}）\n${document.inContext ? "完整正文已在当前请求的 skillOperator 读取结果中提供。" : document.content}`),
       ...unavailable.map(error => `必需技能暂不可用：${error}。相关制作操作仍被拦截，可继续查询和说明缺项。`),
     ].join("\n\n");
     const systemPrompt = [context.systemPrompt, prompt].filter(Boolean).join("\n\n");
@@ -133,7 +156,7 @@ export function installSkillExecution(session: AgentSession, cwd: string, tools:
       lastRevision = revision;
       session.sessionManager.appendCustomEntry("toonflowSkillsLoaded", revisions);
     }
-    // ACT: 必需正文随每次实际模型请求恢复，压缩摘要不作为读取凭证；普通聊天及只读查询不主动装载整套技能。
+    // ACT: 仅认可当前请求中与启用文件一致的完整工具正文；压缩或文件变化后补载，摘要和旧读取记录不作凭证。
     return streamFunction(model, { ...context, systemPrompt }, options);
   };
 }
