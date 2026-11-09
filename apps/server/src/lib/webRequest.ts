@@ -3,6 +3,7 @@ import { isWebMode, webContext } from "@/lib/webContext";
 import { readWebSession } from "@/utils/web/auth";
 import { getWebOrigin } from "@/utils/web/store";
 import { refreshConfig } from "@/utils/account";
+import { runWebMcpRequest } from "@/utils/mcp/webAccess";
 
 const publicRoutes = new Set(["GET /api/runtime", "GET /api/account/get", "GET /api/account/callback", "POST /api/account/start", "POST /api/account/logout", "GET /api/settings/get"]);
 const helperDeviceRoutes = new Set([
@@ -17,6 +18,8 @@ const privateRoutes = new Set([
   "GET /api/localHelper/status", "GET /api/localHelper/download", "POST /api/localHelper/bind", "PUT /api/localHelper/select", "DELETE /api/localHelper/revoke",
   "GET /api/projects/list", "POST /api/projects/create", "PUT /api/projects/rename", "PUT /api/settings/save",
   "GET /api/account/limits", "GET /api/workspaces/check",
+  "GET /api/mcp/status", "GET /api/mcp/access/list", "POST /api/mcp/access/create", "DELETE /api/mcp/access/revoke",
+  "GET /api/mcp/control/events", "POST /api/mcp/control/state", "POST /api/mcp/control/result",
   "GET /api/ai/models", "GET /api/ai/media/models",
   "GET /api/nodes/get", "GET /api/nodes/files", "GET /api/ext/list", "GET /api/ext/read",
   "GET /api/tools/get", "GET /api/tools/client", "GET /api/tools/renderers",
@@ -42,6 +45,14 @@ export default async function webRequest(req: Request, res: Response, next: Next
   const origin = getWebOrigin();
   if (req.get("host")?.toLowerCase() !== new URL(origin).host.toLowerCase())
     throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
+  if (/^\/mcp\/?$/.test(req.path)) {
+    try { return await runWebMcpRequest(req, next); }
+    catch (error) {
+      if ((error as { status?: number }).status === 401) res.set("WWW-Authenticate", 'Bearer realm="UnionFlow MCP"');
+      if ((error as { retryAfter?: number }).retryAfter) res.set("Retry-After", String((error as { retryAfter: number }).retryAfter));
+      throw error;
+    }
+  }
   // 助手主动连接，每个设备接口独立校验 Bearer；不使用浏览器 Cookie 或跨域权限。
   if (helperDeviceRoutes.has(`${req.method} ${req.path}`)) return next();
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)
@@ -57,7 +68,7 @@ export default async function webRequest(req: Request, res: Response, next: Next
   if (expectedUser && session && expectedUser !== String(session.account.user.id))
     throw Object.assign(new Error("账户已切换或登录已过期，请刷新页面后继续"), { status: 409 });
   if (!publicRoutes.has(route) && !session) throw Object.assign(new Error("请先登录 UnionAIGC 账户"), { status: 401 });
-  const personalData = /^\/api\/(projects|settings|workspaces|ai|agent|assets|singleAgent|whisper|localHelper)(\/|$)/.test(req.path)
+  const personalData = /^\/api\/(projects|settings|workspaces|ai|agent|assets|singleAgent|whisper|localHelper|mcp)(\/|$)/.test(req.path)
     && !["/api/workspaces/files/media", "/api/localHelper/download"].includes(req.path);
   if (session && personalData && !expectedUser) throw Object.assign(new Error("请刷新页面后继续访问个人项目"), { status: 409 });
   if (!publicRoutes.has(route) && !privateRoutes.has(route) && !creativeRoutes.test(req.path) && !pluginRoutes.test(req.path))

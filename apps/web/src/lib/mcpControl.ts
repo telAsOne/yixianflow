@@ -6,6 +6,7 @@ import { getCanvasCallTimeout } from "@toonflow/tool-canvas/runtime";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeModels";
 import { saveSettings, settings } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { webMode, webUserId } from "@/lib/webRuntime";
 
 type ControlCall = { type: "call"; callId: string; name: string; args: Record<string, unknown>; directory?: string };
 type WorkspaceControl = {
@@ -59,6 +60,7 @@ export function useMcpControl() {
 
   watch(() => {
     const config = settings.value.mcp as { enabled?: boolean; token?: string } | undefined;
+    if (webMode.value) return config?.enabled === true && webUserId.value ? `web:${webUserId.value}` : "";
     return config?.enabled === true && config.token ? config.token : "";
   }, (token, _previous, onCleanup) => {
     if (!token) return;
@@ -74,7 +76,9 @@ export function useMcpControl() {
       const connectionId = crypto.randomUUID();
       const connection = new AbortController();
       const signal = AbortSignal.any([lifetime.signal, connection.signal]);
-      const headers = { Authorization: `Bearer ${token}`, "x-toonflow-workspace": "1" };
+      const headers: Record<string, string> = { "x-toonflow-workspace": "1" };
+      if (webMode.value) headers["x-yixianflow-user"] = String(webUserId.value);
+      else headers.Authorization = `Bearer ${token}`;
       let revision = 0;
       async function post(path: "state" | "result", body: object, callSignal?: AbortSignal) {
         const response = await fetch(`/api/mcp/control/${path}`, {

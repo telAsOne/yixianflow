@@ -2,9 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { getCanvasCallTimeout } from "@toonflow/tool-canvas/runtime";
-import conf from "@/utils/conf";
+import conf, { getSettings } from "@/utils/conf";
 import { isMobileLinkRequest } from "@/utils/mobileLink";
 import { isLocalHost } from "@/lib/desktop";
+import { isWebMode, requireWebAccount } from "@/lib/webContext";
+import { getWebProject } from "@/utils/web/projects";
 
 export const controlStateSchema = z.object({
   directory: z.string().max(4096).nullable(),
@@ -19,7 +21,7 @@ export const controlStateSchema = z.object({
 
 type ControlState = z.infer<typeof controlStateSchema>;
 type ControlResult = { result?: unknown; error?: string };
-type Connection = { id: string; state: ControlState; revision: number; response: Response; pending?: { id: string; finish(result: ControlResult): void } };
+type Connection = { id: string; userId?: number; state: ControlState; revision: number; response: Response; pending?: { id: string; finish(result: ControlResult): void } };
 // ACT: 控制连接只属于当前单进程，重连重新注册，不持久化运行中的命令。
 const connections = new Map<string, Connection>();
 let settingsCache: Readonly<{ enabled: boolean; token: string; port: number }> | undefined;
@@ -69,27 +71,36 @@ export function assertAppRequest(req: Request) {
 
 export function assertControlRequest(req: Request) {
   assertAppRequest(req);
+  if (isWebMode()) {
+    requireWebAccount();
+    if ((getSettings().mcp as { enabled?: unknown } | undefined)?.enabled !== true)
+      throw Object.assign(new Error("MCP 未开启"), { status: 403 });
+    return;
+  }
   if (!authorizeMcp(req)) throw Object.assign(new Error("MCP 未开启或访问凭证无效"), { status: 403 });
 }
 
 export function listConnections() {
-  return [...connections.values()].map(({ id, state }) => ({ id, state }));
+  const userId = isWebMode() ? requireWebAccount().user.id : undefined;
+  return [...connections.values()].filter(item => item.userId === userId).map(({ id, state }) => ({ id, state }));
 }
 
 export function getConnection(id?: string, directory?: string) {
+  const userId = isWebMode() ? requireWebAccount().user.id : undefined;
   if (id) {
     const connection = connections.get(id);
-    if (!connection) throw new Error("Toonflow 页面已断开，请重新调用 getAppState");
+    if (!connection || connection.userId !== userId) throw new Error("Toonflow 页面已断开，请重新调用 getAppState");
     return connection;
   }
-  const matches = [...connections.values()].filter(item => !directory || item.state.directory === directory);
+  const matches = [...connections.values()].filter(item => item.userId === userId && (!directory || item.state.directory === directory));
   if (matches.length > 1) throw new Error("存在多个 Toonflow 页面，请用 target.connectionId 指定操作目标");
   return matches[0];
 }
 
 export function connectControl(id: string, response: Response) {
   if (connections.has(id)) throw Object.assign(new Error("控制连接已存在"), { status: 409 });
-  const connection: Connection = { id, response, revision: 0, state: { directory: null, canvasId: null, panel: "home", projectList: [], tools: [] } };
+  if (isWebMode() && listConnections().length >= 20) throw Object.assign(new Error("最多同时连接 20 个画布页面，请关闭不再使用的页面"), { status: 429 });
+  const connection: Connection = { id, userId: isWebMode() ? requireWebAccount().user.id : undefined, response, revision: 0, state: { directory: null, canvasId: null, panel: "home", projectList: [], tools: [] } };
   response.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" });
   response.flushHeaders();
   connections.set(id, connection);
@@ -107,11 +118,22 @@ export function connectControl(id: string, response: Response) {
   socket?.once("close", close);
 }
 
-export function updateControlState(id: string, revision: number, state: ControlState) {
+export async function updateControlState(id: string, revision: number, state: ControlState) {
   const connection = getConnection(id)!;
+  if (isWebMode() && state.directory) await getWebProject(state.directory, "read");
   if (revision <= connection.revision) return;
   connection.revision = revision;
   connection.state = state;
+}
+
+export function closeUserConnections() {
+  const userId = requireWebAccount().user.id;
+  for (const connection of connections.values()) {
+    if (connection.userId !== userId) continue;
+    connection.pending?.finish({ error: "MCP 已关闭，控制命令已取消" });
+    connection.response.end();
+    connections.delete(connection.id);
+  }
 }
 
 export function finishControlCall(connectionId: string, callId: string, result: ControlResult) {

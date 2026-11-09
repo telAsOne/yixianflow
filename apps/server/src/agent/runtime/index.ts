@@ -4,6 +4,7 @@ import { readFile, stat, unlink } from "@toonflow/file";
 import {
   createAgentSession,
   SessionManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext, ClientFileContext, QuestionContext } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent, AgentMention, AgentToolCall } from "@/agent/runtime/types";
@@ -67,7 +68,8 @@ export async function run(
     runId = crypto.randomUUID(),
     messageId,
   }: AgentOptions,
-  send: (event: AgentEvent) => void
+  send: (event: AgentEvent) => void,
+  customTools?: ToolDefinition[]
 ) {
   mentions = agentMentionsSchema.parse(mentions);
   validateMentionTokens(prompt, mentions);
@@ -157,17 +159,17 @@ export async function run(
     };
     unregister = registerAgentSession(history.getSessionFile()!, active);
     send({ type: "session", file, runId });
-    const tools = await createAgentTools(cwd, canvas, question, clientFiles);
-    if (isMemoryEnabled()) {
+    const tools = customTools ?? await createAgentTools(cwd, canvas, question, clientFiles);
+    if (!customTools && isMemoryEnabled()) {
       const memoryTool = createMemoryTool();
       if (tools.some(tool => tool.name === memoryTool.name)) throw new Error("工具名称 memory 已被内置全局记忆工具占用");
       tools.push(memoryTool);
     }
-    if (parentFile && child) {
+    if (!customTools && parentFile && child) {
       if (tools.some(tool => tool.name === "report")) throw new Error("工具名称 report 已被内置上报工具占用");
       tools.push(createReportTool(cwd, parentFile, file, child.name, send));
     }
-    tools.push(await createSubAgentTool({
+    if (!customTools) tools.push(await createSubAgentTool({
       cwd, tools, canvas, clientFiles, modelRuntime: runtime, model: runtime.getModel(providerId, modelId), thinkingLevel,
       runTask: (name, task, taskSignal, onProgress) => runDelegatedAgent({
         cwd, parentFile: file, name, task, providerId, modelId, thinkingLevel: delegatedThinkingLevel, canvas, clientFiles, clientDeviceName, signal: taskSignal, send, onProgress,

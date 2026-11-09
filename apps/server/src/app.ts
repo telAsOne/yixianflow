@@ -97,6 +97,7 @@ export async function createApp({
   const { default: webRequest } = await import("@/lib/webRequest");
   app.use(webRequest);
   app.use("/a2a", express.json({ limit: "2mb" }));
+  app.use("/mcp", express.json({ limit: "28mb" }));
   app.use(["/api/localHelper/device/chat", "/api/localHelper/device/transfer"], express.json({ limit: "1mb" }));
   app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "512mb" }));
   // ACT: 源码、Base64 安装包、画布快照和含媒体的对话保留原上限，其余 JSON 限制为 10 MB。
@@ -114,13 +115,19 @@ export async function createApp({
   router.default(app);
   const { startRecycleMaintenance } = await import("@/utils/workspace/recycleBin");
   startRecycleMaintenance();
-  const [{ createMcpRouter }, { getMcpTools }, { authorizeMcp }, { skillResources }] = await Promise.all([
+  const [{ createMcpRouter }, { getMcpTools }, { authorizeMcp }, { skillResources }, { getWebMcpTools }, { requireWebMcpAccess }] = await Promise.all([
     import("@toonflow/mcp"),
     import("@/utils/mcp/tools"),
     import("@/utils/mcp/control"),
     import("@/utils/mcp/resources"),
+    import("@/utils/mcp/webTools"),
+    import("@/utils/mcp/webAccess"),
   ]);
-  app.use("/mcp", createMcpRouter({ getTools: getMcpTools, authorize: authorizeMcp, resources: skillResources,
+  app.use("/mcp", createMcpRouter({ getTools: isWebMode() ? getWebMcpTools : getMcpTools,
+    authorize: isWebMode() ? () => Boolean(requireWebMcpAccess()) : authorizeMcp,
+    sessionOwner: isWebMode() ? () => requireWebMcpAccess().id : undefined,
+    maxSessionsPerOwner: isWebMode() ? 4 : undefined,
+    resources: isWebMode() ? undefined : skillResources,
     runInRequest: (request, operation) => runWithLocale(resolveRequestLocale(request.get("accept-language")), operation),
     translate: translateMessage,
     translateError,

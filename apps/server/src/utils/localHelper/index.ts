@@ -178,7 +178,7 @@ export async function completeDeviceCall(req: Request, input: LocalHelperResult)
   const device = await authenticateDevice(req);
   const sql = getWebDatabase();
   const [call] = await sql`UPDATE yixianflow.localCalls AS call SET status = ${input.error ? "failed" : "completed"},
-    result = ${input.result == null ? null : JSON.stringify(input.result)}::jsonb, error = ${input.error ?? null}, "finishedAt" = CURRENT_TIMESTAMP
+    result = ${input.result ?? null}::jsonb, error = ${input.error ?? null}, "finishedAt" = CURRENT_TIMESTAMP
     WHERE id = ${input.id} AND "deviceId" = ${device.id} AND "ownerId" = ${device.ownerId} AND nonce = ${input.nonce}
       AND status = 'running' AND "expiresAt" > CURRENT_TIMESTAMP
       AND EXISTS (SELECT 1 FROM yixianflow.sessions WHERE hash = call."sessionHash" AND "userId" = call."ownerId"

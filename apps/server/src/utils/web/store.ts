@@ -73,6 +73,20 @@ export async function initializeWebStore() {
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "lastOpenedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`;
   await sql`CREATE INDEX IF NOT EXISTS "projectsOwner" ON yixianflow.projects ("ownerId", "lastOpenedAt" DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.mcpAccess (
+    id UUID PRIMARY KEY, "userId" INTEGER NOT NULL REFERENCES yixianflow.users(id),
+    "projectId" UUID NOT NULL REFERENCES yixianflow.projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, permission TEXT NOT NULL CHECK (permission IN ('read', 'edit')), "tokenHash" TEXT NOT NULL UNIQUE,
+    revoked BOOLEAN NOT NULL DEFAULT false, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMPTZ NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days')
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS "mcpAccessUser" ON yixianflow.mcpAccess ("userId", "createdAt" DESC)`;
+  await sql`ALTER TABLE yixianflow.mcpAccess ADD COLUMN IF NOT EXISTS scopes JSONB NOT NULL DEFAULT '[]'`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.mcpOperations (
+    "accessId" UUID NOT NULL REFERENCES yixianflow.mcpAccess(id) ON DELETE CASCADE, "requestId" UUID NOT NULL,
+    hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running', result JSONB, error TEXT,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY ("accessId", "requestId")
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.localDevices (
     id UUID PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "pairHash" TEXT UNIQUE, "pairExpiresAt" TIMESTAMPTZ,
     name TEXT NOT NULL, "ownerId" INTEGER REFERENCES yixianflow.users(id), "ownerName" TEXT,
@@ -80,6 +94,7 @@ export async function initializeWebStore() {
     "autoExecute" BOOLEAN NOT NULL DEFAULT false, version TEXT NOT NULL DEFAULT '', revoked BOOLEAN NOT NULL DEFAULT false
   )`;
   await sql`ALTER TABLE yixianflow.sessions ADD COLUMN IF NOT EXISTS "localDeviceId" UUID REFERENCES yixianflow.localDevices(id) ON DELETE SET NULL`;
+  await sql`ALTER TABLE yixianflow.mcpAccess ADD COLUMN IF NOT EXISTS "deviceId" UUID REFERENCES yixianflow.localDevices(id) ON DELETE SET NULL`;
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.localCalls (
     id UUID PRIMARY KEY, "deviceId" UUID NOT NULL REFERENCES yixianflow.localDevices(id),
     "ownerId" INTEGER NOT NULL REFERENCES yixianflow.users(id), "sessionHash" TEXT NOT NULL,

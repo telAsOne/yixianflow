@@ -70,7 +70,7 @@ const settingsPanels = [
     groupLabel: "市场",
     component: defineAsyncComponent(() => import("./panels/pluginMarket/index.vue")),
   },
-  { id: "mcp", label: "MCP", icon: IconPlugConnected, groupLabel: "通讯", component: defineAsyncComponent(() => import("./panels/mcp/index.vue")) },
+  { id: "mcp", label: "MCP", icon: IconPlugConnected, groupLabel: "通讯", component: defineAsyncComponent(() => webMode.value ? import("./panels/mcp/webAccess.vue") : import("./panels/mcp/index.vue")) },
   ...(webMode.value ? [{ id: "localHelper", label: "本地助手", icon: IconDevices, component: defineAsyncComponent(() => import("./panels/localHelper.vue")) }] : []),
   ...(!isMobile
     ? [{ id: "deviceLink", label: "设备互联", icon: IconDevices, component: defineAsyncComponent(() => import("./panels/deviceLink.vue")) }]
@@ -83,7 +83,7 @@ const settingsPanels = [
     component: defineAsyncComponent(() => import("./panels/personalization.vue")),
   },
   { id: "developer", label: "开发者选项", icon: IconCode, component: defineAsyncComponent(() => import("./panels/developer/index.vue")) },
-].filter(panel => !webMode.value || !["mcp", "deviceLink"].includes(panel.id));
+].filter(panel => !webMode.value || panel.id !== "deviceLink");
 const activePanel = shallowRef(settingsPanels[0]!);
 const visible = defineModel<boolean>({ default: false });
 watch([visible, () => props.panel], ([open, panel]) => {
