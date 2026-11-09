@@ -1,9 +1,13 @@
 import { Router } from "express";
 import u from "@/utils";
 import { success } from "@/lib/responseFormat";
+import { isWebMode } from "@/lib/webContext";
 
 export default Router().get("/", (req, res) => {
   u.mcpControl.assertAppRequest(req);
+  if (isWebMode()) return void res.set("Cache-Control", "no-store").json(success({
+    enabled: u.mcpAccess.isWebMcpEnabled(), endpoint: u.mcpAccess.getWebMcpEndpoint(), connections: u.mcpControl.listConnections(),
+  }));
   const runtime = u.mcpRuntime.getMcpRuntime();
   const origin = u.mcpControl.getAppOrigin(req);
   res.set("Cache-Control", "no-store").json(success({

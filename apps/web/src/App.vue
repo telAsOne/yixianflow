@@ -53,7 +53,7 @@ import updateBox from "@/components/updateBox.vue";
 import "element-plus/theme-chalk/dark/css-vars.css";
 import { webMode } from "@/lib/webRuntime";
 
-if (!webMode.value) useMcpControl();
+useMcpControl();
 
 const updateBoxVisible = ref(false);
 const updateBoxBuild = shallowRef<{ version: string; hash: string }>();

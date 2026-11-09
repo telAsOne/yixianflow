@@ -43,12 +43,18 @@ export async function createWebProject(name: string) {
   });
 }
 
-export async function resolveWebProject(id: string) {
+export async function getWebProject(id: string, permission: "read" | "edit" | "manage" = "read") {
+  // ACT: 当前项目仅向所有者和平台管理员开放，两者都具备读写管理权限。
   if (!z.uuid().safeParse(id).success) throw Object.assign(new Error("请选择有效的项目"), { status: 400 });
   const sql = getWebDatabase();
-  const [project] = await sql`SELECT id FROM yixianflow.projects WHERE id = ${id}
+  const [project] = await sql`SELECT id, "ownerId", name FROM yixianflow.projects WHERE id = ${id}
     AND ("ownerId" = ${requireWebAccount().user.id} OR ${canViewAllWebProjects()})`;
   if (!project) throw Object.assign(new Error("项目不存在或无权访问"), { status: 404 });
+  return project;
+}
+
+export async function resolveWebProject(id: string, permission: "read" | "edit" | "manage" = "read") {
+  const project = await getWebProject(id, permission);
   const root = await realpath(resolve(dirname(conf.path), "workspaces"));
   const directory = await realpath(resolve(root, project.id)).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") throw Object.assign(new Error("项目目录不存在"), { status: 404 });

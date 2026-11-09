@@ -5,7 +5,7 @@ import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 import { maxSystemPromptLength } from "@/agent/runtime/prompt";
 import { t } from "@/lib/i18n";
-import { isWebMode } from "@/lib/webContext";
+import { isWebMode, requireWebAccount } from "@/lib/webContext";
 
 const router = Router();
 
@@ -18,6 +18,11 @@ export default router.put("/", validateFields({ settings: z.record(z.string(), z
   u.removeLegacySettings(settings);
   if (isWebMode()) {
     await u.webStore.saveWebSettings(settings);
+    if (!u.mcpAccess.isWebMcpEnabled()) {
+      u.mcpAccess.cancelWebMcpCalls(requireWebAccount().user.id);
+      await u.mcpAccess.clearWebMcpDeviceSessions();
+      u.mcpControl.closeUserConnections();
+    }
     return void res.json(success({ customProviders: u.getSettings().customProviders ?? [] }, "设置已保存"));
   }
   const previousSettings = u.conf.get("settings", {});

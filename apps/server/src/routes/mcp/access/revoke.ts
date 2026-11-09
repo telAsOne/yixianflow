@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { z } from "zod";
+import u from "@/utils";
+import { validateFields } from "@/lib/middleware";
+import { success } from "@/lib/responseFormat";
+
+export default Router().delete("/", validateFields({ id: z.uuid() }), async (req, res) => {
+  u.mcpControl.assertAppRequest(req);
+  await u.mcpAccess.revokeWebMcpAccess(req.body.id);
+  res.json(success());
+});

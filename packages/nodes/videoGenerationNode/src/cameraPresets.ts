@@ -3,6 +3,11 @@ import { z } from "@toonflow/nodes-scaffold/nodeTools";
 const cameraPresetsSchema = z.array(z.object({
   id: z.string().min(1).max(128).regex(/^[^{}\r\n]+$/),
   name: z.string().min(1).max(100),
+  preview: z.object({
+    cover: z.string().max(1024).regex(/^\/(?:[a-zA-Z0-9_-]+\/)*api\/account\/cameraPresets\/media\?/).optional(),
+    motion: z.string().max(1024).regex(/^\/(?:[a-zA-Z0-9_-]+\/)*api\/account\/cameraPresets\/media\?/).optional(),
+    video: z.string().max(1024).regex(/^\/(?:[a-zA-Z0-9_-]+\/)*api\/account\/cameraPresets\/media\?/).optional(),
+  }).optional(),
 })).max(128);
 
 export type CameraPreset = z.infer<typeof cameraPresetsSchema>[number] & { tag: string };

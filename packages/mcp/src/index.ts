@@ -20,6 +20,8 @@ export type McpTool = {
 export type McpOptions = {
   getTools(): Promise<McpTool[]>;
   authorize(request: Request): boolean | Promise<boolean>;
+  sessionOwner?(): string;
+  maxSessionsPerOwner?: number;
   runInRequest?<T>(request: Request, operation: () => T): T;
   translate?(message: string | MessageDescriptor): string;
   translateError?(error: unknown): string;
@@ -87,9 +89,11 @@ export function createMcpRouter(options: McpOptions) {
     return server;
   };
   // ACT: 使用支持取消通知的 Streamable HTTP 会话；单进程宿主不持久化 MCP 会话。
-  const sessions = new Map<string, NodeStreamableHTTPServerTransport>();
+  const sessions = new Map<string, { transport: NodeStreamableHTTPServerTransport; owner?: string; lastSeenAt: number; active: number }>();
+  const initializingSessions = new Map<string | undefined, number>();
   const router = Router();
   router.use((request, response) => (options.runInRequest ?? ((_request, operation) => operation()))(request, async () => {
+    let releaseInitialization: (() => void) | undefined;
     try {
       if (!await options.authorize(request)) {
         response.setHeader("WWW-Authenticate", 'Bearer realm="Toonflow"');
@@ -97,11 +101,30 @@ export function createMcpRouter(options: McpOptions) {
         return;
       }
       const sessionId = request.get("mcp-session-id");
-      let transport = sessionId ? sessions.get(sessionId) : undefined;
+      const owner = options.sessionOwner?.();
+      if (owner !== undefined) {
+        const expired = [...sessions.entries()].filter(([, session]) => !session.active && Date.now() - session.lastSeenAt > 30 * 60_000);
+        for (const [id] of expired) sessions.delete(id);
+        await Promise.all(expired.map(([, session]) => session.transport.close()));
+      }
+      const session = sessionId ? sessions.get(sessionId) : undefined;
+      let transport = session?.owner === owner ? session?.transport : undefined;
       if (!sessionId && isInitializeRequest(request.body)) {
+        if (options.maxSessionsPerOwner && [...sessions.values()].filter(session => session.owner === owner).length + (initializingSessions.get(owner) ?? 0) >= options.maxSessionsPerOwner) {
+          response.status(429).json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: translateMessage("此 MCP Key 的连接数已达上限，请先断开不再使用的客户端") } });
+          return;
+        }
+        if (options.maxSessionsPerOwner) {
+          initializingSessions.set(owner, (initializingSessions.get(owner) ?? 0) + 1);
+          releaseInitialization = () => {
+            const count = (initializingSessions.get(owner) ?? 1) - 1;
+            if (count) initializingSessions.set(owner, count);
+            else initializingSessions.delete(owner);
+          };
+        }
         transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID,
-          onsessioninitialized: id => { sessions.set(id, transport!); },
+          onsessioninitialized: id => { sessions.set(id, { transport: transport!, owner, lastSeenAt: Date.now(), active: 0 }); },
         });
         transport.onclose = () => {
           if (transport?.sessionId) sessions.delete(transport.sessionId);
@@ -112,6 +135,19 @@ export function createMcpRouter(options: McpOptions) {
         response.status(sessionId ? 404 : 400).json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: translateMessage("MCP 会话不存在，请重新连接") } });
         return;
       }
+      const currentSession = transport.sessionId ? sessions.get(transport.sessionId) : undefined;
+      if (currentSession) {
+        currentSession.active++;
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          currentSession.active--;
+          currentSession.lastSeenAt = Date.now();
+        };
+        response.once("finish", release);
+        response.once("close", release);
+      }
       await transport.handleRequest(request, response, request.body);
     } catch (error) {
       if (response.headersSent) {
@@ -120,9 +156,9 @@ export function createMcpRouter(options: McpOptions) {
       }
       console.error(error);
       response.status(500).json({ jsonrpc: "2.0", id: null, error: { code: -32603, message: translateError(error) } });
-    }
+    } finally { releaseInitialization?.(); }
   }));
   return Object.assign(router, { close: async () => {
-    await Promise.all([...sessions.values()].map(transport => transport.close()));
+    await Promise.all([...sessions.values()].map(({ transport }) => transport.close()));
   } });
 }
