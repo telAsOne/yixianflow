@@ -3,6 +3,9 @@ import { ElMessage } from "element-plus";
 import { isMobile } from "./mobile";
 
 declare global {
+  interface Window {
+    showSaveFilePicker?: (options: { suggestedName: string }) => Promise<FileSystemFileHandle>;
+  }
   interface WindowEventMap {
     "toonflow:mobile-save": CustomEvent<{ requestId: string; saved: boolean; error?: string }>;
   }
@@ -52,6 +55,25 @@ export default async function saveFile(content: Blob | (() => Promise<Blob>), fi
     if (data.code !== 200 || typeof data.data?.saved !== "boolean") throw new Error(data.message || "保存文件失败");
     return data.data.saved;
   }
+  if (window.showSaveFilePicker) {
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: fileName });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      throw error;
+    }
+    const blob = typeof content === "function" ? await content() : content;
+    const writable = await handle.createWritable();
+    try {
+      await writable.write(blob);
+      await writable.close();
+    } catch (error) {
+      await writable.abort().catch(() => {});
+      throw error;
+    }
+    return true;
+  }
   const blob = typeof content === "function" ? await content() : content;
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -75,7 +97,7 @@ export function registerDownloads() {
     if (pending.has(link) || link.getAttribute("aria-disabled") === "true") return;
     pending.add(link);
     link.dispatchEvent(new CustomEvent("downloadstate", { detail: true }));
-    // ACT: 捕获同源下载以兼容已安装节点；Android 先暂存内容，再交给系统文件选择器。
+    // ACT: 捕获同源下载以兼容已安装节点；支持的网页先选择保存位置，Android 仍先暂存内容。
     void saveFile(() => axios.get<Blob>(url.href, { responseType: "blob" }).then(({ data }) => data), link.download || "download").catch(error => {
       ElMessage.error(axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || error.message : error instanceof Error ? error.message : "保存文件失败");
     }).finally(() => {
@@ -83,6 +105,6 @@ export function registerDownloads() {
       link.dispatchEvent(new CustomEvent("downloadstate", { detail: false }));
     });
   }
-  if (isDesktop || isMobile) document.addEventListener("click", handleDownload, true);
+  if (isDesktop || isMobile || window.showSaveFilePicker) document.addEventListener("click", handleDownload, true);
   return () => document.removeEventListener("click", handleDownload, true);
 }
