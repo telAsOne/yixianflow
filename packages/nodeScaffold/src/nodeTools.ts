@@ -10,7 +10,7 @@ export interface NodeToolDefinition<Schema extends z.ZodType = z.ZodType> {
   name: string;
   description: string;
   parameters: Schema;
-  execute(args: z.output<Schema>, context: { signal?: AbortSignal }): unknown | Promise<unknown>;
+  execute(args: z.output<Schema>, context: { signal?: AbortSignal; source?: "ai" | "user" }): unknown | Promise<unknown>;
 }
 
 type RegisteredNodeTool = NodeToolInfo & Pick<NodeToolDefinition, "execute">;
@@ -106,7 +106,8 @@ export const nodeTools = {
 };
 
 // 在画布 setup 中创建，按需读取当前节点函数，不复制全量注册表。
-export function useNodeToolsContext() {
+// 调用来源由本地入口绑定，不读取工具参数或画布数据中的声明。
+export function useNodeToolsContext(source: "ai" | "user" = "ai") {
   const flow = useVueFlow();
   const { registry, index } = getRegistry(flow);
   function* list(nodeIds: string[], names?: string[]): IterableIterator<NodeToolInfo> {
@@ -139,7 +140,7 @@ export function useNodeToolsContext() {
           Promise.resolve().then(() => {
             callSignal.throwIfAborted();
             if (registry.get(key) !== entry || !flow.findNode(nodeId)) throw new Error("节点函数已卸载或不属于本轮画布");
-            return entry.execute(args, { signal: callSignal });
+            return entry.execute(args, { signal: callSignal, source });
           }),
           new Promise<never>((_resolve, reject) => {
             cancel = () => reject(callSignal.reason);
