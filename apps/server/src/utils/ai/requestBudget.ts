@@ -2,12 +2,10 @@ import { platformFetch } from "@/utils/account";
 import type { Api, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
+import { compressRequestImages, type RequestPart as Part, type RequestMessage, type RequestPayload as Payload } from "@/utils/ai/imageCompression";
 
 type RequestProvider = { apiUrl: string; requestBodyLimitMiB?: number };
 type Stream = (model: Model<Api>, context: Context, options?: SimpleStreamOptions) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
-type Part = { type: string; content?: string | Part[]; [key: string]: unknown };
-type RequestMessage = { role?: string; content?: string | Part[]; output?: string | Part[]; [key: string]: unknown };
-type Payload = { messages?: RequestMessage[]; input?: RequestMessage[]; [key: string]: unknown };
 
 function getRequestBodyLimit(provider: RequestProvider) {
   // ACT: 未知渠道的 24 MiB 是本地保护值；供应商配置可覆盖，不按模型名猜测网关限制。
@@ -54,6 +52,7 @@ function trimHistoryMedia(payload: Payload, protocol: string, boundary: number, 
 }
 
 export function withRequestBudget(stream: Stream, provider: RequestProvider, state: {
+  directory?: string;
   canCompact(): boolean;
   isCompacting(): boolean;
   prepareCompaction?(context: Context): void;
@@ -73,6 +72,7 @@ export function withRequestBudget(stream: Stream, provider: RequestProvider, sta
         // 附件、提及和工具定义全部装配后再计量，避免只检查界面上的输入文字。
         let payload = (await options.onPayload?.(original, requestModel) ?? original) as Payload;
         const field = messageField(model.api);
+        payload = await compressRequestImages(payload, field, state.directory, options.signal);
         const messages = payload[field]!;
         const boundary = lastUser(messages, context);
         requestBytes = size(payload);
@@ -139,6 +139,7 @@ export function installRequestBudget(session: AgentSession, provider: RequestPro
     if (event.type === "compaction_end") session.settingsManager.applyOverrides({ compaction: { keepRecentTokens } });
   });
   session.agent.streamFunction = withRequestBudget(session.agent.streamFunction, provider, {
+    directory: session.sessionManager.getCwd(),
     canCompact: () => session.autoCompactionEnabled,
     isCompacting: () => session.isCompacting,
     prepareCompaction: context => {

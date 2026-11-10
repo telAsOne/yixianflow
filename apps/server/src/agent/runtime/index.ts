@@ -235,7 +235,7 @@ export async function run(
         const references: Parameters<typeof readAiReferences>[1] = [
           ...parsed.data.attachments.filter(item => item.mimeType.startsWith("video/")).map(item => ({ dataType: "VIDEO" as const, value: { url: item.path, mimeType: item.mimeType } })),
           ...(parsed.data.mentions ?? []).filter(item => ["IMAGE", "MASK"].includes(item.dataType)).map(item => ({
-            dataType: "IMAGE" as const, value: item.value as { url: string; mimeType: string },
+            dataType: item.dataType as "IMAGE" | "MASK", value: item.value as { url: string; mimeType: string },
           })),
         ];
         const message = history.getEntry(parsed.data.messageId);

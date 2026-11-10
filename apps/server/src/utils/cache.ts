@@ -3,9 +3,9 @@ import { dirname, join } from "node:path";
 import { mkdir, readFile, readdir, stat, unlink, writeAtomic } from "@toonflow/file";
 import conf from "@/utils/conf";
 
-type CacheKind = "mediaPreviews" | "projectIndex" | "sessionIndex";
+type CacheKind = "mediaPreviews" | "projectIndex" | "sessionIndex" | "aiImages";
 export const cacheDirectory = join(dirname(conf.path), "cache");
-const cacheKinds: CacheKind[] = ["mediaPreviews", "projectIndex", "sessionIndex"];
+const cacheKinds: CacheKind[] = ["mediaPreviews", "projectIndex", "sessionIndex", "aiImages"];
 let pruning: Promise<void> | undefined;
 let pruneTimer: ReturnType<typeof setTimeout> | undefined;
 const recentFiles = new Map<string, number>();
