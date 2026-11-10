@@ -60,7 +60,7 @@ onErrorCaptured(error => {
   return false;
 });
 const collapsed = defineModel<boolean>("collapsed", { default: true });
-const toolStatusLabels = { running: "调用中…", success: "已完成", error: "调用失败", interrupted: "已中断" };
+const toolStatusLabels = { running: "调用中…", success: "调用已返回", error: "调用失败", interrupted: "已中断" };
 const toolCodeOptions = { maxHeight: 240, lineNumbers: false };
 const expandedData = ref<Record<number, boolean>>({});
 const args = computed(() => formatToolData(tool.args));

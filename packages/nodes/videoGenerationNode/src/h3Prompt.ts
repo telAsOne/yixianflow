@@ -119,8 +119,10 @@ export function h3GenerationPrompt(prompt: string, references: H3Reference[], st
     const sources = subject.references.flatMap(id => byId.has(id) ? [byId.get(id)!.value] : []);
     if (!sources.length) continue;
     const generated = new RegExp(`(<Subject ${subject.id}> is the )[^\\n]*? in <(?:Missing )?(?:Picture|Video) \\d+>(?: and <(?:Missing )?(?:Picture|Video) \\d+>)*`, "g");
-    if (updateBindings) text = text.replace(generated, () => `<Subject ${subject.id}> is the ${subject.name} in ${sources.join(" and ")}`);
-    if (!new RegExp(`<Subject\\s+${subject.id}>\\s+(?:is|是)`, "i").test(text)) definitions.push(`<Subject ${subject.id}> is the ${subject.name} in ${sources.join(" and ")}.`);
+    const chineseGenerated = new RegExp(`<Subject ${subject.id}> 是 [^\\n]*?，参考 <(?:Missing )?(?:Picture|Video) \\d+>(?: 和 <(?:Missing )?(?:Picture|Video) \\d+>)*[。]?`, "g");
+    const definition = `<Subject ${subject.id}> 是 ${subject.name}，参考 ${sources.join(" 和 ")}。`;
+    if (updateBindings) text = text.replace(generated, () => `<Subject ${subject.id}> is the ${subject.name} in ${sources.join(" and ")}`).replace(chineseGenerated, () => definition);
+    if (!new RegExp(`<Subject\\s+${subject.id}>\\s+(?:is\\b|是|对应)`, "i").test(text)) definitions.push(definition);
     for (const [id, note] of Object.entries(subject.referenceNotes ?? {})) {
       const reference = byId.get(id);
       if (reference && subject.references.includes(id) && !text.includes(`${reference.value}：${note}`)) definitions.push(`${reference.value}：${note}`);
@@ -144,7 +146,8 @@ export function h3SectionText(prompt: string, key: string) {
 
 export function h3PromptSubjects(prompt: string, references: H3Reference[]) {
   const byTag = new Map(references.map(item => [item.value, item.id]));
-  return [...(h3SectionText(prompt, "subject_definitions") || prompt).matchAll(/^\s*<Subject (\d+)> is (?:the )?([^\n]+?)(?: in | from )(<(?:Picture|Video) \d+>[^\n]*)/gm)].map(match => ({
+  // 兼容应用生成的中文定义、中文括号绑定和原有英文协议句，不从无明确映射的描述猜测主体。
+  return [...(h3SectionText(prompt, "subject_definitions") || prompt).matchAll(/^\s*<Subject (\d+)>\s+(?:is\s+(?:the\s+)?|是\s*|对应\s*)([^\n]+?)(?:\s+(?:in|from)\s+|[，,]\s*(?:参考|来自)\s*|[（(]\s*|\s*(?:来自|参考)\s*)(<(?:Picture|Video) \d+>[^\n]*)/gm)].map(match => ({
     id: Number(match[1]), name: match[2].trim(),
     references: [...match[3].matchAll(/<(?:Picture|Video) \d+>/g)].flatMap(token => byTag.has(token[0]) ? [byTag.get(token[0])!] : []),
   })).filter(subject => subject.references.length);
@@ -185,7 +188,7 @@ export function h3PromptIssues(prompt: string, references: H3Reference[], durati
     if (!available.has(`<${match[1]} ${Number(match[2])}>`)) issues.push(`${match[0]} 没有对应素材`);
   }
   const definitions = h3SectionText(prompt, "subject_definitions") || prompt;
-  const defined = new Set([...definitions.matchAll(/<Subject\s+(\d+)>\s+(?:is|是)/g)].map(match => Number(match[1])));
+  const defined = new Set([...definitions.matchAll(/<Subject\s+(\d+)>\s+(?:is\b|是|对应)/g)].map(match => Number(match[1])));
   for (const match of prompt.matchAll(/<Subject\s+(\d+)>/g)) if (!defined.has(Number(match[1]))) issues.push(`${match[0]} 尚未定义`);
   const detail = h3SectionText(prompt, "detailed_description");
   if ((detail || prompt).match(h3VoiceoverBindingPattern)) issues.push("旁白和内心独白必须使用独立声源，不能绑定人物标签");
@@ -211,14 +214,12 @@ export function h3PromptIssues(prompt: string, references: H3Reference[], durati
 
 export function h3Skeleton(prompt: string, references: H3Reference[], state: H3PromptState, duration: number) {
   const definitions = h3SectionText(h3GenerationPrompt("", references, state), "subject_definitions");
-  const count = duration < 5 ? 1 : duration <= 6 ? 2 : duration <= 10 ? 3 : Math.min(5, Math.floor(duration / 3));
-  const shots = Array.from({ length: Math.max(1, count) }, (_, index) => `[Shot ${index + 1}]${index ? ` At ${new Date(Math.floor(duration * index / count * 1000)).toISOString().slice(14, 23)},` : ""} …`);
   const hasSections = h3Sections.some(([key]) => h3SectionText(prompt, key));
   return h3Sections.map(([key]) => `${key}:\n${h3SectionText(prompt, key) || ({
-    subject_definitions: definitions || references.filter(item => item.category !== "text").map(item => `${item.value} is the … reference.`).join("\n"),
-    summary: `[reference generation] Create a ${duration}-second video. ${hasSections ? "" : prompt.trim()}`,
-    retention_analysis: state.subjects.map(subject => `<Subject ${subject.id}> (appears in [Shot 1]): fully_preserved - …`).join("\n"),
-    detailed_description: `The target video is in a … style.\n${shots.join("\n")}`,
+    subject_definitions: definitions || references.filter(item => item.category !== "text").map(item => `${item.value}：……参考。`).join("\n"),
+    summary: `[reference generation] 生成${duration}秒视频。${hasSections ? "" : prompt.trim()}`,
+    retention_analysis: state.subjects.map(subject => `<Subject ${subject.id}>：保留身份、外观及已确认状态；……`).join("\n"),
+    detailed_description: "本段采用……风格。\n[Shot 1] ……",
     overall_soundscape: "…", non_diegetic_music: "N/A",
   } as Record<string, string>)[key]}`).join("\n\n");
 }

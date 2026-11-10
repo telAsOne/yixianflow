@@ -358,7 +358,7 @@ async function refreshImageTask() {
   imageTask.value = task;
   if (task) generationState.syncTask(task);
   taskStatusError.value = "";
-  if (task?.running && !generating.value) { resumeWhenReady = true; pollImageTask(); }
+  if (task?.running && !generating.value && !deleting.value) { resumeWhenReady = true; pollImageTask(); }
 }
 
 function pollImageTask() {
@@ -366,7 +366,7 @@ function pollImageTask() {
   taskTimer = setTimeout(async () => {
     try { await refreshImageTask(); }
     catch (error) { if (!disposed) taskStatusError.value = error instanceof Error ? error.message : "图片进度查询暂不可用"; }
-    if (disposed) return;
+    if (disposed || deleting.value) return;
     if (!pendingTask.value) resumeWhenReady = false;
     if (resumeWhenReady && !generating.value && !imageTask.value?.running && (imageTask.value?.retryAt ?? 0) <= Date.now()) {
       try { await resumeGeneration(); }
@@ -421,13 +421,15 @@ nodeEvent.on("save", (reason) => {
   if (reason === "reload" && (generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
 });
 nodeEvent.on("delete", async () => {
-  if (taskRunning.value || pendingTask.value) throw new Error("图片任务尚未结束，请先恢复并确认结果再删除节点");
+  if (generating.value) throw new Error("请先停止等待再删除节点；已经提交的生成任务和素材记录会保留");
   if (uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
   deleting.value = true;
-  generationController?.abort();
+  stopGeneration();
+  clearTimeout(taskTimer);
   try {
     await generation;
-    await files.removeNodeFiles();
+    // 未确认的任务随节点保留，移入回收站后仍可恢复，不能删除其素材。
+    if (!taskChecking.value && !taskStatusError.value && !taskRunning.value && !pendingTask.value) await files.removeNodeFiles();
   } finally {
     deleting.value = false;
   }
@@ -523,9 +525,9 @@ registerGenerationTools({
   generate: {
     name: "generateImage",
     description: "启动此节点的后台普通图片生成，使用普通生成提示词、模型、分辨率、比例和参考图片；局部重绘模式下须先退出；立即返回已开始，默认不轮询等待。用户查询进度或后续需要结果时用 getGenerationStatus 查询，cancelGeneration 停止生成",
-    execute: () => {
+    execute: ({ source }) => {
       if (generating.value) return { status: "generating" };
-      if (!pendingTask.value) {
+      if (source !== "user" && !pendingTask.value) {
         const asset = assetIdentitySchema.safeParse(data.value.assetIdentity);
         if (!asset.success) throw new Error("AI 生成前请用 setConfig 的 assetIdentity 登记素材类型、稳定身份和状态；人物变体还需登记共同的 baseNodeId");
         validateAssetIdentity(id, asset.data, getNodes.value, refList.value, true);

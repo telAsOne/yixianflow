@@ -2,7 +2,7 @@
 name: canvas
 description: Toonflow 画布操作手册。使用画布工具创建、切换和重命名画布，添加、移动、重命名、连接和删除节点，自动整理整幅画布、调整视口，以及调用节点注册的函数。用户要求操作当前画布或搭建节点流程时使用。
 metadata:
-  version: "2.1.1"
+  version: "2.1.2"
   displayName: 画布操作手册
   author: Toonflow
   github: https://github.com/HBAI-Ltd/Toonflow-app
@@ -21,9 +21,9 @@ metadata:
 
 故事或视频制作先读取 [制作阶段与确认](references/videoProduction.md#0-逐阶段协作)。默认只落实当前已确认阶段；先逐步收集信息，再展示阶段成果并询问调整，等用户明确继续。不因用户说“做一个短片”就一次创建全部分镜与生成节点，也不把提问失败、跳过或沉默当作确认。
 
-默认从本次完整剧本生成角色、场景、道具资产，再拆为多镜头片段；一片段对应一份视频提示词和一个视频节点，资产直接用于多参生成。写资产提示词前读取 [资产图规范](../script/references/assetGuide.md)，写视频提示词前读取 [片段制作指南](../script/references/productionGuide.md)，角色面部特写与正侧背完整三视图不能省成通用单张剧情图。
+创作、资产与视频提示词遵循 [视频制作工作流](../workflow/SKILL.md)：资产规范见 [资产制作](../workflow/references/assets.md)，实际写入和引用核对见 [画布执行](../workflow/references/canvasExecution.md)。沿用已确认的实际模型及其对应提示词分支，不由本手册另定模型、段长或正文格式。一片段可以有多个镜头，对应一份完整提示词和一个视频节点；仅连接本段实际采用的素材。
 
-文档内链接相对当前文件目录。跨技能的 `script` 规范按 `available_skills` 中实际 `location` 定位；依赖缺失时说明缺项，仅继续不依赖它的结构操作，不凭简介补造规范。
+文档内链接相对当前文件目录。跨技能的 `workflow` 按 `available_skills` 中实际 `location` 定位；依赖缺失时说明缺项，仅继续不依赖它的结构操作，不凭简介补造规范。
 
 以下写法表示“工具名（参数对象）”。直接调用对应工具，不额外包一层 `{ name, args }`；只有 `nodeTools` 自身含有 `name` 和 `args` 参数。
 
