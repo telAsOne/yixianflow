@@ -70,10 +70,10 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
   // ACT: 兼容不同运行时的关闭事件；Bun 1.3.14 的静默 SSE 仍可能不通知，不能保证立即停止上游。
   req.socket.once("close", close);
   try {
-    const directory = input.references?.some(item => item.dataType !== "STRING")
+    const directory = input.directory || input.references?.some(item => item.dataType !== "STRING")
       ? await u.workspace.resolveWorkspace(req, input.directory ?? "") : undefined;
     const references = await u.ai.readAiReferences(directory, input.references ?? [], controller.signal);
-    const stream = await u.ai.streamAi(configured, input.context, controller.signal, references);
+    const stream = await u.ai.streamAi(configured, input.context, controller.signal, references, directory);
     res.set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" });
     res.flushHeaders();
     heartbeat = setInterval(() => {
