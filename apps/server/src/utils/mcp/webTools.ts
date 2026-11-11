@@ -1,10 +1,12 @@
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { mkdir, readFile, readdir, stat } from "@toonflow/file";
 import { canvasOperations } from "@toonflow/tool-canvas/runtime";
 import type { McpTool } from "@toonflow/mcp";
 import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
+import { validateFfmpegRequest } from "@toonflow/ffmpeg/validateRequest";
+import type { BrowserFfmpegRequest } from "@toonflow/ffmpeg";
 import { defineTool, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createAgentToolContext, createAgentTools } from "@/agent/tools";
 import { run as runAgent } from "@/agent";
@@ -25,6 +27,7 @@ const generationScopes = ["generateImage", "generateVideo"] as const;
 
 function operationScope(name: string, args: Record<string, unknown>): WebMcpScope | undefined {
   const method = name === "nodeTools" && typeof args.name === "string" ? args.name.slice(5) : name;
+  if (method === "ffprobe" || method === "ffmpeg") return "localComputer";
   if (generationScopes.some(scope => scope === method) || ["arrangeCanvas", "runAgent", "localComputer"].includes(method)) return method as WebMcpScope;
   return method === "resumeVideoTask" ? "generateVideo" : undefined;
 }
@@ -141,7 +144,7 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
     const definitions = await createAgentTools(directory, stub);
     for (const definition of definitions) {
       const name = definition.name;
-      if (!["generateImage", "generateVideo", "listMediaModels", "getVideoTask", "resumeVideoTask", "localComputer"].includes(name)) continue;
+      if (!["generateImage", "generateVideo", "listMediaModels", "getVideoTask", "resumeVideoTask", "localComputer", "ffprobe", "ffmpeg"].includes(name)) continue;
       const scope = operationScope(name, {});
       if (!scope && !["listMediaModels", "getVideoTask"].includes(name)) continue;
       if (scope && !access.scopes.includes(scope)) continue;
@@ -149,11 +152,14 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
       if (name === "listMediaModels" && !access.scopes.some(scope => generationScopes.includes(scope as typeof generationScopes[number]))) continue;
       const rawSchema = JSON.parse(JSON.stringify(definition.parameters).replace(/"\$ref":"#(?=\/|")/g, '"$ref":"#/properties/args'));
       const schema = z.record(z.string(), z.unknown());
-      const tool = createTool(name, `${definition.description}\n生成和本机操作须在顶层提供唯一 UUID requestId，重试沿用原值。`, schema, !["listMediaModels", "getVideoTask"].includes(name), async (args, target, signal) => {
+      const description = [definition.description, ...(definition.promptGuidelines ?? []), "生成和本机操作须在顶层提供唯一 UUID requestId，重试沿用原值。"].join("\n");
+      const tool = createTool(name, description, schema, !["listMediaModels", "getVideoTask", "ffprobe"].includes(name), async (args, target, signal) => {
         if (name === "localComputer") validateLocalRequest(args);
+        if (name === "ffprobe" || name === "ffmpeg") await validateLocalMediaPaths(directory, name, args);
         await validateMediaPaths(directory, args);
-        const connection = listConnections().some(item => item.state.directory === access.projectId) ? resolveConnection(target) : undefined;
-        if (name !== "localComputer" && !connection) throw new Error("请保持授权项目的画布页面打开");
+        const local = ["localComputer", "ffprobe", "ffmpeg"].includes(name);
+        const connection = !local && listConnections().some(item => item.state.directory === access.projectId) ? resolveConnection(target) : undefined;
+        if (!local && !connection) throw new Error("请保持授权项目的画布页面打开");
         const canvas = connection ? canvasContext(target, signal) : undefined;
         const current = (await createAgentTools(directory, canvas)).find(item => item.name === name);
         if (!current) throw new Error("工具已禁用或指定本机设备未绑定，请检查项目和设备设置");
@@ -257,6 +263,20 @@ async function validateMediaPaths(directory: string, args: Record<string, unknow
     const reference = args[key] as { path?: string } | undefined;
     if (reference?.path) await resolvePublicPath(directory, reference.path);
   }
+}
+
+async function validateLocalMediaPaths(directory: string, name: string, args: Record<string, unknown>) {
+  const request = structuredClone(name === "ffprobe" ? {
+    directory, requestId: crypto.randomUUID(), options: {}, calls: [{ method: "input", args: [args.path] }],
+    operation: { method: "ffprobe", args: args.options ? [args.options] : [] },
+  } : { directory, requestId: crypto.randomUUID(), options: args.options ?? {}, calls: args.steps ?? [],
+    operation: args.operation ?? { method: "run", args: [] } }) as BrowserFfmpegRequest;
+  const isLocalPath = (path: string) => /^[a-z]:[\\/]/i.test(path);
+  // 本机绝对目录沿用已授权设备的权限；项目路径仍禁止内部目录和其他项目。
+  if (request.options.cwd && isLocalPath(request.options.cwd)) return;
+  await validateFfmpegRequest(request, async path => isLocalPath(path) ? path
+    : (await resolvePublicPath(directory, isAbsolute(path) ? relative(directory, path) : path, true)).path, true,
+    { mapPath: path => path, isLocalPath });
 }
 
 function resolvePublicPath(directory: string, path: string, allowMissingParents = false) {

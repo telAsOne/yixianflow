@@ -4,7 +4,7 @@ import { accountFetch, getAccount, getBaseUrl } from "./index";
 import { defaultUploadLimits, platformConfigSchema, type PlatformConfig } from "@/types/account";
 import { getMediaProvider, saveMediaProvider } from "@/utils/media/provider";
 import yixian from "@toonflow/providers/language/yixian";
-import { normalizeImageModel } from "@toonflow/providers/media/yixianVideo";
+import { normalizeMediaModel } from "@toonflow/providers/media/yixianVideo";
 import { isWebMode } from "@/lib/webContext";
 import { hashWebToken, saveWebManagedSettings } from "@/utils/web/store";
 import type { Provider } from "@toonflow/providers";
@@ -32,7 +32,7 @@ export function getManagedMediaModels(config: PlatformConfig | undefined): (Prov
   return [
     ...(image.enabled ? image.models.map(model => ({ ...model, type: "image" as const })) : []),
     ...(video.enabled ? video.models.map(model => ({ ...model, type: "video" as const, taskRecovery: true, referenceInput: "platformAsset" as const })) : []),
-  ].map(model => normalizeImageModel({ ...model, mode: model.mode as Provider["models"][number]["mode"] }));
+  ].map(model => normalizeMediaModel({ ...model, mode: model.mode as Provider["models"][number]["mode"] }));
 }
 
 async function refreshWebConfig(force: boolean) {

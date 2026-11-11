@@ -20,7 +20,10 @@ export const commonImageRatios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4
 const imageSizePixels = new Map([["1K", "1024x1024"], ["2K", "2048x2048"], ["4K", "3840x2160"]]);
 const imageSizeLabels = new Map([...imageSizePixels.keys()].flatMap(size => commonImageRatios.map(ratio => [resolveImageSize(size, ratio)!, size] as const)));
 
-export function normalizeImageModel<T extends ProviderModel>(model: T): T {
+export function normalizeMediaModel<T extends ProviderModel>(model: T): T {
+  // H3 工作流将解码音轨接入视频输出；旧目录的 false 仅表示没有独立开关。
+  if (model.type === "video" && ["yixian-h3-u00n", "yixian-h3-u06", "yixian-h3-u08"].includes(model.id)
+    && (model.audio === false || model.audio === undefined)) return { ...model, audio: "native" };
   if (model.type !== "image" || !/^gpt-image-2(?:[.-]|$)/i.test(model.id)) return model;
   const imageSizes = model.imageSizes ? [...new Set(model.imageSizes.map(size => imageSizeLabels.get(size) ?? size))] : undefined;
   return { ...model,
@@ -88,7 +91,7 @@ function responseMessage(context: ProviderContext, response: Response, value: Yi
 function modelFor(context: ProviderContext, id: string, type: ModelType) {
   const model = context.models.find(model => model.id === id && model.type === type);
   if (!model) throw new Error("模型不可用，请选择其他模型");
-  return normalizeImageModel(model);
+  return normalizeMediaModel(model);
 }
 
 async function createSnapshot(context: ProviderContext, base: string, headers: Record<string, string>, request: VideoRequest): Promise<YixianSnapshot> {
@@ -126,8 +129,11 @@ async function createSnapshot(context: ProviderContext, base: string, headers: R
     throw new Error("分辨率不在模型声明的范围内");
   if (request.ratio !== undefined && !model.videoRatios?.includes(request.ratio)) throw new Error("画面比例不在模型声明的范围内");
   if (request.seed !== undefined && (!model.supportsSeed || !Number.isSafeInteger(request.seed) || request.seed < 0)) throw new Error("模型不支持此 seed 或 seed 不是非负安全整数");
-  if (request.generateAudio !== undefined && ((model.audio === undefined || model.audio === false) && request.generateAudio || model.audio === true && !request.generateAudio))
-    throw new Error("声音设置不符合模型声明");
+  if (request.generateAudio !== undefined) {
+    if (model.audio === "native" && !request.generateAudio) throw new Error("当前模型原生生成声音，没有独立声音开关；请在提示词中描述声音，静音处理须在生成后执行");
+    if (model.audio === undefined) throw new Error("当前模型未声明声音能力，不能用 generateAudio 判断或切换声音");
+    if (model.audio === false && request.generateAudio || model.audio === true && !request.generateAudio) throw new Error("声音设置不符合模型声明");
+  }
   const parameters: Record<string, unknown> = { prompt: request.prompt };
   if (duration !== undefined) parameters.duration = duration;
   if (resolution !== undefined) parameters.resolution = resolution;

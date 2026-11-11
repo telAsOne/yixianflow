@@ -170,18 +170,18 @@ export function useCanvasTools(options: {
         const assets = await Promise.all([...paths].map(path => files.getMediaInfo(path)));
         signal.throwIfAborted();
         const types = new Set(assets.map(asset => {
-          if (!/^(image|video)\//.test(asset.mimeType)) throw new Error(`文件不是图片或视频：${asset.path}`);
-          return asset.mimeType.startsWith("image/") ? "remote-imageNode" : "remote-videoNode";
+          if (!/^(image|video|audio)\//.test(asset.mimeType)) throw new Error(`文件不是图片、视频或音频：${asset.path}`);
+          return `remote-${asset.mimeType.split("/")[0]}Node`;
         }));
         for (const type of types) {
-          if (!options.availableNodes.value.some(node => node.type === type)) throw new Error("请先安装并启用对应的图片或视频基础节点");
+          if (!options.availableNodes.value.some(node => node.type === type)) throw new Error("请先安装并启用对应的图片、视频或音频基础节点");
         }
         await Promise.all([...types].map(type => options.ensureNodeType(type)));
         signal.throwIfAborted();
         const existing = new Map<string, string>();
         for (const node of flow.getNodes.value) {
           for (const output of Object.values(node.data.outputs ?? {})) {
-            if (!isNodeOutput(output) || output.dataType !== "IMAGE" && output.dataType !== "VIDEO") continue;
+            if (!isNodeOutput(output) || output.dataType !== "IMAGE" && output.dataType !== "VIDEO" && output.dataType !== "AUDIO") continue;
             const path = output.value.url.replaceAll("\\", "/");
             if (paths.has(path)) existing.set(path, node.id);
           }
@@ -193,7 +193,7 @@ export function useCanvasTools(options: {
         const occupiedPositions = new Set(flow.getNodes.value.map(node => `${node.position.x}:${node.position.y}`));
         const [gridX, gridY] = flow.snapToGrid.value ? flow.snapGrid.value : [40, 40];
         const nodes = assets.filter(asset => !existing.has(asset.path)).map((asset, index) => {
-          const kind = asset.mimeType.startsWith("image/") ? "image" : "video";
+          const kind = asset.mimeType.split("/")[0]!;
           const id = crypto.randomUUID();
           existing.set(asset.path, id);
           let target = nodePosition({ x: position.x + index * 360, y: position.y });
@@ -201,7 +201,7 @@ export function useCanvasTools(options: {
           while (occupiedPositions.has(`${target.x}:${target.y}`)) target = nodePosition({ x: target.x + Math.max(40, gridX), y: target.y + Math.max(40, gridY) });
           occupiedPositions.add(`${target.x}:${target.y}`);
           return { id, type: `remote-${kind}Node`, position: target,
-            data: { label: asset.path.split("/").at(-1)!, outputs: { [kind]: { dataType: kind === "image" ? "IMAGE" : "VIDEO", value: { url: asset.path, mimeType: asset.mimeType } } } } };
+            data: { label: asset.path.split("/").at(-1)!, outputs: { [kind]: { dataType: kind.toUpperCase(), value: { url: asset.path, mimeType: asset.mimeType } } } } };
         });
         if (nodes.length) await options.batchHistory(async () => {
           signal.throwIfAborted();

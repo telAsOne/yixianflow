@@ -19,7 +19,8 @@ interface ProviderModel {
   defaultThinkingLevel?: "off" | "low" | "medium" | "high";
   mode?: (ImageMode | VideoMode)[];
   associationSkills?: string;
-  audio?: "optional" | boolean;
+  /** native 由模型原生合成声音，不发送独立的 generate_audio 开关。 */
+  audio?: "optional" | "native" | boolean;
   imageSizes?: string[];
   imageRatios?: string[];
   defaultImageSize?: string;

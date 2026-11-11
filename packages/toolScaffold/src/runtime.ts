@@ -93,7 +93,7 @@ export interface MediaModel {
   defaultResolution?: string;
   durationResolutionMap?: { duration: number[]; resolution: string[] }[];
   taskRecovery?: boolean;
-  audio?: boolean | "optional";
+  audio?: boolean | "optional" | "native";
   voices?: { title: string; voice: string }[];
 }
 

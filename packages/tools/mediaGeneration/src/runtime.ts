@@ -50,7 +50,7 @@ export const videoGenerationSchema = z.strictObject({
   duration: z.number().finite().positive().max(3600).optional(),
   seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   other: z.record(z.string().max(96), z.json()).refine(value => new TextEncoder().encode(JSON.stringify(value)).length <= 16384, "供应商参数不能超过 16 KiB").optional(),
-  generateAudio: z.boolean().optional(),
+  generateAudio: z.boolean().optional().describe("模型 audio=optional 时设置声音开关；native 为模型原生声音，无独立开关，声音设计写在提示词中；未声明能力时省略"),
   mode: z.union([
     z.enum(["singleImage", "startEndRequired", "endFrameOptional", "startFrameOptional", "text"]),
     z.array(referenceMode).min(1).max(3),
