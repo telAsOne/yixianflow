@@ -77,10 +77,14 @@ export function mergeCanvas(current: CanvasSnapshot, changes: CanvasChange[], ch
     if (item === undefined) maps[change.kind].delete(change.id);
     else maps[change.kind].set(change.id, item);
   }
+  const removedNodes = new Set(changes.filter(change => change.kind === "nodes" && change.before && !maps.nodes.has(change.id)).map(change => change.id));
+  for (const [id, edge] of maps.edges) {
+    if (edge.data?.videoContinuation && removedNodes.has(edge.target)) maps.edges.delete(id);
+  }
   return { canvas: { ...current, nodes: [...maps.nodes.values()], edges: [...maps.edges.values()] }, conflicts };
 }
 
-export function validateCanvas(canvas: CanvasSnapshot, previous?: CanvasSnapshot) {
+export function validateCanvas(canvas: CanvasSnapshot, previous?: CanvasSnapshot, { allowIncompleteReferences = false } = {}) {
   const nodes = new Map(canvas.nodes.map(node => [node.id, node]));
   const visited = new Set<string>();
   if (nodes.size !== canvas.nodes.length || new Set(canvas.edges.map(edge => edge.id)).size !== canvas.edges.length) throw new Error("画布含有重复的节点或连线");
@@ -90,13 +94,14 @@ export function validateCanvas(canvas: CanvasSnapshot, previous?: CanvasSnapshot
     let parent: string | undefined = node.id;
     while (parent) {
       if (visited.has(parent)) break;
+      if (!nodes.has(parent) && allowIncompleteReferences) break;
       if (!nodes.has(parent) || parents.has(parent)) throw new Error("节点所属分组已删除或形成循环，请检查分组修改");
       parents.add(parent);
       parent = nodes.get(parent)?.parentNode;
     }
     for (const id of parents) visited.add(id);
   }
-  if (canvas.edges.some(edge => !nodes.has(edge.source) || !nodes.has(edge.target))) throw new Error("连线关联的节点已删除，请先处理节点与连线的修改");
+  if (!allowIncompleteReferences && canvas.edges.some(edge => !nodes.has(edge.source) || !nodes.has(edge.target))) throw new Error("连线关联的节点已删除，请先处理节点与连线的修改");
   for (const old of previous?.nodes ?? []) {
     const binding = old.data?.continuationBinding;
     if (!binding) continue;
@@ -105,6 +110,7 @@ export function validateCanvas(canvas: CanvasSnapshot, previous?: CanvasSnapshot
     if (current && !nodes.has(binding.source)) throw new Error("来源视频仍有续接节点，请先删除续接节点");
   }
   for (const node of canvas.nodes) {
+    if (allowIncompleteReferences) continue;
     const binding = node.data?.continuationBinding;
     if (!binding) continue;
     const edges = canvas.edges.filter(edge => edge.target === node.id && edge.targetHandle === "continuation");

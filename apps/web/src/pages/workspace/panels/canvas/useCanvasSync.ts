@@ -23,6 +23,17 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
   const current = (): CanvasSnapshot => JSON.parse(JSON.stringify({ toonflowCanvas: true, ...flow.toObject() }));
   const errorMessage = (error: unknown) => axios.isAxiosError(error) ? error.response?.data?.message || error.message : error instanceof Error ? error.message : "画布同步失败";
 
+  function applyEdgeRemovals(edges: Edge[]) {
+    flow.applyEdgeChanges(edges.map(({ id, source, target, sourceHandle, targetHandle }) => ({ id, source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null, type: "remove" })));
+  }
+
+  flow.onNodesChange(changes => {
+    const removed = new Set(changes.filter(change => change.type === "remove").map(change => change.id));
+    // 固定连线不能单独删除，但目标节点删除后必须一并移除。
+    const edges = flow.getEdges.value.filter(edge => edge.data?.videoContinuation && removed.has(edge.target) && !flow.findNode(edge.target));
+    if (edges.length) applyEdgeRemovals(edges);
+  });
+
   function enqueue<T>(action: () => Promise<T>) {
     const pending = queue.then(action);
     queue = pending.then(() => {}, () => {});
@@ -98,7 +109,7 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
           const element = change.kind === "nodes" ? flow.findNode(change.id) : flow.findEdge(change.id);
           if (!change.after) {
             if (change.kind === "nodes") flow.removeNodes(change.id);
-            else flow.removeEdges(change.id);
+            else if (element) applyEdgeRemovals([element as Edge]);
           } else if (!element || change.kind === "nodes" && element.type !== change.after.type) {
             if (element) flow.removeNodes(change.id);
             if (change.kind === "nodes") flow.addNodes(structuredClone(change.after) as Node);
