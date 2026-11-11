@@ -21,7 +21,7 @@ export const modelSchema = z.object({
     z.array(z.string().regex(/^(image|video|audio)Reference:\d+$/))])).optional(),
   imageSizes: z.array(z.string().min(1)).optional(), imageRatios: z.array(z.string().min(1)).optional(),
   videoRatios: z.array(z.string().min(1)).optional(), minReferenceImages: z.number().int().nonnegative().optional(),
-  supportsSeed: z.boolean().optional(), audio: z.union([z.boolean(), z.literal("optional")]).optional(),
+  supportsSeed: z.boolean().optional(), audio: z.union([z.boolean(), z.enum(["optional", "native"])]).optional(),
   defaultDuration: z.number().positive().optional(), defaultResolution: z.string().optional(),
   durationResolutionMap: z.array(z.object({ duration: z.array(z.number().int().min(1).max(3600)), resolution: z.array(z.string()) })).optional(),
 });

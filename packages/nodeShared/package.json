@@ -19,6 +19,7 @@
     "./markdownContent": "./src/markdownContent.ts",
     "./markdownExtensions": "./src/markdownExtensions.ts",
     "./useMediaModels": "./src/useMediaModels.ts",
+    "./videoAudio": "./src/videoAudio.ts",
     "./useOutputReplace": "./src/useOutputReplace.ts",
     "./generationTools": "./src/generationTools.ts",
     "./assetIdentity": "./src/assetIdentity.ts",

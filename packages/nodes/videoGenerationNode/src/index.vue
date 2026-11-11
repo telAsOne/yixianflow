@@ -188,6 +188,7 @@
 
 <script setup lang="ts">
 import { validateReferenceSelection } from "@toonflow/node-shared/mediaLimits";
+import { getVideoAudioConfig } from "@toonflow/node-shared/videoAudio";
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem, ElInput, ElMessage, ElMessageBox } from "element-plus";
@@ -293,6 +294,7 @@ let taskWorkspaceDirectory = "";
 let resumeWhenReady = false;
 const defaultRatios = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 const selectedModel = computed(() => models.value.find((item) => JSON.stringify([item.providerId, item.modelId]) === data.value.model));
+const audioConfig = computed(() => getVideoAudioConfig(selectedModel.value, data.value.generateAudio));
 const isZealmanU06 = computed(() => selectedModel.value?.providerId === "zealmanH3" && selectedModel.value.modelId === "u06");
 const isH3Prompt = computed(() => selectedModel.value?.providerId === "yixianVideo" && selectedModel.value.modelId.startsWith("yixian-h3-"));
 const h3VideoReferenceLimit = computed(() => Math.max(0, ...(selectedModel.value?.mode ?? []).filter(Array.isArray).flat().filter(item => item.startsWith("videoReference:")).map(item => Number(item.split(":")[1]))));
@@ -470,7 +472,7 @@ watch([selectedModel, () => data.value.duration], ([choice]) => {
   const resolutions = getResolutions(choice, data.value.duration);
   if (!resolutions.includes(data.value.resolution)) data.value.resolution = resolutions.includes(choice.defaultResolution!) ? choice.defaultResolution! : resolutions[0] ?? "";
   if (!ratioOptions.value.includes(data.value.ratio)) data.value.ratio = ratioOptions.value.includes("9:16") ? "9:16" : ratioOptions.value[0]!;
-  if (choice.audio !== "optional") data.value.generateAudio = choice.audio === true;
+  if (typeof choice.audio === "boolean") data.value.generateAudio = choice.audio;
 }, { flush: "sync" });
 const generationPrompt = computed(() => {
   const prompt = [
@@ -495,7 +497,7 @@ const reviewInput = computed<PromptReviewInput>(() => {
     content: generationPrompt.value,
     editorPrompt: data.value.prompt,
     context: [data.value.promptReviewMedia ? "审查范围：当前视频节点编辑稿与实际读取的参考素材。严格按素材用途核对，未读取的素材不视为已审查。" : "审查范围：当前视频节点的编辑稿，仅核对文字及文字描述的素材约束。",
-      `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；生成声音：${selectedModel.value?.audio === 'optional' ? data.value.generateAudio : selectedModel.value?.audio === true}；生成模式：${JSON.stringify(selectedMode.value ?? '默认')}。`,
+      `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；声音能力：${audioConfig.value.description}；生成模式：${JSON.stringify(selectedMode.value ?? '默认')}。`,
       `素材数量：图片 ${mediaCounts.value.image + referenceUrls(selectedModel.value).length}，视频 ${mediaCounts.value.video}，音频 ${mediaCounts.value.audio}。`,
       ...(isH3Prompt.value ? [`引用名称与标签：${JSON.stringify(h3ReferenceList.value.map(item => ({ name: item.name, tag: item.value, category: item.category })))}`] : []),
       ...(data.value.continuationBinding ? [
@@ -777,7 +779,7 @@ async function startGeneration() {
     duration: data.value.duration,
     resolution: data.value.resolution || undefined,
     ratio: data.value.ratio,
-    generateAudio: choice.audio === "optional" ? data.value.generateAudio : choice.audio,
+    generateAudio: getVideoAudioConfig(choice, data.value.generateAudio).requestGenerateAudio,
     ...(choice.supportsSeed === true && data.value.seed != null ? { seed: data.value.seed } : {}),
     ...(isZealmanU06.value ? { other: { ...JSON.parse(JSON.stringify(data.value.zealmanSettings)), voiceReferences: [...data.value.h3Prompt.voices] } } : {}),
     outputDirectory: `assets/${id}`,
@@ -992,6 +994,7 @@ async function resizeVideo(event: Event) {
 }
 
 async function getConfig() {
+  await loadModels();
   if (isZealmanU06.value) await ensureZealmanOptions();
   return {
     config: {
@@ -1001,7 +1004,7 @@ async function getConfig() {
       resolution: data.value.resolution,
       ratio: data.value.ratio,
       mode: selectedMode.value,
-      generateAudio: data.value.generateAudio,
+      generateAudio: audioConfig.value.generateAudio,
       seed: data.value.seed ?? null,
       continuation: data.value.h3Prompt.continuation ?? null,
       referenceUsage: { ...mediaCounts.value, image: mediaCounts.value.image + referenceUrls(selectedModel.value).length },
@@ -1013,6 +1016,7 @@ async function getConfig() {
       referenceImageUrls: referenceUrls(selectedModel.value),
     },
     models: models.value,
+    audio: audioConfig.value,
     cameraLibrary: { supported: isH3Prompt.value, queryTool: "node:getCameraPresets" },
     ...(isZealmanU06.value ? { videoOptions: zealmanOptions.value } : {}),
     ratios: ratioOptions.value,
@@ -1079,7 +1083,7 @@ registerGenerationTools({
     resolution: z.string().min(1).optional(),
     ratio: z.string().regex(/^[1-9]\d{0,3}:[1-9]\d{0,3}$/).optional(),
     mode: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
-    generateAudio: z.boolean().optional(),
+    generateAudio: z.boolean().optional().describe("仅 audio.canToggle=true 时设置开关；native 声音写在提示词中，不以历史 false 判断静音；unknown 须先确认可用模型"),
     seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
     other: z.strictObject({
       modelKey: z.string().min(1).optional(), clipKey: z.string().min(1).optional(), loraKey: z.string().min(1).optional(), extraLoraKey: z.string().min(1).optional(),
@@ -1136,7 +1140,10 @@ registerGenerationTools({
     }
     const modes = getMatchingModes(choice, urls);
     if (mode !== undefined && !modes.some(item => JSON.stringify(item) === JSON.stringify(mode))) throw new Error(`当前素材不支持所选 mode，可选：${modes.map(item => JSON.stringify(item)).join("、") || "无，请先调整参考素材"}`);
-    if (args.generateAudio !== undefined && choice.audio !== "optional" && args.generateAudio !== (choice.audio === true)) throw new Error("当前模型不支持切换声音，请查看 getConfig 返回的 audio 能力");
+    const audio = getVideoAudioConfig(choice, args.generateAudio ?? data.value.generateAudio);
+    const fixedAudio = audio.mode === "native" ? true : audio.generateAudio;
+    if (args.generateAudio !== undefined && !audio.canToggle && (fixedAudio === null || args.generateAudio !== fixedAudio))
+      throw new Error(`${audio.description} 请查看 getConfig 返回的 audio；不要为消除审查提示删去声音设计`);
     if (args.subjects) {
       if (!(choice.providerId === "yixianVideo" && choice.modelId.startsWith("yixian-h3-") || u06)) throw new Error("subjects 仅用于 H3 主体绑定");
       if (new Set(args.subjects.map(subject => subject.id)).size !== args.subjects.length) throw new Error("主体 id 不能重复");
@@ -1163,7 +1170,7 @@ registerGenerationTools({
     data.value.resolution = resolution;
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
     if (mode !== undefined) data.value.mode = JSON.stringify(mode);
-    if (args.generateAudio !== undefined) data.value.generateAudio = args.generateAudio;
+    if (args.generateAudio !== undefined && audio.canToggle) data.value.generateAudio = args.generateAudio;
     if (args.seed !== undefined) data.value.seed = args.seed;
     if (args.subjects) data.value.h3Prompt.subjects = args.subjects;
     if (args.continuation !== undefined) setContinuation(args.continuation?.referenceId);
