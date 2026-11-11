@@ -15,7 +15,7 @@ import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/med
 import { file } from "@toonflow/file/bun";
 import { requireAccount, getAccount, getApiKey, getBaseUrl, getConfigState, refreshConfig } from "@/utils/account";
 import { detectMimeType } from "@/utils/media/mimeType";
-import { validateVideoContinuation } from "@/utils/media/continuation";
+import { uploadVideoContinuationSource, validateVideoContinuation } from "@/utils/media/continuation";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
 
 const maxMediaSize = 100 * 1024 * 1024;
@@ -253,7 +253,7 @@ async function generateMediaResult(
     const references = [
       ...(request.images ?? []).map(item => ({ ...item, mediaType: "image" as const })),
       ...(request.audios ?? []).map(item => ({ ...item, mediaType: "audio" as const })),
-      ...(request.videos ?? []).filter((_, index) => !continuationSourceTaskId || index !== request.continuation?.videoIndex).map(item => ({ ...item, mediaType: "video" as const })),
+      ...(request.videos ?? []).filter((_, index) => index !== request.continuation?.videoIndex).map(item => ({ ...item, mediaType: "video" as const })),
       ...frames.map(item => ({ ...item, mediaType: "image" as const })),
     ];
     if (mediaType === "video" && model.referenceInput === "platformAsset") {
@@ -261,8 +261,10 @@ async function generateMediaResult(
       let index = request.images?.length ?? 0;
       images = uploaded.slice(0, index);
       audios = uploaded.slice(index, index += request.audios?.length ?? 0);
-      videos = uploaded.slice(index, index += (request.videos?.length ?? 0) - (continuationSourceTaskId ? 1 : 0));
-      if (continuationSourceTaskId) videos.splice(request.continuation!.videoIndex, 0, { type: "url", url: "", mimeType: "video/mp4" });
+      videos = uploaded.slice(index, index += (request.videos?.length ?? 0) - (source ? 1 : 0));
+      if (source) videos.splice(request.continuation!.videoIndex, 0, continuationSourceTaskId
+        ? { type: "url", url: "", mimeType: "video/mp4" }
+        : await uploadVideoContinuationSource(directory, source, signal));
       if (request.firstFrame) firstFrame = uploaded[index++];
       if (request.lastFrame) lastFrame = uploaded[index];
     } else if (mediaType === "image") {
