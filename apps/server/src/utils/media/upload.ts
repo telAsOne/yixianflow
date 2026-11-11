@@ -94,8 +94,8 @@ export async function uploadPlatformReferences(directory: string, references: Re
         if (!response.ok) {
           const failure = await response.json().catch(() => undefined) as { error_code?: string; message?: string; error?: { code?: string; message?: string } } | undefined;
           const code = failure?.error_code ?? failure?.error?.code;
-          const message = (code ? failure?.message || failure?.error?.message :
-            ({ 402: "余额不足，请充值后上传", 403: "账户存储已满", 413: "参考素材超过平台大小限制", 507: "服务器存储已满，请稍后再试" } as Record<number, string>)[response.status])
+          const message = failure?.message || failure?.error?.message ||
+            ({ 402: "余额不足，请充值后上传", 403: "账户存储已满", 413: "参考素材超过平台大小限制", 507: "服务器存储已满，请稍后再试" } as Record<number, string>)[response.status]
             || `上传素材失败（HTTP ${response.status}）`;
           throw Object.assign(new Error(message.replaceAll(account.key, "••••••")), { status: response.status, code });
         }
