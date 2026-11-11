@@ -3,18 +3,27 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { success, error } from "@/lib/responseFormat";
-import { uploadPlatformReferences } from "@/utils/media/upload";
+import { preparePlatformReferences, uploadContinuationReviewReference, uploadPlatformReferences } from "@/utils/media/upload";
 
 const reviewMediaSchema = z.object({ id: z.string().min(1).max(128), type: z.enum(["image", "video", "audio"]), path: z.string().min(1).max(8192), mimeType: z.string().max(100), purpose: z.string().max(1000).optional() });
+const continuationSchema = z.strictObject({ mediaId: z.string().min(1).max(128), frameId: z.string().min(1).max(128) });
 
 export default Router().post("/", validateFields({
   content: z.string().min(1).max(20000), context: z.string().max(20000).optional(), durationSeconds: z.number().positive().max(3600).optional(),
   directory: z.string().min(1).max(4096).optional(), media: z.array(reviewMediaSchema).max(16).optional(), model: z.string().min(1).max(200).optional(), audioInput: z.boolean().optional(),
+  continuation: continuationSchema.optional(),
 }), async (req, res) => {
   u.mcpControl.assertAppRequest(req);
   const account = u.account.requireAccount();
   const { content, context, durationSeconds, directory, model, audioInput } = req.body as { content: string; context?: string; durationSeconds?: number; directory?: string; model?: string; audioInput?: boolean };
   const media = z.array(reviewMediaSchema).max(16).parse(req.body.media ?? []);
+  const continuation = continuationSchema.optional().parse(req.body.continuation);
+  const source = continuation && media.find(item => item.id === continuation.mediaId);
+  if (new Set(media.map(item => item.id)).size !== media.length || continuation &&
+    (!source || source.type !== "video" || /^https:\/\//i.test(source.path) || media.some(item => item.id === continuation.frameId) || media.length >= 16)) {
+    res.status(400).json(error("续接审查来源或素材标识无效，请使用工作区内的视频，最多同时审查 15 项原始素材", null, 400));
+    return;
+  }
   if (!content.trim() || Array.from(content).length + Array.from(context ?? "").length > 10000) {
     res.status(400).json(error("审查正文与背景合计须为 1～10000 字；仍可直接生成", null, 400));
     return;
@@ -43,10 +52,19 @@ export default Router().post("/", validateFields({
     const local = media.filter(item => !/^https:\/\//i.test(item.path));
     if (local.length && !directory) throw new Error("请先选择素材所在的项目工作区");
     const cwd = local.length ? await u.workspace.resolveWorkspace(req, directory!) : "";
-    const uploaded = local.length ? await uploadPlatformReferences(cwd, local.map(item => ({ path: item.path, mimeType: item.mimeType, mediaType: item.type })), controller.signal, { account, request: reviewFetch }) : [];
+    if (source) await preparePlatformReferences(cwd, local.map(item => ({ path: item.path, mimeType: item.mimeType, mediaType: item.type })), controller.signal);
+    const preview = source ? await uploadContinuationReviewReference(cwd, source, controller.signal, { account, request: reviewFetch }) : undefined;
+    const ordinary = local.filter(item => item !== source);
+    const uploaded = ordinary.length ? await uploadPlatformReferences(cwd, ordinary.map(item => ({ path: item.path, mimeType: item.mimeType, mediaType: item.type })), controller.signal, { account, request: reviewFetch }) : [];
     let localIndex = 0;
-    const materials = media.map(item => ({ id: item.id, type: item.type, ...(item.purpose ? { purpose: item.purpose } : {}),
-      ...(/^https:\/\//i.test(item.path) ? { url: item.path } : { asset_id: uploaded[localIndex++]!.assetId }) }));
+    const materials = media.map(item => item === source && preview ? {
+      id: item.id, type: item.type,
+      purpose: `续接来源原片共 ${preview.source_seconds} 秒，本次只读取最后 ${preview.tail_seconds} 秒；帧时间相对于尾部片段，未读取完整原片。只用来承接末段动作、人物状态和镜头运动，不修改原片、不在新增片段重演尾段。${audioInput ? "原音是否读取以报告的素材覆盖为准。" : "本次未听取原音，不判断音色、声源或原片是否有可听见的声音。"}`,
+      asset_id: preview.tail.asset_id,
+    } : { id: item.id, type: item.type, ...(item.purpose ? { purpose: item.purpose } : {}),
+      ...(/^https:\/\//i.test(item.path) ? { url: item.path } : { asset_id: uploaded[localIndex++]!.assetId }) });
+    if (preview && continuation) materials.push({ id: continuation.frameId, type: "image",
+      asset_id: preview.frame.asset_id, purpose: `由续接流程从 ${continuation.mediaId} 自动提取的真实末帧，只作为新增片段起点的人物、姿态、构图、场景和光影依据，不是缺少定义的新人物或普通参考图。审查范围不含完整原片。` });
     if (u.account.getAccount() !== account) throw Object.assign(new Error("账户已切换，请重新发起审查"), { status: 401 });
     // 辅助请求使用当前账户快照，不触发全局登出、模型刷新或视频任务状态变更。
     const response = await reviewFetch(new URL("/v1/video-prompts/review", account.baseUrl), {
@@ -55,11 +73,13 @@ export default Router().post("/", validateFields({
       body: JSON.stringify({ content, ...(context ? { context } : {}), ...(durationSeconds ? { duration_seconds: durationSeconds } : {}),
         ...(materials.length ? { media: materials, audio_input: !!audioInput } : {}), ...(model ? { model } : {}) }),
     });
-    const body = await response.json() as Record<string, unknown> & { error?: { message?: unknown; code?: string } };
+    const body = await response.json() as Record<string, unknown> & { error?: { message?: unknown; code?: string; param?: string } };
     if (u.account.getAccount() !== account) throw Object.assign(new Error("账户已切换，请重新发起审查"), { status: 401 });
     if (res.destroyed || controller.signal.aborted) return;
     if (!response.ok) {
-      const message = typeof body.error?.message === "string" ? body.error.message.replaceAll(account.key, "••••••").slice(0, 1500) : "审查暂不可用，仍可直接生成";
+      const message = body.error?.code === "video_review.invalid_field" && ["media", "audio_input"].includes(body.error.param ?? "")
+        ? "平台审查接口尚未支持素材输入，请更新平台后重试；也可取消结合素材，仅审查文字"
+        : typeof body.error?.message === "string" ? body.error.message.replaceAll(account.key, "••••••").slice(0, 1500) : "审查暂不可用，仍可直接生成";
       res.write(JSON.stringify(error(message, {
         ...(Number.isSafeInteger(body.review_id) ? { reviewId: body.review_id } : {}),
         ...(typeof body.request_id === "string" ? { requestId: body.request_id.slice(0, 256) } : {}),

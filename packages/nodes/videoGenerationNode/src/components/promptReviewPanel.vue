@@ -22,9 +22,10 @@
       <template v-if="record?.result">
         <el-alert v-if="record.result.media_input_complete === false" title="部分素材未读取或原音未听取，报告仅覆盖文字与已读取的素材，不能视为全部素材通过。" type="warning" :closable="false" showIcon />
         <p class="reviewSummary">{{ record.result.summary }}</p>
+        <p v-if="record.input.continuation" class="scopeHint">续接审查仅覆盖本次新增片段；续接素材限定为原片末尾最多 3 秒及真实末帧，实际读取见素材清单，不代表完整原片已审查。采样时间以尾部片段起点为 0 秒。</p>
         <div class="reviewTrace">审查记录 #{{ record.result.review_id }} · {{ record.result.model }}</div>
         <details v-if="record.result.media_coverage?.length" class="mediaCoverage"><summary>实际审查素材 · {{ record.result.media_coverage.length }} 项</summary>
-          <p v-for="media in record.result.media_coverage" :key="media.id">{{ media.id }} · {{ coverageLabels[media.status] ?? media.status }}<template v-if="media.frame_seconds?.length"> · 采样 {{ media.frame_seconds.join('、') }} 秒</template><template v-if="media.duration_seconds"> · {{ media.duration_seconds.toFixed(2) }} 秒</template><template v-if="media.status === 'reviewed_frames'"> · 未覆盖帧间动作和视频声音</template></p>
+          <p v-for="media in record.result.media_coverage" :key="media.id">{{ media.id }} · {{ coverageLabels[media.status] ?? media.status }}<template v-if="media.frame_seconds?.length"> · 采样 {{ media.frame_seconds.join('、') }} 秒</template><template v-if="media.duration_seconds"> · {{ media.duration_seconds.toFixed(2) }} 秒</template><template v-if="media.status === 'reviewed_frames'"> · 未覆盖帧间动作和视频声音</template><template v-if="media.purpose"> · {{ media.purpose }}</template></p>
         </details>
         <article v-for="issue in record.result.issues" :key="issue.id" class="reviewIssue">
           <div class="issueHeading"><el-tag size="small" :type="issue.kind === 'conflict' ? 'warning' : 'info'">{{ categoryLabels[issue.category] ?? issue.category }} · {{ issue.kind === 'conflict' ? '约束冲突' : issue.kind === 'risk' ? '生成风险' : '待确认' }}</el-tag></div>

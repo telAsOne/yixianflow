@@ -13,9 +13,27 @@ import { detectMimeType } from "./mimeType";
 function invalid(message: string, status = 400): never { throw Object.assign(new Error(message), { status }); }
 
 type Reference = MediaReference & { mediaType: "image" | "audio" | "video" };
+type UploadOptions = {
+  account?: ReturnType<typeof requireAccount>;
+  request?: (input: Parameters<typeof fetch>[0], init?: RequestInit) => Promise<Response>;
+};
 const assetSchema = z.object({ success: z.literal(true), data: z.object({
   asset: z.object({ id: z.string().min(1).max(2048), media_type: z.enum(["image", "audio", "video"]) }), content_url: z.url({ protocol: /^https$/ }),
 }) });
+const continuationReviewSchema = z.object({
+  source_seconds: z.number().positive().max(3600), tail_seconds: z.number().positive().max(3),
+  tail: z.object({ asset_id: z.string().min(1).max(2048) }), frame: z.object({ asset_id: z.string().min(1).max(2048) }),
+});
+
+async function throwUploadFailure(response: Response, key: string): Promise<never> {
+  const failure = await response.json().catch(() => undefined) as { error_code?: unknown; message?: unknown; error?: { code?: unknown; message?: unknown } } | undefined;
+  const code = failure?.error_code ?? failure?.error?.code;
+  const detail = failure?.message || failure?.error?.message;
+  const message = typeof detail === "string" && detail.trim() ? detail :
+    ({ 402: "余额不足，请充值后上传", 403: "账户存储已满", 413: "参考素材超过平台大小限制", 507: "服务器存储已满，请稍后再试" } as Record<number, string>)[response.status]
+    || `上传素材失败（HTTP ${response.status}）`;
+  throw Object.assign(new Error(message.replaceAll(key, "••••••").slice(0, 1500)), { status: response.status, code: typeof code === "string" ? code : undefined });
+}
 
 export async function preparePlatformReferences(directory: string, references: Reference[], signal?: AbortSignal, totalLimit?: number) {
   const { limits } = getConfigState();
@@ -47,10 +65,7 @@ export async function preparePlatformReferences(directory: string, references: R
   return prepared;
 }
 
-export async function uploadPlatformReferences(directory: string, references: Reference[], signal?: AbortSignal, options?: {
-  account?: ReturnType<typeof requireAccount>;
-  request?: (input: Parameters<typeof fetch>[0], init?: RequestInit) => Promise<Response>;
-}): Promise<Extract<MediaInput, { type: "url" }>[]> {
+export async function uploadPlatformReferences(directory: string, references: Reference[], signal?: AbortSignal, options?: UploadOptions): Promise<Extract<MediaInput, { type: "url" }>[]> {
   const account = options?.account ?? requireAccount();
   const request = options?.request ?? platformFetch;
   const prepared = await preparePlatformReferences(directory, references, signal);
@@ -91,14 +106,7 @@ export async function uploadPlatformReferences(directory: string, references: Re
         form.append("file", blob, reference.name);
         const response = await request(`${account.baseUrl}/v1/media?media_type=${reference.mediaType}`, { method: "POST", body: form,
           headers: { Authorization: `Bearer ${account.key}` }, signal: AbortSignal.any([AbortSignal.timeout(300000), ...(signal ? [signal] : [])]) });
-        if (!response.ok) {
-          const failure = await response.json().catch(() => undefined) as { error_code?: string; message?: string; error?: { code?: string; message?: string } } | undefined;
-          const code = failure?.error_code ?? failure?.error?.code;
-          const message = failure?.message || failure?.error?.message ||
-            ({ 402: "余额不足，请充值后上传", 403: "账户存储已满", 413: "参考素材超过平台大小限制", 507: "服务器存储已满，请稍后再试" } as Record<number, string>)[response.status]
-            || `上传素材失败（HTTP ${response.status}）`;
-          throw Object.assign(new Error(message.replaceAll(account.key, "••••••")), { status: response.status, code });
-        }
+        if (!response.ok) await throwUploadFailure(response, account.key);
         asset = assetSchema.parse(await response.json()).data;
         const after = await stat(reference.path);
         if (after.size !== reference.size || after.mtimeMs !== reference.modified) throw new Error("上传期间参考素材已变化，请重新生成");
@@ -110,6 +118,58 @@ export async function uploadPlatformReferences(directory: string, references: Re
       result.push(uploaded);
     }
     return result;
+  });
+}
+
+export async function uploadContinuationReviewReference(directory: string, reference: MediaReference, signal: AbortSignal, options: UploadOptions) {
+  const account = options.account ?? requireAccount();
+  const request = options.request ?? platformFetch;
+  const [prepared] = await preparePlatformReferences(directory, [{ ...reference, mediaType: "video" }], signal);
+  if (!prepared) throw new Error("续接审查来源不可用");
+  const blob = file(prepared.path, { type: prepared.mimeType });
+  const hash = createHash("sha256");
+  for await (const chunk of blob.stream()) { signal.throwIfAborted(); hash.update(chunk); }
+  const digest = hash.digest("hex");
+  const withCache = createReferenceCache("yixianContinuationReview", { apiUrl: account.baseUrl, userId: account.user.id }, directory, signal);
+  return withCache(async cache => {
+    const info = await stat(prepared.path);
+    if (info.size !== prepared.size || info.mtimeMs !== prepared.modified) throw new Error("续接来源已变化，请重新审查");
+    const cached = await cache.get(digest);
+    if (cached?.ref && cached.expiresAt > Date.now()) {
+      const value = continuationReviewSchema.parse(JSON.parse(cached.ref));
+      let available = true;
+      for (const [id, kind] of [[value.tail.asset_id, "video"], [value.frame.asset_id, "image"]]) {
+        const response = await request(`${account.baseUrl}/v1/media/${encodeURIComponent(id!)}`, {
+          headers: { Authorization: `Bearer ${account.key}` }, signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+        });
+        if (response.status === 404) { await response.body?.cancel(); available = false; break; }
+        if (!response.ok) await throwUploadFailure(response, account.key);
+        const asset = assetSchema.parse(await response.json()).data.asset;
+        if (asset.id !== id || asset.media_type !== kind) throw new Error("续接审查素材缓存与平台记录不匹配");
+      }
+      if (available) {
+        const after = await stat(prepared.path);
+        if (after.size !== prepared.size || after.mtimeMs !== prepared.modified) throw new Error("续接来源已变化，请重新审查");
+        return value;
+      }
+      await cache.remove(digest);
+    }
+    const form = new FormData();
+    form.append("video", blob, prepared.name);
+    const response = await request(`${account.baseUrl}/v1/video-continuations/preview`, {
+      method: "POST", body: form, headers: { Authorization: `Bearer ${account.key}` }, signal: AbortSignal.any([signal, AbortSignal.timeout(300000)]),
+    });
+    if ([404, 405].includes(response.status)) {
+      await response.body?.cancel();
+      throw Object.assign(new Error("平台尚未启用续接素材审查，请更新平台后重试；也可取消结合素材，仅审查文字"), { status: 400 });
+    }
+    if (!response.ok) await throwUploadFailure(response, account.key);
+    const value = z.object({ success: z.literal(true), data: continuationReviewSchema }).parse(await response.json()).data;
+    if (value.tail_seconds > value.source_seconds || value.tail.asset_id === value.frame.asset_id) throw new Error("平台返回的续接审查素材无效");
+    const after = await stat(prepared.path);
+    if (after.size !== prepared.size || after.mtimeMs !== prepared.modified) throw new Error("上传期间续接来源已变化，请重新审查");
+    await cache.set(digest, { ref: JSON.stringify(value), expiresAt: Date.now() + 7 * 24 * 60 * 60_000 });
+    return value;
   });
 }
 
