@@ -9,6 +9,7 @@ export type H3PromptState = {
   voices: string[];
   attachments: { id: string; name: string; dataType: "IMAGE" | "VIDEO" | "AUDIO"; value: NodeMediaValue; source?: string; sourceHandle?: string }[];
   editorMode: "tags" | "code";
+  continuation?: { referenceId: string };
 };
 export type H3Reference = { id: string; name: string; value: string; category: string; avatar?: string; previewUrl?: string; input?: NodeInputValue; voice?: ZealmanVoice; action?: boolean; hideValue?: boolean };
 export function h3ReferenceGroup(item: H3Reference) {

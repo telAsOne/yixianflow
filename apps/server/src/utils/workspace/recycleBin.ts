@@ -354,7 +354,8 @@ export async function captureCanvasOverwrite(directory: string, path: string, by
   const { readCanvas, canvasSchema } = await import("./canvasSync");
   const before = await readCanvas(target.path);
   const after = canvasSchema.parse(JSON.parse(decode(bytes))) as CanvasSnapshot;
-  validateCanvas(after);
+  try { validateCanvas(after, before.canvas); }
+  catch (error) { throw Object.assign(error as Error, { status: 400 }); }
   const previousIds = new Set(before.canvas.nodes.map(node => node.id));
   await validateRecycledMedia(directory, after.nodes.filter(node => !previousIds.has(node.id)));
   return captureDeletedNodes(directory, path, before.canvas, after);

@@ -42,6 +42,7 @@ export const videoGenerationSchema = z.strictObject({
   prompt: z.string().min(1).max(100000).refine(value => !!value.trim(), "请输入生成提示词"),
   operationId: z.uuid().optional(),
   videos: z.array(videoReference).max(64).optional(),
+  continuation: z.strictObject({ videoIndex: z.number().int().min(0).max(63), matchColor: z.boolean().optional() }).optional(),
   audios: z.array(audioReference).max(64).optional(),
   firstFrame: frameReference.optional(),
   lastFrame: frameReference.optional(),

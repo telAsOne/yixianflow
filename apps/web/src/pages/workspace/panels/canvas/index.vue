@@ -410,6 +410,10 @@ const canCreate = computed(() => props.active && !props.settingsVisible && canva
 const nodeCreation = useNodeCreation(flow, {
   availableNodes, ensureNodeType, batchHistory: canvasHistory.batch, focusNodes: navigation.focusNodes, signal: () => canvasController.signal,
 });
+provide("createVideoContinuation", (sourceId: string, sourceHandle?: string) => {
+  if (!canCreate.value) throw new Error("画布当前不能创建节点");
+  return nodeCreation.createVideoContinuation(sourceId, sourceHandle);
+});
 const placingNode = computed(() => nodeCreation.nodeOptions.value.find(node => node.type === placingType.value));
 watch([canCreate, canvasId, canvasReloading], cancelNodePlacement, { flush: "sync" });
 const { copySelectedNodes, pasteNodeAtCenter, pasteClipboardNode } = useCanvasClipboard(flow, {
@@ -478,6 +482,7 @@ async function prepareCanvasDelete() {
 }
 
 function showEdgeDisconnect({ event, edge }: EdgeMouseEvent) {
+  if (edge.deletable === false) return;
   if (!(event instanceof MouseEvent)) return;
   event.stopPropagation();
   edgeDisconnect.value = { id: edge.id, x: event.clientX, y: event.clientY };

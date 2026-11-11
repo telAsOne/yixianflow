@@ -8,11 +8,13 @@ type YixianResponse = {
   id?: string;
   status?: string;
   progress?: number;
+  stage?: string;
+  continuation?: { color_status?: string; message?: string; original_asset_id?: string };
   error?: unknown;
   message?: string;
-  data?: { asset?: { id?: string; media_type?: string } };
+  data?: { asset?: { id?: string; media_type?: string }; id?: string; task_id?: string; status?: string; error?: unknown };
 };
-type YixianSnapshot = { base: string; body: { model: string; parameters: Record<string, unknown> } };
+type YixianSnapshot = { base: string; body: { model: string; parameters: Record<string, unknown> }; continuation?: { request_id: string; source: { asset_id: string } | { task_id: string } } };
 
 export const commonImageRatios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
 const imageSizePixels = new Map([["1K", "1024x1024"], ["2K", "2048x2048"], ["4K", "3840x2160"]]);
@@ -95,10 +97,13 @@ async function createSnapshot(context: ProviderContext, base: string, headers: R
   const images = request.images ?? [];
   const videos = request.videos ?? [];
   const audios = request.audios ?? [];
+  const imageCount = images.length + (request.continuation ? 1 : 0);
+  if (request.continuation && (!Number.isSafeInteger(request.continuation.videoIndex) || request.continuation.videoIndex < 0 || !videos[request.continuation.videoIndex]))
+    throw new Error("续接来源必须是已添加的视频参考");
   const count = images.length + videos.length + audios.length;
   const matches = (mode: ImageMode | VideoMode) => {
     if (Array.isArray(mode)) return !request.firstFrame && !request.lastFrame && count > 0
-      && [["image", images.length], ["video", videos.length], ["audio", audios.length]].every(([type, count]) =>
+      && [["image", imageCount], ["video", videos.length], ["audio", audios.length]].every(([type, count]) =>
         Number(count) <= Number(mode.find(value => value.startsWith(type + "Reference:"))?.split(":")[1] ?? 0));
     if (mode === "text") return count === 0 && !request.firstFrame && !request.lastFrame;
     if (mode === "singleImage") return images.length === 1 && !videos.length && !audios.length && !request.firstFrame && !request.lastFrame;
@@ -110,7 +115,7 @@ async function createSnapshot(context: ProviderContext, base: string, headers: R
   const modes = model.mode ?? [];
   if (!modes.some(mode => (request.mode === undefined || JSON.stringify(mode) === JSON.stringify(request.mode)) && matches(mode)))
     throw new Error("参考素材与模型声明的生成模式或数量不匹配");
-  if (images.length < (model.minReferenceImages ?? 0)) throw new Error(`此模型至少需要 ${model.minReferenceImages} 张参考图片`);
+  if (imageCount < (model.minReferenceImages ?? 0)) throw new Error(`此模型至少需要 ${model.minReferenceImages} 张参考图片`);
   if (request.other && Object.keys(request.other).length || request.watermark !== undefined) throw new Error("此模型没有声明这些高级参数");
   const duration = request.duration ?? model.defaultDuration;
   const resolution = request.resolution ?? model.defaultResolution;
@@ -137,8 +142,15 @@ async function createSnapshot(context: ProviderContext, base: string, headers: R
     ["first_frame", request.firstFrame], ["last_frame", request.lastFrame],
   ] as [string, MediaInput | undefined][]) {
     if (!input) continue;
+    if (request.continuation?.sourceTaskId && field === `ref_video_${request.continuation.videoIndex}`) continue;
     if (input.type !== "url" || !input.assetId) throw new Error("参考素材尚未上传到 UnionAIGC 平台");
     parameters[field] = { asset_id: input.assetId };
+  }
+  if (request.continuation) {
+    const field = `ref_video_${request.continuation.videoIndex}`;
+    const source = request.continuation.sourceTaskId ? { task_id: request.continuation.sourceTaskId } : parameters[field] as { asset_id: string };
+    delete parameters[field];
+    return { base, body: { model: request.model, parameters }, continuation: { request_id: context.videoTask!.id, source } };
   }
   return { base, body: { model: request.model, parameters } };
 }
@@ -239,14 +251,24 @@ export default {
     if (task.state.phase === "failed") throw new Error(task.state.error || "UnionAIGC 原任务已失败，请确认后发起新生成");
     if (task.state.retryAt && task.state.retryAt > Date.now()) await wait(this, task.state.retryAt - Date.now());
     if (!task.state.taskId) {
-      if (task.state.phase !== "prepared") throw new Error("UnionAIGC 提交受理状态尚未确认且没有任务编号，请到视频专栏核查；恢复不会重新提交生成");
       const snapshot: YixianSnapshot = task.requestSaved ? JSON.parse(await task.readRequest()) : await createSnapshot(this, base, headers, request);
+      if (task.state.phase !== "prepared" && !(snapshot.continuation && task.state.phase === "submitting")) throw new Error("UnionAIGC 提交受理状态尚未确认且没有任务编号，请到视频专栏核查；恢复不会重新提交生成");
       if (snapshot.base !== base) throw new Error("恢复任务须使用原 UnionAIGC API 地址");
       if (!task.requestSaved) await task.saveRequest(JSON.stringify(snapshot));
       // ACT: UnionAIGC 未提供提交幂等查询；提交前持久化状态，回执丢失时停止，避免重复付费生成。
       this.signal?.throwIfAborted();
       await task.update({ phase: "submitting", retryAt: undefined, error: undefined });
-      const { response, value } = await apiRequest(this, `${base}/v1/videos`, headers, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot.body) });
+      const endpoint = snapshot.continuation ? "/v1/video-continuations" : "/v1/videos";
+      const submission = await apiRequest(this, `${base}${endpoint}`, headers, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...snapshot.body, ...snapshot.continuation }) });
+      const response = submission.response;
+      const value: YixianResponse = snapshot.continuation && submission.value.success === true
+        ? { id: submission.value.data?.task_id, status: submission.value.data?.status, error: submission.value.data?.error }
+        : submission.value;
+      if (snapshot.continuation && value.status === "failed") {
+        const error = this.tool.errorMessage(value) || "续接提交失败，请查看原记录";
+        await task.update({ phase: "failed", error });
+        throw new Error(error);
+      }
       if (!response.ok || typeof value.id !== "string" || !value.id.trim() || value.id.length > 2048) {
         const message = responseMessage(this, response, value);
         const rejected = response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status) && !value.id;
@@ -282,15 +304,21 @@ export default {
       }
       failures = 0;
       if (value.id !== task.state.taskId) throw new Error("UnionAIGC 返回的任务编号不匹配，已保留原任务");
+      const colorStatus = value.continuation?.color_status;
+      const continuation = colorStatus ? {
+        status: colorStatus === "applied" ? "applied" as const : colorStatus === "skipped" ? "skipped" as const : "running" as const,
+        message: colorStatus === "applied" || colorStatus === "skipped" ? "视频已完成" : "处理中",
+        originalAssetId: value.continuation?.original_asset_id || undefined,
+      } : undefined;
       if (value.status === "failed") {
         const error = this.tool.errorMessage(value) || "UnionAIGC 视频生成失败";
         await task.update({ phase: "failed", error, retryAt: undefined });
         throw new Error(error);
       }
-      if (value.status === "completed") { await task.update({ phase: "downloading", progress: 100, retryAt: undefined, error: undefined }); break; }
+      if (value.status === "completed") { await task.update({ phase: "downloading", progress: 100, retryAt: undefined, error: undefined, continuation }); break; }
       if (!["queued", "in_progress"].includes(value.status ?? "")) throw new Error("UnionAIGC 返回未知任务状态，已保留原任务，请稍后恢复查询");
       const progress = typeof value.progress === "number" && Number.isFinite(value.progress) && value.progress >= 0 && value.progress <= 100 ? value.progress : undefined;
-      await task.update({ phase: value.status === "queued" ? "queued" : "in_progress", progress, retryAt: undefined, error: undefined });
+      await task.update({ phase: value.stage === "postprocessing" ? "postprocessing" : value.status === "queued" ? "queued" : "in_progress", progress, retryAt: undefined, error: undefined, continuation });
       await wait(this, 5000);
     }
     return [await task.download(`${taskUrl}/content`, headers, "gateway")];

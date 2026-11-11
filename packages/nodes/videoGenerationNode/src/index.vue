@@ -13,6 +13,7 @@
     :bottomWidth="660"
     :style="{ width: videoWidth ? `${videoWidth + 18}px` : undefined }">
     <template #topActions>
+      <el-button v-if="createVideoContinuation" text :disabled="!outputFile || generating || deleting || uploading" @click.stop="createVideoContinuation(id).catch(error => showNodeError(error, '创建续接节点失败'))">续接</el-button>
       <el-button :icon="IconMusic" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="actions?.open('extractAudio')">提取音轨</el-button>
       <el-button :icon="IconLayersSubtract" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="actions?.open('separate')">分离音视频</el-button>
       <el-button :icon="IconScissors" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="actions?.open('trim')">截取片段</el-button>
@@ -62,11 +63,15 @@
           {{ selectedMode === "startFrameOptional" ? "仅一张图片时作为尾帧；两张图片按顺序作为首帧、尾帧" : "图片引用按顺序作为首帧、尾帧" }}<template v-if="selectedModel?.referenceImageInput === 'url'">，图片节点在前、下方链接在后</template>
         </div>
         <h3PromptEditor v-if="isH3Prompt" v-model="data.h3Prompt" v-model:prompt="data.prompt" v-model:promptModel="data.promptModel" v-model:duration="data.duration"
-          :references="h3ReferenceList" :voices="isZealmanU06 ? zealmanOptions?.voices : undefined" :remoteLibrary="isZealmanU06"
+          :references="h3ReferenceList" :voices="isZealmanU06 ? zealmanOptions?.voices : undefined" :remoteLibrary="isZealmanU06" :continuationSupported="false"
           :disabled="deleting || uploadingReferences || taskChecking || zealmanEnqueuing || (!isZealmanU06 && generating)"
           @upload="uploadReferences()" @replaceReference="uploadReferences" @clearReferences="clearReferences" @openLibrary="libraryVisible = true"
-          @swapReferences="swapH3References" @removeReference="removeH3Reference" @referencePreview="(item, url, original) => item.input && setReferencePreview(item.input, url, original)" />
+          @swapReferences="swapH3References" @removeReference="removeH3Reference" @referencePreview="(item, url, original) => item.input && setReferencePreview(item.input, url, original)"
+          @continuation="changeContinuation" @uploadContinuation="uploadReferences(continuationReference, { continuation: true })" @dropContinuation="dropContinuation" />
         <promptInput v-else-if="selectedModel || !data.model" v-model="data.promptModel" v-model:text="data.prompt" :references="referenceMentions" expandable />
+        <div v-if="videoTask?.phase === 'completed' && videoTask.continuation?.originalPath" class="continuationResult">
+          <el-button v-if="videoTask.phase === 'completed' && videoTask.continuation.originalPath" text size="small" @click="outputs.video = { dataType: 'VIDEO', value: { url: videoTask!.continuation!.originalPath!, mimeType: 'video/mp4' } }">采用原片</el-button>
+        </div>
         <zealmanSettings
           v-if="isZealmanU06"
           v-model="data.zealmanSettings"
@@ -219,18 +224,21 @@ defineOptions({
   icon: IconCameraAi,
   handles: [
     { id: "in", type: "target", dataType: ["IMAGE", "VIDEO", "AUDIO", "STRING"], label: "图片、视频、音频、文本输入" },
+    { id: "continuation", type: "target", dataType: "VIDEO", label: "续接视频输入" },
     { id: "video", type: "source", dataType: "VIDEO", label: "视频输出" },
   ] satisfies NodeHandle[],
 });
 const vLoading = ElLoading.directive;
-const { findNode } = useVueFlow();
-const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview } = useNode({
+const { findNode, addEdges, removeEdges, getEdges } = useVueFlow();
+const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview, handles } = useNode({
   label: "视频生成",
 });
 const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
+const createVideoContinuation = inject<(sourceId: string) => Promise<{ nodeId: string; message: string }>>("createVideoContinuation");
 const creatingGeneration = ref(false);
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; promptReviewRun?: PromptReviewRun; promptReviewMedia: boolean; promptReviewAudio: boolean; promptReviewModel: string; submittedPromptReview?: PromptReviewSubmission });
+const data = computed(() => node.data as { continuationBinding?: { source: string; sourceHandle: string; edgeId: string }; prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; promptReviewRun?: PromptReviewRun; promptReviewMedia: boolean; promptReviewAudio: boolean; promptReviewModel: string; submittedPromptReview?: PromptReviewSubmission });
+if (!data.value.continuationBinding) handles.value = handles.value.filter(handle => handle.id !== "continuation");
 const rememberPreferences = useGenerationPreferences("video", () => data.value);
 const reviewModels = ref<{ modelId: string; label: string }[]>([]);
 data.value.promptReviewMedia ??= true;
@@ -255,7 +263,11 @@ const zealmanError = ref("");
 const zealmanEnqueuing = ref(false);
 const activeQueueId = ref("");
 let queuePaused = true;
-const { refList, referenceMentions, setReferencePreview, removeReference: disconnectReference } = useNodeReferences("in", () => data.value.h3Prompt.attachments.map(item => ({ dataType: item.dataType, value: item.value, source: item.source ?? `h3:${item.id}`, sourceHandle: item.sourceHandle ?? "out" })));
+const continuationInputs = ref<NodeInputValue[]>([]);
+const { refList, referenceMentions, setReferencePreview, removeReference: disconnectReference } = useNodeReferences("in", () => [
+  ...data.value.h3Prompt.attachments.map(item => ({ dataType: item.dataType, value: item.value, source: item.source ?? `h3:${item.id}`, sourceHandle: item.sourceHandle ?? "out" })),
+  ...continuationInputs.value,
+]);
 const { models, modelsLoading, modelGroups, loadModels } = useMediaModels("video", data, () => generating.value || deleting.value, ai.getMediaModels);
 const { uploading, replaceOutput } = useOutputReplace("video", files, () => generating.value || deleting.value,
   value => { outputs.value.video = { dataType: "VIDEO", value }; });
@@ -275,7 +287,7 @@ const taskChecking = ref(true);
 const taskStatusError = ref("");
 const pendingTask = computed(() => !!videoTask.value && !["completed", "failed"].includes(videoTask.value.phase));
 const submissionUnconfirmed = computed(() => videoTask.value?.phase === "submitting" && !videoTask.value.taskId && !videoTask.value.running);
-const taskPhaseLabel = computed(() => videoTask.value ? ({ prepared: "准备提交", submitting: "确认提交回执", queued: "排队中", in_progress: "生成中", downloading: "保存原片中", completed: "原片已保存", failed: "原任务失败" })[videoTask.value.phase] : "");
+const taskPhaseLabel = computed(() => videoTask.value ? ({ prepared: "准备提交", submitting: "确认提交回执", queued: "排队中", in_progress: "生成中", downloading: "保存视频中", postprocessing: "处理中", completed: "视频已保存", failed: "原任务失败" })[videoTask.value.phase] : "");
 let taskTimer: ReturnType<typeof setTimeout> | undefined;
 let taskWorkspaceDirectory = "";
 let resumeWhenReady = false;
@@ -284,7 +296,10 @@ const selectedModel = computed(() => models.value.find((item) => JSON.stringify(
 const isZealmanU06 = computed(() => selectedModel.value?.providerId === "zealmanH3" && selectedModel.value.modelId === "u06");
 const isH3Prompt = computed(() => selectedModel.value?.providerId === "yixianVideo" && selectedModel.value.modelId.startsWith("yixian-h3-"));
 const h3VideoReferenceLimit = computed(() => Math.max(0, ...(selectedModel.value?.mode ?? []).filter(Array.isArray).flat().filter(item => item.startsWith("videoReference:")).map(item => Number(item.split(":")[1]))));
+const continuationSupported = computed(() => selectedModel.value?.providerId === "yixianVideo" && (selectedModel.value?.mode ?? []).some(mode => Array.isArray(mode)
+  && mode.some(item => /^videoReference:[1-9]/.test(item)) && mode.some(item => /^imageReference:[1-9]/.test(item))));
 const h3ReferenceList = computed(() => h3References([...refList.value, ...referenceUrls(selectedModel.value).map(url => ({ source: `url:${url}`, sourceHandle: "out", dataType: "IMAGE" as const, value: { url, mimeType: "image/jpeg" } }))], data.value.h3Prompt, isZealmanU06.value ? zealmanOptions.value?.voices ?? [] : undefined, referenceMentions.value));
+const continuationReference = computed(() => h3ReferenceList.value.find(item => item.id === data.value.h3Prompt.continuation?.referenceId));
 watch(() => isH3Prompt.value ? h3ReferenceList.value.map(item => ({ ...item })) : undefined, (references, previous) => {
   if (!references) return;
   if (previous?.length === references.length && references.every((item, index) => item.id === previous[index].id && item.value === previous[index].value)) return;
@@ -299,11 +314,81 @@ const ratioOptions = computed(() => selectedModel.value?.videoRatios?.length ? s
 const selectedMode = computed(() => selectedModel.value?.mode?.find((item) => JSON.stringify(item) === data.value.mode) as NodeVideoRequest["mode"]);
 const frameMode = computed(() => ["startEndRequired", "endFrameOptional", "startFrameOptional"].includes(String(selectedMode.value)));
 const mediaCounts = computed(() => ({
-  image: refList.value.filter((item) => item.dataType === "IMAGE").length,
+  image: refList.value.filter((item) => item.dataType === "IMAGE").length + (data.value.continuationBinding ? 1 : 0),
   video: refList.value.filter((item) => item.dataType === "VIDEO").length,
   audio: refList.value.filter((item) => item.dataType === "AUDIO").length + (isZealmanU06.value ? data.value.h3Prompt.voices.length : 0),
 }));
 const matchingModes = computed(() => getMatchingModes(selectedModel.value));
+
+nodeEvent.on("input:continuation", values => {
+  const previous = continuationInputs.value;
+  continuationInputs.value = values;
+  if (!data.value.continuationBinding) return;
+  if (values.length === 1) data.value.h3Prompt.continuation = { referenceId: referenceKey(values[0]!) };
+  else if (previous.some(item => referenceKey(item) === data.value.h3Prompt.continuation?.referenceId)) data.value.h3Prompt.continuation = undefined;
+});
+node.isValidTargetPos = connection => {
+  if (connection.targetHandle !== "continuation") return true;
+  const binding = data.value.continuationBinding;
+  return !!binding && binding.source === connection.source && binding.sourceHandle === connection.sourceHandle;
+
+
+};
+
+function setContinuation(referenceId?: string) {
+  const binding = data.value.continuationBinding;
+  const expected = binding && encodeURIComponent(JSON.stringify([binding.source, binding.sourceHandle]));
+  if (!binding || referenceId !== expected) throw new Error("续接来源已固定；普通视频请点击续接创建新节点");
+  if (deleting.value || uploadingReferences.value || generating.value || pendingTask.value) throw new Error("节点正在处理，请稍后修改续接来源");
+  if (referenceId) {
+    if (!continuationSupported.value) throw new Error("当前 API 模式不支持同时输入图片与视频参考");
+    if (!refList.value.some(item => referenceKey(item) === referenceId && item.dataType === "VIDEO")) throw new Error("请选择当前节点已引用的视频");
+    const counts = { image: refList.value.filter(item => item.dataType === "IMAGE").length + referenceUrls(selectedModel.value).length + 1,
+      video: refList.value.filter(item => item.dataType === "VIDEO").length, audio: mediaCounts.value.audio };
+    if (!(selectedModel.value?.mode ?? []).some(mode => Array.isArray(mode) && Object.entries(counts).every(([kind, count]) => count <= Number(mode.find(value => value.startsWith(`${kind}Reference:`))?.split(":")[1] ?? 0))))
+      throw new Error("参考素材数量超过当前模型上限，请减少素材");
+  }
+  for (const edge of getEdges.value.filter(edge => edge.target === id && edge.targetHandle === "continuation")) {
+    if (encodeURIComponent(JSON.stringify([edge.source, edge.sourceHandle])) === referenceId) continue;
+    const exists = getEdges.value.some(item => item.target === id && item.targetHandle === "in" && item.source === edge.source && item.sourceHandle === edge.sourceHandle);
+    if (!exists) addEdges([{ ...edge, id: crypto.randomUUID(), targetHandle: "in" }]);
+    removeEdges([edge.id]);
+  }
+  data.value.h3Prompt.continuation = referenceId ? { referenceId } : undefined;
+}
+function changeContinuation(item?: H3Reference) {
+  try { setContinuation(item?.id); } catch (error) { showNodeError(error, "续接来源设置失败"); }
+}
+
+async function dropContinuation(transfer: DataTransfer) {
+  const dropped = Array.from(transfer.files);
+  const assetPath = transfer.getData("application/toonflow-asset");
+  const referenceId = transfer.getData("application/x-unionflow-h3-reference");
+  try {
+    if (!continuationSupported.value || uploadingReferences.value || generating.value || pendingTask.value || deleting.value) throw new Error("当前节点不能修改续接来源");
+    if (dropped.length) { uploadReferences(continuationReference.value, { continuation: true, files: dropped }); return; }
+    if (referenceId) {
+      const [source, sourceHandle] = JSON.parse(decodeURIComponent(referenceId)) as [string, string];
+      if (source === id) throw new Error("不能把节点连接到自身，请从素材库选择已有视频");
+      const output = findNode(source)?.data.outputs?.[sourceHandle];
+      if (output?.dataType !== "VIDEO") throw new Error("此输出不是可用的视频");
+      const counts = { image: refList.value.filter(item => item.dataType === "IMAGE").length + referenceUrls(selectedModel.value).length + 1,
+        video: refList.value.filter(item => item.dataType === "VIDEO").length + 1 - (continuationReference.value ? 1 : 0), audio: mediaCounts.value.audio };
+      if (!(selectedModel.value?.mode ?? []).some(mode => Array.isArray(mode) && Object.entries(counts).every(([kind, count]) => count <= Number(mode.find(value => value.startsWith(`${kind}Reference:`))?.split(":")[1] ?? 0))))
+        throw new Error("参考素材数量超过当前模型上限，请减少素材");
+      if (continuationReference.value?.input) removeReference(continuationReference.value.input);
+      addEdges([{ id: crypto.randomUUID(), source, sourceHandle, target: id, targetHandle: "continuation" }]);
+      return;
+    }
+    if (!assetPath) throw new Error("请拖入视频素材或连接视频节点输出");
+    const extension = assetPath.split(".").at(-1)?.toLowerCase();
+    const mimeType = ({ mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska", avi: "video/x-msvideo" } as Record<string, string>)[extension ?? ""];
+    if (!mimeType) throw new Error("续接位置只接收视频素材");
+    if (!continuationSupported.value || generating.value || pendingTask.value || deleting.value) throw new Error("当前节点不能修改续接来源");
+    const buffer = await files.getWorkspaceFiles().read(assetPath);
+    uploadReferences(continuationReference.value, { continuation: true, files: [new File([buffer], assetPath.split(/[\\/]/).at(-1)!, { type: mimeType })] });
+  } catch (error) { showNodeError(error, "续接视频导入失败"); }
+}
 
 function zealmanDefaults(options: ZealmanOptions) {
   const defaults = options.defaults;
@@ -465,9 +550,12 @@ async function applyReviewEdits(edits: PromptReviewEdit[]) {
 }
 
 function removeReference(item: NodeInputValue) {
+  if (data.value.continuationBinding?.source === item.source && data.value.continuationBinding?.sourceHandle === item.sourceHandle) throw new Error("续接来源不能移除，请删除续接节点后重新创建");
   if (uploadingReferences.value) return;
   data.value.h3Prompt.attachments = data.value.h3Prompt.attachments.filter(attachment => (attachment.source ?? `h3:${attachment.id}`) !== item.source || (attachment.sourceHandle ?? "out") !== item.sourceHandle);
   disconnectReference(item);
+  removeEdges(getEdges.value.filter(edge => edge.target === id && edge.targetHandle === "continuation" && edge.source === item.source && edge.sourceHandle === item.sourceHandle).map(edge => edge.id));
+  if (referenceKey(item) === data.value.h3Prompt.continuation?.referenceId) data.value.h3Prompt.continuation = undefined;
 }
 function removeH3Reference(item: H3Reference) {
   if (uploadingReferences.value || deleting.value || zealmanEnqueuing.value) return;
@@ -505,14 +593,19 @@ function swapH3References(first: H3Reference, second: H3Reference) {
   }
 }
 function clearReferences() {
-  for (const item of [...refList.value]) removeReference(item);
+  for (const item of [...refList.value]) {
+    if (data.value.continuationBinding?.source === item.source && data.value.continuationBinding?.sourceHandle === item.sourceHandle) continue;
+    removeReference(item);
+  }
   data.value.h3Prompt.voices = [];
   data.value.h3Prompt.audioBindings = {};
   data.value.referenceImageUrlsText = "";
 }
-async function validateReferenceFiles(uploads: { type: string; size: number }[], replacement?: H3Reference) {
+async function validateReferenceFiles(uploads: { type: string; size: number }[], replacement?: H3Reference, continuation = false) {
   const limits = Object.fromEntries(["image", "video", "audio"].map(type => [type, Math.max(0, ...(selectedModel.value?.mode ?? []).filter(Array.isArray).flat().filter(item => item.startsWith(type + "Reference:")).map(item => Number(item.split(":")[1])))])) as Record<"image" | "video" | "audio", number>;
   const counts = { ...mediaCounts.value, image: mediaCounts.value.image + referenceUrls(selectedModel.value).length };
+  if (continuation && !data.value.h3Prompt.continuation) counts.image++;
+  if (counts.image > limits.image) throw new Error("参考图片数量超过当前模型上限，请减少图片");
   if (replacement) counts[replacement.category === "picture" ? "image" : replacement.category as "video" | "audio"]--;
   for (const file of uploads) {
     const kind = file.type.split("/")[0];
@@ -547,39 +640,47 @@ async function importPanelReferences(source: "input" | "output", items: ZealmanA
   } finally { uploadingReferences.value = false; }
 }
 
-function uploadReferences(replacement?: H3Reference) {
+function uploadReferences(replacement?: H3Reference, options: { continuation?: boolean; files?: File[] } = {}) {
   if (uploadingReferences.value || deleting.value) return;
+  if (options.continuation && (!continuationSupported.value || generating.value || pendingTask.value)) { showNodeError(new Error("当前节点不能修改续接来源"), "续接视频导入失败"); return; }
   const input = document.createElement("input");
   input.type = "file";
-  input.multiple = !replacement;
+  input.multiple = !replacement && !options.continuation;
   const limits = Object.fromEntries(["image", "video", "audio"].map(type => [type, Math.max(0, ...(selectedModel.value?.mode ?? []).filter(Array.isArray).flat().filter(item => item.startsWith(type + "Reference:")).map(item => Number(item.split(":")[1])))])) as Record<"image" | "video" | "audio", number>;
-  input.accept = replacement ? `${replacement.category === "picture" ? "image" : replacement.category}/*` : Object.entries(limits).filter(([, count]) => count).map(([kind]) => `${kind}/*`).join(",");
+  input.accept = options.continuation ? "video/*" : replacement ? `${replacement.category === "picture" ? "image" : replacement.category}/*` : Object.entries(limits).filter(([, count]) => count).map(([kind]) => `${kind}/*`).join(",");
   const directory = files.getWorkspaceDirectory();
   const model = data.value.model;
-  input.onchange = async () => {
+  const importFiles = async (uploads: File[]) => {
     uploadingReferences.value = true;
     try {
-      const uploads = Array.from(input.files ?? []);
-      await validateReferenceFiles(uploads, replacement);
+      if (!uploads.length) return;
+      if (options.continuation && (uploads.length !== 1 || !uploads[0]!.type.startsWith("video/"))) throw new Error("续接位置一次只能放入一个视频");
+      await validateReferenceFiles(uploads, replacement, options.continuation);
       for (const file of uploads) {
         if (disposed || directory !== files.getWorkspaceDirectory() || model !== data.value.model) throw new Error("工作区或模型已切换，上传已停止");
         const path = await files.uploadFile(file);
         if (disposed || directory !== files.getWorkspaceDirectory() || model !== data.value.model) return;
         const local = replacement?.input && data.value.h3Prompt.attachments.find(item => (item.source ?? `h3:${item.id}`) === replacement.input!.source && (item.sourceHandle ?? "out") === replacement.input!.sourceHandle);
-        if (local) { local.value = { url: path, mimeType: file.type }; local.name = file.name; }
+        let referenceId: string;
+        if (local) { local.value = { url: path, mimeType: file.type }; local.name = file.name; referenceId = referenceKey({ source: local.source ?? `h3:${local.id}`, sourceHandle: local.sourceHandle ?? "out", dataType: local.dataType, value: local.value }); }
         else {
           const attachment = { id: crypto.randomUUID(), name: file.name, dataType: file.type.split("/")[0].toUpperCase() as "IMAGE" | "VIDEO" | "AUDIO", value: { url: path, mimeType: file.type }, source: replacement?.input?.source, sourceHandle: replacement?.input?.sourceHandle };
           data.value.h3Prompt.attachments.push(attachment);
+          referenceId = referenceKey({ source: attachment.source ?? `h3:${attachment.id}`, sourceHandle: attachment.sourceHandle ?? "out", dataType: attachment.dataType, value: attachment.value });
           if (replacement?.input) {
             if (replacement.input.source.startsWith("url:")) data.value.referenceImageUrlsText = referenceUrls(selectedModel.value).filter(url => `url:${url}` !== replacement.input!.source).join("\n");
             disconnectReference(replacement.input);
+            removeEdges(getEdges.value.filter(edge => edge.target === id && edge.targetHandle === "continuation" && edge.source === replacement.input!.source && edge.sourceHandle === replacement.input!.sourceHandle).map(edge => edge.id));
           }
         }
+        if (options.continuation) data.value.h3Prompt.continuation = { referenceId };
       }
     } catch (cause) { showNodeError(cause, "参考素材上传失败"); }
     finally { uploadingReferences.value = false; }
   };
-  input.click();
+  input.onchange = () => { void importFiles(Array.from(input.files ?? [])); };
+  if (options.files) void importFiles(options.files);
+  else input.click();
 }
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
 const mediaPreview = useMediaPreview(outputFile);
@@ -644,13 +745,18 @@ async function startGeneration() {
   const referenceImageUrls = referenceUrls(choice);
   validateReferenceUrls(referenceImageUrls);
   const imageCount = images.length + referenceImageUrls.length;
+  const continuation = data.value.continuationBinding ? data.value.h3Prompt.continuation : undefined;
+  if (data.value.continuationBinding && (!continuation || frameMode.value)) throw new Error("续接来源不可用，或所选模型不支持续接");
+  const videoInputs = refList.value.filter(item => item.dataType === "VIDEO");
+  const continuationIndex = continuation ? videoInputs.findIndex(item => referenceKey(item) === continuation.referenceId) : -1;
+  if (continuation && (!continuationSupported.value || continuationIndex < 0)) throw new Error("续接来源已断开或当前模型不支持续接，请重新选择视频");
   const frames = [...images, ...referenceImageUrls.map(url => ({ url }))];
-  if (choice.minReferenceImages !== undefined && imageCount < choice.minReferenceImages) throw new Error(`当前模型至少需要 ${choice.minReferenceImages} 张参考图片`);
-  if (choice.referenceImageInput === "url" && imageCount > 9) throw new Error("本地参考图与 HTTPS 链接合计最多 9 张");
+  if (choice.minReferenceImages !== undefined && imageCount + (continuation ? 1 : 0) < choice.minReferenceImages) throw new Error(`当前模型至少需要 ${choice.minReferenceImages} 张参考图片`);
+  if (choice.referenceImageInput === "url" && imageCount + (continuation ? 1 : 0) > 9) throw new Error(`当前最多支持 ${continuation ? 8 : 9} 张参考图片`);
   if (choice.mode?.length && !matchingModes.value.length) throw new Error("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用");
   const input: Omit<NodeVideoRequest, "directory"> = {
     providerId: choice.providerId,
-    ...(choice.taskRecovery ? { operationId: crypto.randomUUID() } : {}),
+    ...(choice.taskRecovery || continuation ? { operationId: crypto.randomUUID() } : {}),
     modelId: choice.modelId,
     prompt: generationPrompt.value,
     mode: selectedMode.value,
@@ -666,6 +772,7 @@ async function startGeneration() {
     firstFrame: frameMode.value && (selectedMode.value !== "startFrameOptional" || frames.length > 1) ? frames[0] : undefined,
     lastFrame: frameMode.value ? frames[selectedMode.value === "startFrameOptional" && frames.length === 1 ? 0 : 1] : undefined,
     videos: refList.value.flatMap((item) => item.dataType === "VIDEO" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []),
+    ...(continuation ? { continuation: { videoIndex: continuationIndex } } : {}),
     audios: refList.value.flatMap((item) => item.dataType === "AUDIO" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []),
   };
   const reviewAtSubmission = promptReviewSubmission();
@@ -882,6 +989,8 @@ async function getConfig() {
       mode: selectedMode.value,
       generateAudio: data.value.generateAudio,
       seed: data.value.seed ?? null,
+      continuation: data.value.h3Prompt.continuation ?? null,
+      referenceUsage: { ...mediaCounts.value, image: mediaCounts.value.image + referenceUrls(selectedModel.value).length },
       ...(isZealmanU06.value ? { other: { ...data.value.zealmanSettings, voiceReferences: data.value.h3Prompt.voices }, queueLength: data.value.zealmanQueue.length } : {}),
       ...(isH3Prompt.value ? { subjects: data.value.h3Prompt.subjects, audioBindings: data.value.h3Prompt.audioBindings, references: h3ReferenceList.value.map(item => ({
         id: item.id, label: item.name, tag: item.value, sourceNodeId: item.input?.source,
@@ -948,7 +1057,7 @@ registerGenerationTools({
     if (!isZealmanU06.value && (generating.value || pendingTask.value)) throw new Error("节点存在未完成任务，请先查询或恢复原视频任务；其他创作可使用 createNewGeneration");
     setReviewPrompt(value);
   },
-  updateDescription: "修改视频配置，不启动生成。H3 的 subjects 使用 getConfig 返回的 references.id 绑定主体；同一人物的多个形态放在同一主体，referenceNotes 按引用 id 写清每个形态适用的镜头和状态。providerId 与 modelId 同时提供。seed 为非负安全整数，null 随机；U06 专属参数取自 videoOptions。mode 使用 matchingModes 原值，referenceImageUrls 须有实际能力支持",
+  updateDescription: "修改视频配置，不启动生成。H3 的 subjects 使用 getConfig 返回的 references.id 绑定主体；同一人物的多个形态放在同一主体，referenceNotes 按引用 id 写清每个形态适用的镜头和状态。续接须先调用来源节点的 continueVideo 创建固定来源的新节点，不能在配置中更换或取消来源。全部视频素材合计最多15秒、20MB。providerId 与 modelId 同时提供。seed 为非负安全整数，null 随机；U06 专属参数取自 videoOptions。mode 使用 matchingModes 原值，referenceImageUrls 须有实际能力支持",
   configSchema: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
@@ -964,6 +1073,7 @@ registerGenerationTools({
       accelerated: z.boolean().optional(), steps: z.number().int().min(1).max(99).optional(), upscale: z.boolean().optional(), forceVramCleanupBeforeVae: z.boolean().optional(),
     }).optional(),
     referenceImageUrls: z.array(z.string().min(1).max(8192)).max(9).optional(),
+    continuation: z.strictObject({ referenceId: z.string().min(1).max(2048) }).nullable().optional(),
     subjects: z.array(z.strictObject({
       id: z.number().int().min(1).max(128), name: z.string().trim().min(1).max(200),
       references: z.array(z.string().min(1).max(2048)).min(1).max(12),
@@ -1042,6 +1152,7 @@ registerGenerationTools({
     if (args.generateAudio !== undefined) data.value.generateAudio = args.generateAudio;
     if (args.seed !== undefined) data.value.seed = args.seed;
     if (args.subjects) data.value.h3Prompt.subjects = args.subjects;
+    if (args.continuation !== undefined) setContinuation(args.continuation?.referenceId);
     return getConfig();
   },
   generate: {
@@ -1080,6 +1191,12 @@ if (duplicateCanvasNode) nodeTools.register({
     signal?.throwIfAborted();
     return createNewGeneration();
   },
+});
+if (createVideoContinuation) nodeTools.register({
+  name: "continueVideo",
+  description: "从当前视频输出创建独立续接节点和固定来源连线，不提交生成。返回新节点编号；请在新节点填写后续提示词和生成设置，再调用生成。普通参考仍使用普通连接。",
+  parameters: z.strictObject({}),
+  execute(_args, { signal }) { signal?.throwIfAborted(); return createVideoContinuation(id); },
 });
 </script>
 

@@ -10,6 +10,7 @@
     fullscreenLabel="预览视频"
     @fullscreen="player?.enterFullscreen()">
     <template #topActions>
+      <el-button v-if="createVideoContinuation" text :disabled="!outputFile || uploading || exporting" @click.stop="continueVideo">续接</el-button>
       <el-button :icon="IconMusic" text :disabled="!outputFile || uploading || exporting || actions?.processing" @click.stop="actions?.open('extractAudio')">提取音轨</el-button>
       <el-button :icon="IconLayersSubtract" text :disabled="!outputFile || uploading || exporting || actions?.processing" @click.stop="actions?.open('separate')">分离音视频</el-button>
       <el-button :icon="IconScissors" text :disabled="!outputFile || uploading || exporting || actions?.processing" @click.stop="actions?.open('trim')">截取片段</el-button>
@@ -69,7 +70,7 @@
 import { validateMediaFiles } from "@toonflow/node-shared/mediaLimits";
 import { useMediaPreview } from "@toonflow/node-shared/useMediaPreview";
 import mediaPreviewStatus from "@toonflow/node-shared/mediaPreviewStatus";
-import { computed, nextTick, ref, watchEffect } from "vue";
+import { computed, inject, nextTick, ref, watchEffect } from "vue";
 import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
@@ -81,8 +82,19 @@ defineOptions({
   icon: IconVideo,
   handles: [{ id: "video", type: "source", dataType: "VIDEO", label: "视频输出" }] satisfies NodeHandle[],
 });
-const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, retainPreview } = useNode({
+const { id, node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, retainPreview } = useNode({
   label: "视频",
+});
+const createVideoContinuation = inject<(sourceId: string) => Promise<{ nodeId: string; message: string }>>("createVideoContinuation");
+async function continueVideo() {
+  try { if (!createVideoContinuation) throw new Error("画布尚未就绪"); await createVideoContinuation(id); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "创建续接节点失败"); }
+}
+if (createVideoContinuation) nodeTools.register({
+  name: "continueVideo",
+  description: "从视频输出创建独立续接节点与固定来源连接，不提交生成。返回新节点编号；填写其后续提示词和生成设置后再生成。",
+  parameters: z.strictObject({}),
+  execute(_args, { signal }) { signal?.throwIfAborted(); return createVideoContinuation(id); },
 });
 const fileInput = ref<HTMLInputElement>();
 const uploading = ref(false);

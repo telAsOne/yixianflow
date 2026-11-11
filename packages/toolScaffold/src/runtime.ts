@@ -111,6 +111,8 @@ export interface MediaGenerationRequest {
   images?: MediaReference[];
   referenceImageUrls?: string[];
   videos?: MediaReference[];
+  /** 续接来源仍是 videos 中的一项，另外预留一张自动末帧图片。 */
+  continuation?: { videoIndex: number; matchColor?: boolean };
   audios?: MediaReference[];
   firstFrame?: MediaReference | { url: string };
   lastFrame?: MediaReference | { url: string };
@@ -144,12 +146,13 @@ export interface VideoTaskStatus {
   operationId: string;
   providerId: string;
   modelId: string;
-  phase: "prepared" | "submitting" | "queued" | "in_progress" | "downloading" | "failed" | "completed";
+  phase: "prepared" | "submitting" | "queued" | "in_progress" | "downloading" | "postprocessing" | "failed" | "completed";
   taskId?: string;
   progress?: number;
   error?: string;
   running: boolean;
   result?: GeneratedMedia[];
+  continuation?: { status: "running" | "applied" | "skipped"; message?: string; originalPath?: string; originalAssetId?: string };
   updatedAt: number;
 }
 
