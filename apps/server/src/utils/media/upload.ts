@@ -23,13 +23,18 @@ export async function preparePlatformReferences(directory: string, references: R
   if (references.length > limits.maxReferencesPerRequest) invalid(t`参考素材最多 ${limits.maxReferencesPerRequest} 个`);
   const prepared: { path: string; size: number; modified: number; mediaType: Reference["mediaType"]; mimeType: string; name: string }[] = [];
   let total = 0;
+  let videoTotal = 0;
   for (const reference of references) {
     signal?.throwIfAborted();
     const { path } = await resolveWorkspacePath(directory, reference.path);
     const info = await stat(path);
-    const limit = limits[`${reference.mediaType}MaxBytes`];
+    const limit = reference.mediaType === "video" ? Math.min(limits.videoMaxBytes, 20 * 1024 * 1024) : limits[`${reference.mediaType}MaxBytes`];
     if (!info.isFile() || !info.size || info.size > limit) invalid(t`参考素材为空或超过 ${limit / 1024 / 1024} MiB`, 413);
     total += info.size;
+    if (reference.mediaType === "video") {
+      videoTotal += info.size;
+      if (videoTotal > 20 * 1024 * 1024) invalid("全部视频参考素材合计不能超过 20MB", 413);
+    }
     if (total > maxTotalBytes) invalid(t`参考素材合计不能超过 ${maxTotalBytes / 1024 / 1024} MiB`, 413);
     prepared.push({ path, size: info.size, modified: info.mtimeMs, mediaType: reference.mediaType, mimeType: reference.mimeType, name: basename(path) });
   }

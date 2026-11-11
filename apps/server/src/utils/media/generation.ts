@@ -8,13 +8,14 @@ import { getSettings } from "@/utils/conf";
 import { getMediaProvider, listMediaProviders, loadMediaProviderSource, mediaErrorMessage } from "@/utils/media/provider";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { beginWorkspaceOperation } from "@/utils/workspace/activity";
-import { runVideoTask } from "@/utils/media/videoTasks";
+import { getVideoContinuationSourceTaskId, runVideoTask } from "@/utils/media/videoTasks";
 export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
 import { file } from "@toonflow/file/bun";
 import { requireAccount, getAccount, getApiKey, getBaseUrl, getConfigState, refreshConfig } from "@/utils/account";
 import { detectMimeType } from "@/utils/media/mimeType";
+import { validateVideoContinuation } from "@/utils/media/continuation";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
 
 const maxMediaSize = 100 * 1024 * 1024;
@@ -214,14 +215,15 @@ async function generateMediaResult(
   const rules = Array.isArray(provider.rules) ? provider.rules : [];
   if (rules.some(rule => rule.field === "apiKey") && (typeof provider.config.apiKey !== "string" || !provider.config.apiKey.trim())) invalid("请先在媒体模型设置中配置供应商 API Key");
   if (!videoTask?.requestSaved) {
-    if (mediaType === "video" && typeof model.minReferenceImages === "number" && (request.images?.length ?? 0) + (request.referenceImageUrls?.length ?? 0) < model.minReferenceImages) invalid(`当前模型至少需要 ${model.minReferenceImages} 张参考图片`);
+    if (mediaType === "video") validateVideoContinuation(request, model);
+    if (mediaType === "video" && typeof model.minReferenceImages === "number" && (request.images?.length ?? 0) + (request.referenceImageUrls?.length ?? 0) + (request.continuation ? 1 : 0) < model.minReferenceImages) invalid(`当前模型至少需要 ${model.minReferenceImages} 张参考图片`);
     if (request.referenceImageUrls?.length && (mediaType !== "video" || model.referenceImageInput !== "url")) invalid("当前模型不支持参考图链接输入");
     if ([request.firstFrame, request.lastFrame].some(frame => frame && "url" in frame) && (mediaType !== "video" || model.referenceImageInput !== "url")) invalid("当前模型不支持首尾帧链接输入");
     if (mediaType === "video" && (request.mode === "startEndRequired" || Array.isArray(model.mode) && model.mode.length === 1 && model.mode[0] === "startEndRequired")) {
       if (!request.firstFrame || !request.lastFrame) invalid("首尾帧模式需要同时提供首帧和尾帧图片");
       if (request.images?.length || request.referenceImageUrls?.length || request.audios?.length || request.videos?.length) invalid("首尾帧模式不支持额外参考图片、音频或视频");
     }
-    if (mediaType === "video" && model.referenceImageInput === "url" && (request.images?.length ?? 0) + (request.referenceImageUrls?.length ?? 0) > 9) invalid("本地参考图与 HTTPS 链接合计最多 9 张");
+    if (mediaType === "video" && model.referenceImageInput === "url" && (request.images?.length ?? 0) + (request.referenceImageUrls?.length ?? 0) + (request.continuation ? 1 : 0) > 9) invalid("本地参考图、自动末帧与 HTTPS 链接合计最多 9 张");
     if (request.seed !== undefined && (mediaType !== "video" || model.supportsSeed !== true || !Number.isSafeInteger(request.seed) || request.seed < 0)) invalid("当前模型不支持 seed 或 seed 不是非负安全整数");
     if (mediaType === "video" && model.referenceAudioInput === "url") {
       const modes = Array.isArray(model.mode) ? model.mode.filter(Array.isArray) : [];
@@ -240,13 +242,18 @@ async function generateMediaResult(
   let videos: MediaInput[] | undefined;
   let firstFrame: MediaInput | undefined;
   let lastFrame: MediaInput | undefined;
+  let continuationSourceTaskId: string | undefined;
   if (!restoring) {
+    const source = request.continuation && request.videos?.[request.continuation.videoIndex];
+    if (source && request.providerId === "yixianVideo") {
+      continuationSourceTaskId = await getVideoContinuationSourceTaskId(directory, source.path, provider.config, signal);
+    }
     const frames = [request.firstFrame, request.lastFrame].filter((frame): frame is MediaReference => !!frame && "path" in frame);
     if (request.referenceImageUrls?.length || [request.firstFrame, request.lastFrame].some(frame => frame && "url" in frame)) invalid("UnionAIGC 参考素材须先保存到工作区");
     const references = [
       ...(request.images ?? []).map(item => ({ ...item, mediaType: "image" as const })),
       ...(request.audios ?? []).map(item => ({ ...item, mediaType: "audio" as const })),
-      ...(request.videos ?? []).map(item => ({ ...item, mediaType: "video" as const })),
+      ...(request.videos ?? []).filter((_, index) => !continuationSourceTaskId || index !== request.continuation?.videoIndex).map(item => ({ ...item, mediaType: "video" as const })),
       ...frames.map(item => ({ ...item, mediaType: "image" as const })),
     ];
     if (mediaType === "video" && model.referenceInput === "platformAsset") {
@@ -254,7 +261,8 @@ async function generateMediaResult(
       let index = request.images?.length ?? 0;
       images = uploaded.slice(0, index);
       audios = uploaded.slice(index, index += request.audios?.length ?? 0);
-      videos = uploaded.slice(index, index += request.videos?.length ?? 0);
+      videos = uploaded.slice(index, index += (request.videos?.length ?? 0) - (continuationSourceTaskId ? 1 : 0));
+      if (continuationSourceTaskId) videos.splice(request.continuation!.videoIndex, 0, { type: "url", url: "", mimeType: "video/mp4" });
       if (request.firstFrame) firstFrame = uploaded[index++];
       if (request.lastFrame) lastFrame = uploaded[index];
     } else if (mediaType === "image") {
@@ -273,6 +281,7 @@ async function generateMediaResult(
     : await provider.generateVideo!({
       model: request.modelId, prompt: request.prompt, images,
       videos, audios,
+      continuation: request.continuation ? { videoIndex: request.continuation.videoIndex, sourceTaskId: continuationSourceTaskId } : undefined,
       firstFrame, lastFrame,
       ratio: request.ratio, resolution: request.resolution, duration: request.duration,
       generateAudio: request.generateAudio, mode: request.mode, seed: request.seed,

@@ -81,11 +81,12 @@ interface ProviderImageTask {
 }
 
 interface ProviderVideoTaskState {
-  phase: "prepared" | "submitting" | "queued" | "in_progress" | "downloading" | "failed";
+  phase: "prepared" | "submitting" | "queued" | "in_progress" | "downloading" | "postprocessing" | "failed";
   taskId?: string;
   progress?: number;
   error?: string;
   retryAt?: number;
+  continuation?: { status: "running" | "applied" | "skipped"; message?: string; originalAssetId?: string };
 }
 
 type VideoDownloadSource = "original" | "publicCdn" | "gateway" | "publicHttpCdn";
@@ -209,6 +210,8 @@ interface ImageRequest extends MediaRequest {
 
 interface VideoRequest extends MediaRequest {
   prompt: string;
+  /** 由平台服务端准备续接素材，索引指向 videos 中的来源。 */
+  continuation?: { videoIndex: number; sourceTaskId?: string };
   seed?: number;
   /** 当前生成模式；参考模式数组声明各类参考媒体数量上限。 */
   mode?: VideoMode;

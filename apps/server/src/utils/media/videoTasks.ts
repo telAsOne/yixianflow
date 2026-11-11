@@ -1,6 +1,6 @@
 import { platformFetch } from "@/utils/account";
 import { createHash } from "node:crypto";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { constants, copyFile, createReadStream, link, mkdir, open, readFile, stat, unlink, writeAtomic } from "@toonflow/file";
 import { setTimeout as wait } from "node:timers/promises";
 import { z } from "zod";
@@ -12,14 +12,17 @@ import { lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/file
 const active = new Set<string>();
 const taskIdSchema = z.uuid();
 const stateSchema = z.object({
-  phase: z.enum(["prepared", "submitting", "queued", "in_progress", "downloading", "failed"]),
+  phase: z.enum(["prepared", "submitting", "queued", "in_progress", "downloading", "postprocessing", "failed"]),
   taskId: z.string().min(1).optional(), progress: z.number().min(0).max(100).optional(), error: z.string().optional(),
   retryAt: z.number().finite().positive().optional(),
+  continuation: z.object({ status: z.enum(["running", "applied", "skipped"]), message: z.string().optional(), originalAssetId: z.string().optional() }).optional(),
 });
 const recordSchema = z.object({
   version: z.literal(1), id: taskIdSchema, identity: z.string(), request: videoGenerationSchema,
   state: stateSchema, createdAt: z.number(), updatedAt: z.number(), finishedAt: z.number().optional(), lastError: z.string().optional(),
   result: z.array(z.object({ path: z.string(), mimeType: z.string(), mediaType: z.literal("video") })).optional(),
+  originalResult: z.array(z.object({ path: z.string(), mimeType: z.string(), mediaType: z.literal("video") })).optional(),
+  continuation: z.object({ status: z.enum(["running", "applied", "skipped"]), message: z.string().optional(), originalPath: z.string().optional() }).optional(),
   download: z.object({ validator: z.string().optional(), total: z.number().int().positive().optional(), source: z.string().optional() }).optional(),
 });
 type TaskRecord = z.infer<typeof recordSchema>;
@@ -69,8 +72,24 @@ export async function getVideoTask(cwd: string, outputDirectory: string): Promis
     startedAt: task.createdAt, endedAt: task.finishedAt ?? (task.result || task.state.phase === "failed" ? task.updatedAt : undefined),
     phase: task.result ? "completed" : task.state.phase, taskId: task.state.taskId,
     progress: task.result ? 100 : task.state.progress, error: task.state.error ?? task.lastError,
-    running: active.has(directory), result: task.result, updatedAt: task.updatedAt,
+    running: active.has(directory), result: task.result, continuation: task.state.continuation ?? task.continuation, updatedAt: task.updatedAt,
   };
+}
+
+// Reuse a remote result only while the current account and the exact published
+// local bytes still match its durable download. Edited or imported clips upload
+// as ordinary source media instead.
+export async function getVideoContinuationSourceTaskId(cwd: string, path: string, config: Record<string, unknown>, signal?: AbortSignal) {
+  const directory = await taskDirectory(cwd, dirname(path));
+  const task = await currentRecord(cwd, directory);
+  if (task?.request.providerId !== "yixianVideo" || !task.state.taskId || !task.result?.some(result => result.path === path)) return;
+  const identity = hash(canonical({ apiKey: String(config.apiKey ?? "").trim().replace(/^Bearer\s+/i, "").trim(), apiUrl: String(config.apiUrl ?? "").replace(/\/+$/, "") }));
+  if (task.identity !== identity) return;
+  const original = (await resolveWorkspacePath(cwd, relative(cwd, join(directory, `${task.id}.part`)))).path;
+  const source = (await resolveWorkspacePath(cwd, path)).path;
+  const saved = await stat(original).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return; throw error; });
+  const current = await stat(source);
+  if (saved?.isFile() && current.isFile() && saved.size === current.size && await fileDigest(original, signal) === await fileDigest(source, signal)) return task.state.taskId;
 }
 
 export async function getVideoTaskRequest(cwd: string, outputDirectory: string, operationId: string): Promise<MediaGenerationRequest> {
@@ -362,7 +381,7 @@ export async function runVideoTask(
       },
     };
     try {
-      const result = await generate(request, context);
+      const result: GeneratedMedia[] = await generate(request, context);
       if (result.length !== 1 || result[0]?.mediaType !== "video") invalid("视频任务应返回一条视频", 502);
       task.result = result as TaskRecord["result"];
       task.lastError = undefined;

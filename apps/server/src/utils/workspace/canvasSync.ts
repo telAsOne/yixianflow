@@ -122,7 +122,7 @@ export async function saveCanvas(directory: string, path: string, baseRevision: 
       const result = mergeCanvas(current, changes);
       if (result.conflicts.length) return { conflict: true as const, conflicts: result.conflicts, canvas: disk.canvas, revision: disk.revision };
       canvasSchema.parse(result.canvas);
-      try { validateCanvas(result.canvas); }
+      try { validateCanvas(result.canvas, disk.canvas); }
       catch (error) {
         if (baseRevision === disk.revision) throw Object.assign(error as Error, { status: 400 });
         return { conflict: true as const, conflicts: [], canvas: disk.canvas, revision: disk.revision,

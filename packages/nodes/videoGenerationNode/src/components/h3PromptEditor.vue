@@ -13,7 +13,10 @@
           <el-button text size="small" :disabled="editingDisabled || !references.length" @click="emit('clearReferences')">清空</el-button>
         </div>
       </div>
-      <h3ReferenceList v-if="references.length" :references="references" :subjects="state.subjects" :disabled="editingDisabled" :activeId="activeReferenceId"
+      <h3ReferenceList v-if="references.length || continuationSupported" :references="references" :subjects="state.subjects" :disabled="editingDisabled" :activeId="activeReferenceId"
+        :continuationSupported="continuationSupported" :continuationId="state.continuation?.referenceId"
+        @continuation="emit('continuation', $event)"
+        @uploadContinuation="emit('uploadContinuation')" @dropContinuation="emit('dropContinuation', $event)"
         @swap="swapReferences" @remove="emit('removeReference', $event)" @replace="emit('replaceReference', $event)" @inspect="previewReference = $event"
         @preview="(item, url, original) => emit('referencePreview', item, url, original)" @assignSubject="assignSubject" />
       <p v-if="references.length" class="referenceHint">给图片或视频中的主体取名；点「换位置」或拖到同类素材上交换，正文引用会跟着更新。</p>
@@ -116,10 +119,11 @@ import type { ZealmanVoice } from "../zealmanOptions";
 
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 type PromptSelection = { anchor: number; focus: number };
-const props = defineProps<{ references: H3Reference[]; voices?: ZealmanVoice[]; remoteLibrary?: boolean; disabled?: boolean }>();
+const props = defineProps<{ references: H3Reference[]; voices?: ZealmanVoice[]; remoteLibrary?: boolean; disabled?: boolean; continuationSupported?: boolean }>();
 const emit = defineEmits<{
   upload: []; clearReferences: []; replaceReference: [item: H3Reference]; removeReference: [item: H3Reference]; openLibrary: [];
   swapReferences: [first: H3Reference, second: H3Reference]; referencePreview: [item: H3Reference, url: string, original: string];
+  continuation: [item?: H3Reference]; uploadContinuation: []; dropContinuation: [transfer: DataTransfer];
 }>();
 const state = defineModel<H3PromptState>({ required: true });
 const prompt = defineModel<string>("prompt", { required: true });

@@ -169,6 +169,13 @@ export function useCanvasClipboard(flow: ReturnType<typeof useVueFlow>, options:
           throw new Error("请先安装并启用对应的节点插件");
         }
         const ids = new Map(snapshot.nodes.map(node => [node.id, crypto.randomUUID()]));
+        const edgeIds = new Map(snapshot.edges.map(edge => [edge.id, crypto.randomUUID()]));
+        for (const node of snapshot.nodes) {
+          const binding = node.data?.continuationBinding;
+          if (!binding) continue;
+          if (!ids.has(binding.source) || !edgeIds.has(binding.edgeId)) throw new Error("请将来源视频和续接节点一起复制，或从来源视频重新创建续接");
+          node.data.continuationBinding = { source: ids.get(binding.source)!, sourceHandle: binding.sourceHandle, edgeId: edgeIds.get(binding.edgeId)! };
+        }
         for (const node of snapshot.nodes) remapNodeReferences(node, ids);
         const roots = snapshot.nodes.filter(node => !node.parentNode);
         const left = Math.min(...roots.map(node => node.position.x));
@@ -179,7 +186,7 @@ export function useCanvasClipboard(flow: ReturnType<typeof useVueFlow>, options:
             position: node.parentNode ? node.position : { x: position.x + node.position.x - left, y: position.y + node.position.y - top } })));
           await nextTick();
           if (canvasSignal.aborted) return;
-          addEdges(snapshot.edges.map(edge => ({ ...edge, id: crypto.randomUUID(), source: ids.get(edge.source)!, target: ids.get(edge.target)! })));
+          addEdges(snapshot.edges.map(edge => ({ ...edge, id: edgeIds.get(edge.id)!, source: ids.get(edge.source)!, target: ids.get(edge.target)! })));
         });
         return true;
       }

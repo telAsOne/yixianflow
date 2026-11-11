@@ -144,6 +144,28 @@ export function useNodeCreation(flow: ReturnType<typeof useVueFlow>, options: {
     await options.focusNodes(ids);
   }
 
+  async function createVideoContinuation(sourceId: string, sourceHandle = "video") {
+    const source = flow.findNode(sourceId);
+    if (!source || source.data.outputs?.[sourceHandle]?.dataType !== "VIDEO") throw new Error("请先准备来源视频");
+    const type = "remote-videoGenerationNode";
+    if (!nodeOptions.value.some(node => node.type === type)) throw new Error("请先启用视频生成节点");
+    const signal = options.signal();
+    await options.ensureNodeType(type);
+    signal.throwIfAborted();
+    const id = crypto.randomUUID(), edgeId = crypto.randomUUID();
+    const inherited = source.type === type ? Object.fromEntries(["model", "duration", "resolution", "ratio", "mode", "zealmanSettings"].filter(key => source.data[key] !== undefined).map(key => [key, JSON.parse(JSON.stringify(source.data[key]))])) : {};
+    await options.batchHistory(async () => {
+      flow.addNodes({ id, type, position: snap({ x: source.computedPosition.x + Math.max(420, source.dimensions.width + 100), y: source.computedPosition.y }),
+        data: { ...inherited, label: "视频续接", continuationBinding: { source: sourceId, sourceHandle, edgeId }, prompt: "", promptModel: [] } });
+      flow.addEdges({ id: edgeId, source: sourceId, sourceHandle, target: id, targetHandle: "continuation", deletable: false, updatable: false, data: { videoContinuation: true }, label: "续接来源（固定）" });
+      await nextTick();
+      const created = flow.findNode(id);
+      if (created) select([created]);
+    });
+    await options.focusNodes([id]);
+    return { nodeId: id, sourceNodeId: sourceId, message: "已创建续接节点，请填写后续内容" };
+  }
+
   function startNodeDrag(event: DragEvent, type: string) {
     if (!event.dataTransfer) return;
     event.dataTransfer.setData(nodeDragType, type);
@@ -160,5 +182,5 @@ export function useNodeCreation(flow: ReturnType<typeof useVueFlow>, options: {
     return addNode(type, flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY }));
   }
 
-  return { nodeOptions, starters, viewportCenter, addNode, addStarter, startNodeDrag, isNodeDrag, dropNode };
+  return { nodeOptions, starters, viewportCenter, addNode, addStarter, createVideoContinuation, startNodeDrag, isNodeDrag, dropNode };
 }

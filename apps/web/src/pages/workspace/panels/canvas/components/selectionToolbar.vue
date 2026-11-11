@@ -92,6 +92,13 @@ async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withE
     target: ids.get(edge.target)!,
     selected: false,
   }));
+  for (const copy of copies) {
+    if (!copy.data?.continuationBinding) continue;
+    const edge = edges.find(edge => edge.target === copy.id && edge.targetHandle === "continuation");
+    if (!edge) throw new Error("续接节点需保留来源连线，请从来源视频重新创建续接");
+    copy.data.continuationBinding = { source: edge.source, sourceHandle: edge.sourceHandle, edgeId: edge.id };
+    if (copy.data.h3Prompt) copy.data.h3Prompt.continuation = { referenceId: encodeURIComponent(JSON.stringify([edge.source, edge.sourceHandle])) };
+  }
   flow.addNodes(copies);
   flow.addEdges(edges);
   return { ids, rootIds: roots.map(node => ids.get(node.id)!) };

@@ -221,7 +221,7 @@ export function useCanvasTools(options: {
           if (flow.getNodes.value.some(item => item.parentNode === node.id && !idSet.has(item.id))) {
             throw new Error(`请先删除此节点的子节点：${node.id}`);
           }
-          if (flow.getConnectedEdges(node.id).some(edge => edge.deletable === false)) throw new Error(`节点存在不可删除的连接：${node.id}`);
+          if (flow.getConnectedEdges(node.id).some(edge => edge.deletable === false && !(edge.data?.videoContinuation && idSet.has(edge.target)))) throw new Error(`来源仍有续接节点，请先删除续接节点：${node.id}`);
         });
         for (const node of nodes) {
           await useNodeEvent(node.id, flow).emit("delete");

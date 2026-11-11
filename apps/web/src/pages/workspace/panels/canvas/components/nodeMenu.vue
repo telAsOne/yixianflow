@@ -373,7 +373,7 @@ async function deleteSelection(selection = selectedNodes.value) {
     for (const node of nodes) {
       if (node.deletable === false || flow.findNode(node.id) !== node) continue;
       if (flow.getNodes.value.some(item => item.parentNode === node.id && !nodeIds.has(item.id))) throw new Error("分组中存在不可删除的节点");
-      if (flow.getConnectedEdges(node.id).some((edge) => edge.deletable === false)) throw new Error("节点存在不可删除的连接");
+      if (flow.getConnectedEdges(node.id).some((edge) => edge.deletable === false && !(edge.data?.videoContinuation && nodeIds.has(edge.target)))) throw new Error("来源仍有续接节点，请先删除续接节点");
     }
     for (const node of nodes) {
       if (node.deletable === false || flow.findNode(node.id) !== node) continue;

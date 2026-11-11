@@ -80,7 +80,7 @@ export function mergeCanvas(current: CanvasSnapshot, changes: CanvasChange[], ch
   return { canvas: { ...current, nodes: [...maps.nodes.values()], edges: [...maps.edges.values()] }, conflicts };
 }
 
-export function validateCanvas(canvas: CanvasSnapshot) {
+export function validateCanvas(canvas: CanvasSnapshot, previous?: CanvasSnapshot) {
   const nodes = new Map(canvas.nodes.map(node => [node.id, node]));
   const visited = new Set<string>();
   if (nodes.size !== canvas.nodes.length || new Set(canvas.edges.map(edge => edge.id)).size !== canvas.edges.length) throw new Error("画布含有重复的节点或连线");
@@ -97,6 +97,22 @@ export function validateCanvas(canvas: CanvasSnapshot) {
     for (const id of parents) visited.add(id);
   }
   if (canvas.edges.some(edge => !nodes.has(edge.source) || !nodes.has(edge.target))) throw new Error("连线关联的节点已删除，请先处理节点与连线的修改");
+  for (const old of previous?.nodes ?? []) {
+    const binding = old.data?.continuationBinding;
+    if (!binding) continue;
+    const current = nodes.get(old.id);
+    if (current && !sameCanvasValue(current.data?.continuationBinding, binding)) throw new Error("续接来源已固定，请删除续接节点后重新创建");
+    if (current && !nodes.has(binding.source)) throw new Error("来源视频仍有续接节点，请先删除续接节点");
+  }
+  for (const node of canvas.nodes) {
+    const binding = node.data?.continuationBinding;
+    if (!binding) continue;
+    const edges = canvas.edges.filter(edge => edge.target === node.id && edge.targetHandle === "continuation");
+    const edge = edges[0];
+    if (node.type !== "remote-videoGenerationNode" || typeof binding.source !== "string" || binding.source === node.id || !nodes.has(binding.source)
+      || typeof binding.sourceHandle !== "string" || !binding.sourceHandle || edges.length !== 1 || edge?.id !== binding.edgeId || edge.source !== binding.source || edge.sourceHandle !== binding.sourceHandle
+      || edge.deletable !== false || edge.updatable !== false || edge.data?.videoContinuation !== true) throw new Error("续接来源连线不允许删除或改接；删除续接节点后可重新创建");
+  }
   const pending: unknown[] = [canvas];
   while (pending.length) {
     const value = pending.pop();
