@@ -49,7 +49,7 @@ async function readRecord(path: string) {
 }
 
 async function currentRecord(cwd: string, directory: string) {
-  const path = (await resolveWorkspacePath(cwd, relative(cwd, join(directory, "current.json")))).path;
+  const path = (await resolveWorkspacePath(cwd, relative(cwd, join(directory, "current.json")), true)).path;
   const info = await stat(path).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
   if (!info) return null;
   if (!info.isFile() || info.size > 128) invalid("视频任务索引无效，请保留现场，不能重新提交");
