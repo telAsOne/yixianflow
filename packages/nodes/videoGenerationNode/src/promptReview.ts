@@ -27,6 +27,7 @@ const reviewInputSchema = z.object({
   dependencies: z.string().max(100000), durationSeconds: z.number().positive().max(3600).optional(),
   directory: z.string().max(4096).optional(), model: z.string().max(200).optional(), audioInput: z.boolean().optional(),
   media: z.array(z.object({ id: z.string().min(1).max(128), type: z.enum(["image", "video", "audio"]), path: z.string().min(1).max(8192), mimeType: z.string().max(100), purpose: z.string().max(1000).optional() })).max(16).optional(),
+  continuation: z.object({ mediaId: z.string().min(1).max(128), frameId: z.string().min(1).max(128) }).optional(),
 });
 const reviewRecordSchema = z.object({
   input: reviewInputSchema, finishedAt: z.number(), result: reviewResultSchema.optional(),
@@ -52,6 +53,8 @@ export function samePromptReviewInput(first: PromptReviewInput, second: PromptRe
   return first.content === second.content && first.context === second.context && first.editorPrompt === second.editorPrompt
     && first.dependencies === second.dependencies && first.durationSeconds === second.durationSeconds
     && (first.model ?? "") === (second.model ?? "") && !!first.audioInput === !!second.audioInput
+    && (first.continuation?.mediaId ?? "") === (second.continuation?.mediaId ?? "")
+    && (first.continuation?.frameId ?? "") === (second.continuation?.frameId ?? "")
     && (first.directory ?? "") === (second.directory ?? "") && firstMedia.length === secondMedia.length
     && firstMedia.every((media, index) => {
       const other = secondMedia[index]!;
@@ -107,7 +110,8 @@ export function usePromptReview(options: {
       const response = await fetch("/api/ai/videoPromptReview", {
         method: "POST", headers: { "Content-Type": "application/json", "X-Toonflow-Workspace": "1" }, cache: "no-store", signal,
         body: JSON.stringify({ content: input.content, context: input.context, ...(input.durationSeconds ? { durationSeconds: input.durationSeconds } : {}),
-          ...(input.media?.length ? { directory: input.directory, media: input.media, audioInput: input.audioInput } : {}), ...(input.model ? { model: input.model } : {}) }),
+          ...(input.media?.length ? { directory: input.directory, media: input.media, audioInput: input.audioInput } : {}),
+          ...(input.continuation ? { continuation: input.continuation } : {}), ...(input.model ? { model: input.model } : {}) }),
       });
       const body = await response.json();
       signal.throwIfAborted();
@@ -116,8 +120,22 @@ export function usePromptReview(options: {
         throw Object.assign(failure, { reviewId: body?.data?.reviewId, requestId: body?.data?.requestId });
       }
       const result = reviewResultSchema.parse(body.data);
-      if (input.media?.length && (result.media_coverage?.length !== input.media.length || input.media.some(media => !result.media_coverage?.some(item => item.id === media.id && item.type === media.type))))
-        throw new Error("审查服务未返回完整的素材读取范围，请核对后手动重试");
+      if (input.media?.length || input.continuation) {
+        const expectedMedia = new Map((input.media ?? []).map(media => [media.id, media.type]));
+        if (expectedMedia.size !== (input.media?.length ?? 0)) throw new Error("审查素材标记重复，请重新发起审查");
+        if (input.continuation) {
+          if (expectedMedia.get(input.continuation.mediaId) !== "video" || expectedMedia.has(input.continuation.frameId))
+            throw new Error("续接审查素材标记无效，请重新发起审查");
+          expectedMedia.set(input.continuation.frameId, "image");
+        }
+        const coverage = result.media_coverage;
+        if (!coverage || coverage.length !== expectedMedia.size || new Set(coverage.map(item => item.id)).size !== coverage.length
+          || coverage.some(item => expectedMedia.get(item.id) !== item.type))
+          throw new Error("审查服务未返回完整的素材读取范围，请核对后手动重试");
+        if (typeof result.media_input_complete !== "boolean" || result.media_input_complete
+          && coverage.some(item => item.status !== ({ image: "reviewed_image", video: "reviewed_frames", audio: "reviewed_audio" })[item.type]))
+          throw new Error("审查报告的素材读取结论无效，请核对后手动重试");
+      }
       if ((result.status === "pass") !== (result.issues.length === 0)) throw new Error("审查报告的结论与问题列表不一致，请手动重试");
       for (const issue of result.issues) {
         for (const evidence of issue.media_evidence ?? []) {

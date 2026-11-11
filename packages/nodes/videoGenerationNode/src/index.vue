@@ -486,33 +486,47 @@ const reviewPanelVisible = ref(false);
 watch(reviewPanelVisible, visible => {
   if (visible && !reviewModels.value.length) void ai.getModels().then(models => { if (!disposed) reviewModels.value = models; }).catch(() => {});
 });
-const reviewInput = computed<PromptReviewInput>(() => ({
-  content: generationPrompt.value,
-  editorPrompt: data.value.prompt,
-  context: [data.value.promptReviewMedia ? "审查范围：当前视频节点编辑稿与实际读取的参考素材。严格按素材用途核对，未读取的素材不视为已审查。" : "审查范围：当前视频节点的编辑稿，仅核对文字及文字描述的素材约束。",
-    `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；生成声音：${selectedModel.value?.audio === 'optional' ? data.value.generateAudio : selectedModel.value?.audio === true}；生成模式：${JSON.stringify(selectedMode.value ?? '默认')}。`,
-    `素材数量：图片 ${mediaCounts.value.image + referenceUrls(selectedModel.value).length}，视频 ${mediaCounts.value.video}，音频 ${mediaCounts.value.audio}。`,
-    ...(isH3Prompt.value ? [`引用名称与标签：${JSON.stringify(h3ReferenceList.value.map(item => ({ name: item.name, tag: item.value, category: item.category })))}`] : []),
-    "CameraPreset 运镜标签由后端展开，本次未提供其隐藏指令，不推断隐藏内容；后端可能继续优化提示词。"].join("\n"),
-  ...(data.value.duration ? { durationSeconds: data.value.duration } : {}),
-  directory: files.getWorkspaceDirectory(), model: data.value.promptReviewModel, audioInput: data.value.promptReviewAudio,
-  media: data.value.promptReviewMedia ? h3ReferenceList.value.flatMap(item => {
-    if (!["picture", "video", "audio"].includes(item.category)) return [];
-    const value = item.input?.value as { url?: string; mimeType?: string } | undefined;
-    const path = value?.url ?? item.voice?.url;
-    if (!path) throw new Error(`素材 ${item.value} 缺少可读取的来源，请替换素材或取消结合素材审查；仍可直接生成`);
-    let purpose = "仅按提示词指定的用途参考；未指定的属性不作为硬约束。";
-    if (frameMode.value && item.category === "picture") {
-      const boundary = selectedMode.value === "startFrameOptional" || item.value !== "<Picture 1>" ? "尾帧" : "首帧";
-      purpose = `生成参数指定的${boundary}，只约束该边界的构图和状态，中间动作按提示词演进。`;
-    } else if (item.voice) purpose = "仅作提示词指定人物的音色参考，不复用参考台词。";
-    return [{ id: item.value, type: (item.category === "picture" ? "image" : item.category) as "image" | "video" | "audio", path,
-      mimeType: value?.mimeType ?? "audio/wav", purpose }];
-  }) : [],
-  dependencies: JSON.stringify({ model: data.value.model, mode: data.value.mode, resolution: data.value.resolution,
-    referenceImageUrlsText: data.value.referenceImageUrlsText, references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, value: item.value })),
-    voices: data.value.h3Prompt.voices }),
-}));
+const reviewInput = computed<PromptReviewInput>(() => {
+  const continuation = data.value.continuationBinding ? continuationReference.value : undefined;
+  if (data.value.promptReviewMedia && data.value.continuationBinding && continuation?.category !== "video")
+    throw new Error("续接来源已断开，请重新连接后审查，或取消结合参考素材审查；仍可直接生成");
+  const frameId = `<Picture ${h3ReferenceList.value.filter(item => item.category === "picture").length + 1}>`;
+  return {
+    content: generationPrompt.value,
+    editorPrompt: data.value.prompt,
+    context: [data.value.promptReviewMedia ? "审查范围：当前视频节点编辑稿与实际读取的参考素材。严格按素材用途核对，未读取的素材不视为已审查。" : "审查范围：当前视频节点的编辑稿，仅核对文字及文字描述的素材约束。",
+      `生成模型：${selectedModel.value?.label ?? '未选择'}；画幅：${data.value.ratio}；生成声音：${selectedModel.value?.audio === 'optional' ? data.value.generateAudio : selectedModel.value?.audio === true}；生成模式：${JSON.stringify(selectedMode.value ?? '默认')}。`,
+      `素材数量：图片 ${mediaCounts.value.image + referenceUrls(selectedModel.value).length}，视频 ${mediaCounts.value.video}，音频 ${mediaCounts.value.audio}。`,
+      ...(isH3Prompt.value ? [`引用名称与标签：${JSON.stringify(h3ReferenceList.value.map(item => ({ name: item.name, tag: item.value, category: item.category })))}`] : []),
+      ...(data.value.continuationBinding ? [
+        `续接审查：只审查从 ${continuation?.value ?? "原视频"} 真实末态开始的本次新增片段。生成时长只指新增片段，不包含原片；原片为已完成的前文，不修改原片，不重演其末段。`,
+        data.value.promptReviewMedia ? `续接素材仅送入原片末尾最多 3 秒及真实末帧 ${frameId}，实际读取以素材报告为准，未审查完整原片。末段用于核对动作和镜头的承接，末帧用于核对起点的身份、姿态、构图和光影；该末帧由续接流程自动提供，不是提示词漏写的普通参考图。视频仅抽帧，不含视频原音，不据此判断具体声源或音色。`
+          : "本次仅审查续接文字，未读取原片、尾部片段或末帧，不能据此判断实际画面是否连续。",
+      ] : []),
+      ...(!data.value.promptReviewAudio ? ["未听取原音，不判断音色、口音、情绪或具体声源，不将原片声音视为已核验。"] : []),
+      "CameraPreset 运镜标签由后端展开，本次未提供其隐藏指令，不推断隐藏内容；后端可能继续优化提示词。"].join("\n"),
+    ...(data.value.duration ? { durationSeconds: data.value.duration } : {}),
+    directory: files.getWorkspaceDirectory(), model: data.value.promptReviewModel, audioInput: data.value.promptReviewAudio,
+    ...(data.value.promptReviewMedia && continuation ? { continuation: { mediaId: continuation.value, frameId } } : {}),
+    media: data.value.promptReviewMedia ? h3ReferenceList.value.flatMap(item => {
+      if (!["picture", "video", "audio"].includes(item.category)) return [];
+      const value = item.input?.value as { url?: string; mimeType?: string } | undefined;
+      const path = value?.url ?? item.voice?.url;
+      if (!path) throw new Error(`素材 ${item.value} 缺少可读取的来源，请替换素材或取消结合素材审查；仍可直接生成`);
+      let purpose = "仅按提示词指定的用途参考；未指定的属性不作为硬约束。";
+      if (frameMode.value && item.category === "picture") {
+        const boundary = selectedMode.value === "startFrameOptional" || item.value !== "<Picture 1>" ? "尾帧" : "首帧";
+        purpose = `生成参数指定的${boundary}，只约束该边界的构图和状态，中间动作按提示词演进。`;
+      } else if (continuation?.id === item.id) purpose = "续接来源，仅送入原片末尾最多 3 秒，核对动作及镜头末态的承接；不重演尾部，不把原片计入本次新增时长，不推断未读取的全片内容。";
+      else if (item.voice) purpose = "仅作提示词指定人物的音色参考，不复用参考台词。";
+      return [{ id: item.value, type: (item.category === "picture" ? "image" : item.category) as "image" | "video" | "audio", path,
+        mimeType: value?.mimeType ?? "audio/wav", purpose }];
+    }) : [],
+    dependencies: JSON.stringify({ model: data.value.model, mode: data.value.mode, resolution: data.value.resolution,
+      referenceImageUrlsText: data.value.referenceImageUrlsText, references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, value: item.value })),
+      voices: data.value.h3Prompt.voices, continuationBinding: data.value.continuationBinding, continuation: data.value.h3Prompt.continuation }),
+  };
+});
 const { record: reviewRecord, run: reviewRun, current: reviewCurrent, reviewing, status: reviewStatus, label: reviewLabel, error: reviewError,
   review: reviewPrompt, reviewAutomatically: reviewPromptAutomatically, cancel: cancelPromptReview, submission: promptReviewSubmission } = usePromptReview({
     input: () => reviewInput.value, record: () => data.value.promptReview, save: record => { data.value.promptReview = record; },
