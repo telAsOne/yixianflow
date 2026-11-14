@@ -21,7 +21,7 @@ import { assertWebMcpScope, requireWebMcpAccess, runWebMcpCall, runWebMcpOperati
 const targetSchema = z.strictObject({ connectionId: z.uuid().optional(), directory: z.uuid().optional(), canvasId: z.string().min(1).max(256).optional() });
 type Target = z.infer<typeof targetSchema>;
 const readOperations = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools"]);
-const readNodeFunctions = ["node:getConfig", "node:getPrompt", "node:getGenerationStatus", "node:getSubtitleStatus"];
+const readNodeFunctions = ["node:getConfig", "node:getPrompt", "node:getCameraPresets", "node:getGenerationStatus", "node:getSubtitleStatus"];
 const editNodeFunctions = ["node:setText", "node:setPrompt", "node:setConfig", "node:setImage", "node:setVideo", "node:setAudio", "node:setSubtitle", "node:saveSubtitle"];
 const generationScopes = ["generateImage", "generateVideo"] as const;
 
