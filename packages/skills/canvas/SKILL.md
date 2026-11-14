@@ -2,7 +2,7 @@
 name: canvas
 description: Toonflow 画布操作手册。使用画布工具创建、切换和重命名画布，添加、移动、重命名、连接和删除节点，自动整理整幅画布、调整视口，以及调用节点注册的函数。用户要求操作当前画布或搭建节点流程时使用。
 metadata:
-  version: "2.1.2"
+  version: "2.1.3"
   displayName: 画布操作手册
   author: Toonflow
   github: https://github.com/HBAI-Ltd/Toonflow-app
@@ -19,7 +19,7 @@ metadata:
 3. 用 `getCanvasNodes` 按需读取目标字段，`getCanvasEdges` 查询局部连接；需要调整节点内容时，用 `getNodeTools` 读取该节点函数的描述和完整 `parameters`，通过 `nodeTools` 调用。
 4. 完成结构调整后，按需调用 `fitCanvas` 展示结果，再用 `getCanvasNodes` / `getCanvasEdges` 只核对受影响节点、名称与连接。`arrangeCanvas` 已自动适配视口，不必重复调用 `fitCanvas`。只报告工具实际完成的操作。
 
-故事或视频制作先读取 [制作阶段与确认](references/videoProduction.md#0-逐阶段协作)。默认只落实当前已确认阶段；先逐步收集信息，再展示阶段成果并询问调整，等用户明确继续。不因用户说“做一个短片”就一次创建全部分镜与生成节点，也不把提问失败、跳过或沉默当作确认。
+故事或视频制作先读取 [制作阶段与确认](references/videoProduction.md#0-逐阶段协作)。用户要求“拆分剧本”“拆解剧情”或“搭好制作画布”时，按 workflow 的[制作准备](../workflow/references/scriptPreparation.md)在同轮准备当前范围的图片和视频节点、完整提示词、生成顺序与缺项；准备不启动媒体生成。其他任务按当前已确认范围推进，明确只要文稿时不扩建整套节点；不把提问失败、跳过或沉默当作确认。
 
 创作、资产与视频提示词遵循 [视频制作工作流](../workflow/SKILL.md)：资产规范见 [资产制作](../workflow/references/assets.md)，实际写入和引用核对见 [画布执行](../workflow/references/canvasExecution.md)。沿用已确认的实际模型及其对应提示词分支，不由本手册另定模型、段长或正文格式。一片段可以有多个镜头，对应一份完整提示词和一个视频节点；仅连接本段实际采用的素材。
 
