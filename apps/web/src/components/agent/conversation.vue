@@ -567,6 +567,21 @@ async function uploadAttachments(attachments: AgentAttachment[], directory: stri
   }
 }
 
+async function sendMediaResult(event: Extract<AgentEvent, { type: "mediaCall" }>, signal: AbortSignal) {
+  let response;
+  try {
+    if (!directory) throw new Error("当前对话没有媒体工作目录");
+    const { readBrowserMedia } = await import("@/lib/mediaRead");
+    response = { result: await readBrowserMedia(directory, event.request, signal) };
+  } catch (error) { response = { error: error instanceof Error ? error.message : "网页媒体读取失败" }; }
+  const result = await fetch("/api/agent/mediaResult", {
+    method: "POST", headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
+    body: JSON.stringify({ directory, callId: event.callId, ...response }),
+    signal: signal.aborted ? AbortSignal.timeout(5000) : signal,
+  });
+  if (!result.ok) throw new Error("网页媒体读取结果回传失败");
+}
+
 async function sendCanvasResult(event: Extract<AgentEvent, { type: "canvasCall" }>, canvasContext: CanvasContext | undefined, signal: AbortSignal) {
   let body: string;
   try {
@@ -682,6 +697,12 @@ async function sendMessage(source?: AgentMessage) {
         if (handledCanvasCalls.has(toolEvent.callId)) throw new Error("收到重复的本机文件调用");
         handledCanvasCalls.add(toolEvent.callId);
         await sendClientFileResult(toolEvent, requestController.signal);
+        continue;
+      }
+      if (toolEvent.type === "mediaCall") {
+        if (handledCanvasCalls.has(toolEvent.callId)) throw new Error("收到重复的媒体读取调用");
+        handledCanvasCalls.add(toolEvent.callId);
+        await sendMediaResult(toolEvent, requestController.signal);
         continue;
       }
       if (toolEvent.type === "canvasCall") {
@@ -804,8 +825,8 @@ function pasteAttachments(event: ClipboardEvent) {
       ElMessage.warning("只支持图片、视频和纯文本文件");
       continue;
     }
-    if (!file.size || file.size > 100 * 1024 * 1024) {
-      ElMessage.warning("附件不能为空且不能超过 100 MB");
+    if (!file.size || !file.type.startsWith("video/") && file.size > 100 * 1024 * 1024) {
+      ElMessage.warning("附件不能为空；图片和纯文本附件不能超过 100 MB");
       continue;
     }
     if (file.type === "text/plain" && file.size > 400000) {
