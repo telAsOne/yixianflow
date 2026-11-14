@@ -13,6 +13,7 @@
     "./mobileLink": "./src/utils/mobileLink/index.ts",
     "./browser": "./src/utils/browser/index.ts",
     "./agent/types": "./src/agent/runtime/types.ts",
+    "./mediaRead": "./src/utils/media/readTypes.ts",
     "./singleAgent/types": "./src/utils/singleAgent/types.ts",
     "./whisper/types": "./src/utils/whisper/types.ts",
     "./agent/mentionSources": "./src/agent/mentionSources.ts",

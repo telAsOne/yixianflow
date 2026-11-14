@@ -12,6 +12,7 @@ import { agentMentionsSchema, mentionPrompt, snapshotMentions, validateMentionTo
 import { readAiReferences, referenceContent } from "@/utils/ai";
 import { installRequestBudget } from "@/utils/ai/requestBudget";
 import { createAgentTools } from "@/agent/tools";
+import { createBrowserMediaReader } from "@/agent/bridge/media";
 import { createAgentResources } from "@/agent/runtime/resources";
 import { installSkillExecution } from "@/agent/runtime/skillExecution";
 import { createAgentModel } from "@/agent/runtime/model";
@@ -78,7 +79,7 @@ export async function run(
   for (const attachment of attachments) {
     const { path } = await resolveWorkspacePath(cwd, attachment.path);
     const info = await stat(path);
-    if (!info.isFile() || !info.size || info.size > 100 * 1024 * 1024) {
+    if (!info.isFile() || !info.size || !attachment.mimeType.startsWith("video/") && info.size > 100 * 1024 * 1024) {
       throw Object.assign(new Error("附件必须是工作区内非空且不超过 100 MB 的文件"), { status: 400 });
     }
     if (attachment.mimeType !== "text/plain") { attachmentContents.push(attachment); continue; }
@@ -133,6 +134,7 @@ export async function run(
   let unregister = () => {};
   let mentionFiles: string[] = [];
   let messageAccepted = false;
+  const mediaReader = createBrowserMediaReader(cwd, send);
   try {
     const history = newHistory ?? SessionManager.open(sessionPath!, sessionsDir, cwd);
     if (messageId && !resendFrom && history.getBranch().some(entry => entry.type === "custom" && entry.customType === "toonflowUserMessage" && (entry.data as { clientId?: string })?.clientId === messageId)) {
@@ -159,7 +161,7 @@ export async function run(
     };
     unregister = registerAgentSession(history.getSessionFile()!, active);
     send({ type: "session", file, runId });
-    const tools = customTools ?? await createAgentTools(cwd, canvas, question, clientFiles);
+    const tools = customTools ?? await createAgentTools(cwd, canvas, question, clientFiles, mediaReader.read);
     if (!customTools && isMemoryEnabled()) {
       const memoryTool = createMemoryTool();
       if (tools.some(tool => tool.name === memoryTool.name)) throw new Error("工具名称 memory 已被内置全局记忆工具占用");
@@ -220,7 +222,7 @@ export async function run(
       return stream;
     };
 
-    // ACT: 视频提及只传快照路径，供本地工具处理；主动上传的视频附件才传给模型分析。
+    // ACT: 视频附件与提及按需读取，避免每轮携带整片；文字节点的显式视频参考仍沿用原供应商路径。
     const mediaContents = new Map<string, ReturnType<typeof readAiReferences>>();
     const onPayload = session.agent.onPayload;
     session.agent.onPayload = async (payload, requestModel) => {
@@ -233,7 +235,6 @@ export async function run(
         const parsed = z.object({ messageId: z.string(), attachments: agentAttachmentsSchema, mentions: agentMentionsSchema.optional() }).safeParse(entry.data);
         if (!parsed.success) continue;
         const references: Parameters<typeof readAiReferences>[1] = [
-          ...parsed.data.attachments.filter(item => item.mimeType.startsWith("video/")).map(item => ({ dataType: "VIDEO" as const, value: { url: item.path, mimeType: item.mimeType } })),
           ...(parsed.data.mentions ?? []).filter(item => ["IMAGE", "MASK"].includes(item.dataType)).map(item => ({
             dataType: item.dataType as "IMAGE" | "MASK", value: item.value as { url: string; mimeType: string },
           })),
@@ -404,10 +405,10 @@ export async function run(
         session.agent.state.messages = history.buildSessionContext().messages;
       }
       if (modelId === "gemini-4-argon") history.appendCustomEntry("toonflowThinkingPreference", { level: requestedThinkingLevel ?? null });
-      // ACT: 文本附件完整内容进入模型上下文，界面仍保存工作区引用；视频在请求时加载，图片由 read 按需读取。
+      // ACT: 文本附件完整进入上下文；视频通过 readMedia 按需取证，图片由 read 按需读取。
       const content = attachments.length
         ? `${mentionPrompt(prompt, mentions)}\n\n附件已保存到工作区，path 为相对路径，可用于节点选择素材。以下 JSON 包含文件信息，文本附件的 content 为完整正文：\n${JSON.stringify(
-            attachmentContents
+            attachmentContents.map(item => item.mimeType.startsWith("video/") ? { ...item, reading: "Use readMedia with this path to inspect video frames, audio or transcript; the file path alone contains no visual evidence." } : item)
           )}`.trim()
         : mentionPrompt(prompt, mentions);
       // SDK 仅以空格分隔技能名；兼容换行输入与追加的附件说明。
@@ -450,6 +451,7 @@ export async function run(
       }
     }
   } finally {
+    mediaReader.dispose();
     unregister();
     release();
     try { if (!messageAccepted) await Promise.all(mentionFiles.map(path => unlink(path))); }

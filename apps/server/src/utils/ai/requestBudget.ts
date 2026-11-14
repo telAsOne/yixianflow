@@ -16,6 +16,27 @@ function size(value: unknown) { return Buffer.byteLength(JSON.stringify(value));
 function formatSize(bytes: number) { return `${(bytes / 1024 / 1024).toFixed(2)} MiB`; }
 function messageField(protocol: string) { return protocol === "openai-responses" ? "input" : "messages"; }
 
+function retainMediaEvidence(context: Context, limit: number, contextWindow: number): Context {
+  const results = context.messages.filter((message): message is Extract<Context["messages"][number], { role: "toolResult" }> => message.role === "toolResult" && message.toolName === "readMedia");
+  if (results.length < 2) return context;
+  let bytes = results.reduce((total, message) => total + size(message.content), 0);
+  let tokens = context.messages.reduce((total, message) => total + estimateTokens(message), 0);
+  const replaced = new Set<Context["messages"][number]>();
+  for (const message of results.slice(0, -1)) {
+    if (bytes <= limit * 0.5 && tokens <= contextWindow * 0.6) break;
+    if (!message.content.some(part => part.type === "image")) continue;
+    replaced.add(message);
+    bytes -= message.content.reduce((total, part) => total + (part.type === "image" ? size(part) : 0), 0);
+    tokens -= estimateTokens(message) - estimateTokens({ ...message, content: message.content.filter(part => part.type === "text") });
+  }
+  if (!replaced.size) return context;
+  // 只整理本次请求，完整会话、帧时间、文件和观察记录保留；需要比较时可随时重新读取。
+  return { ...context, messages: context.messages.map(message => replaced.has(message) && message.role === "toolResult" ? {
+    ...message, content: [...message.content.filter(part => part.type === "text"), { type: "text" as const,
+      text: "[此前 readMedia 图像已移出本次请求以继续读取长视频；上述时间、证据 ID、文件和完整会话仍保留。需要比较细节时用 readMedia 按原位置重新读取，不把观察摘要当作原画面。]" }],
+  } : message) };
+}
+
 function lastUser(messages: RequestMessage[], context: Context) {
   const user = context.messages.findLast(message => message.role === "user");
   if (!user || user.role !== "user") return 0;
@@ -62,6 +83,7 @@ export function withRequestBudget(stream: Stream, provider: RequestProvider, sta
   let recovery: { bytes: number; retrying: boolean } | undefined;
 
   return async (model: Model<Api>, context: Context, options: SimpleStreamOptions = {}) => {
+    context = retainMediaEvidence(context, limit, model.contextWindow);
     const compacting = state.isCompacting();
     let requestBytes = 0;
     let canRecover = false;

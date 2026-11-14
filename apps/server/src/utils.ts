@@ -22,6 +22,7 @@ import * as nodePlugins from "@/utils/plugins/nodes";
 import * as extPlugins from "@/utils/plugins/ext";
 import * as agent from "@/agent";
 import * as canvas from "@/agent/bridge/canvas";
+import * as mediaBridge from "@/agent/bridge/media";
 import * as question from "@/agent/bridge/question";
 import * as workspace from "@/utils/workspace";
 import * as workspaceFile from "@/utils/workspace/files";
@@ -73,6 +74,7 @@ export default {
   extPlugins,
   agent,
   canvas,
+  mediaBridge,
   question,
   workspace,
   workspaceFile,

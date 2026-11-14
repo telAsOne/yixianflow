@@ -16,6 +16,8 @@ import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
 import { createLocalComputerTools } from "@/utils/localHelper/tools";
+import { createMediaReadTool } from "./media";
+import type { BrowserMediaReader } from "@/utils/media/readTypes";
 
 export function createAgentToolContext(cwd: string, config: Record<string, unknown> = {}, canvas?: CanvasContext, question?: QuestionContext, workspaceAvailable = true, clientFiles?: ClientFileContext): ToolContext {
   const skillsDirectory = join(dirname(conf.path), "skills");
@@ -94,7 +96,7 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
   };
 }
 
-export async function createAgentTools(cwd: string, canvas?: CanvasContext, question?: QuestionContext, clientFiles?: ClientFileContext): Promise<ToolDefinition[]> {
+export async function createAgentTools(cwd: string, canvas?: CanvasContext, question?: QuestionContext, clientFiles?: ClientFileContext, mediaReader?: BrowserMediaReader): Promise<ToolDefinition[]> {
   const tools: ToolDefinition[] = [];
   const names = new Set<string>();
   const context = createAgentToolContext(cwd, {}, canvas, question, true, clientFiles);
@@ -117,7 +119,7 @@ export async function createAgentTools(cwd: string, canvas?: CanvasContext, ques
       });
     }
   }
-  for (const tool of await createLocalComputerTools()) {
+  for (const tool of [createMediaReadTool(cwd, mediaReader), ...await createLocalComputerTools()]) {
     if (names.has(tool.name)) throw new Error(t`工具名称重复：${tool.name}`);
     tools.push(tool);
   }

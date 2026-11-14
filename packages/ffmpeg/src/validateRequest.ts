@@ -7,7 +7,7 @@ const inputMethods = new Set(["input", "addInput", "mergeAdd"]);
 const inputFormatMethods = new Set(["inputFormat", "withInputFormat", "fromFormat"]);
 const outputMethods = new Set(["output", "addOutput", "save", "saveToFile", "concat", "concatenate", "mergeToFile"]);
 const screenshotMethods = new Set(["screenshots", "screenshot", "takeScreenshots", "thumbnail", "thumbnails"]);
-const filters = new Set("scale crop pad fps format aformat setsar setdar setpts asetpts trim atrim concat overlay amix amerge asplit split aresample volume atempo hflip vflip transpose rotate fade afade xfade acrossfade color anull null eq hue unsharp reverse areverse drawbox drawgrid subtitles ass movie amovie".split(" "));
+const filters = new Set("scale crop pad fps format aformat setsar setdar setpts asetpts trim atrim concat overlay amix amerge asplit split aresample volume atempo hflip vflip transpose rotate fade afade xfade acrossfade color anull null eq hue unsharp reverse areverse drawbox drawgrid subtitles ass movie amovie showinfo scdet blackdetect freezedetect silencedetect astats".split(" "));
 const fileFilters = new Set(["subtitles", "ass", "movie", "amovie"]);
 const filterMethods = new Set("withAudioFilter withAudioFilters audioFilter audioFilters withVideoFilter withVideoFilters videoFilter videoFilters filterGraph complexFilter".split(" "));
 const switches = new Set("y n an vn sn dn shortest copyts start_at_zero count_frames count_packets show_streams show_format show_frames show_packets show_error show_programs show_chapters hide_banner nostats".split(" "));
@@ -88,11 +88,12 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
     }
     if (!value || typeof value !== "object") invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
     const item = value as { filter?: unknown; options?: unknown; inputs?: unknown; outputs?: unknown };
-    if (typeof item.filter !== "string" || !filters.has(item.filter)) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
+    if (typeof item.filter !== "string" || !/^[a-z][a-z0-9_]*(?:@[a-zA-Z0-9_]+)?$/.test(item.filter) || !filters.has(item.filter.split("@")[0]!)) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
+    const filterName = item.filter.split("@")[0]!;
     for (const labels of [item.inputs, item.outputs]) {
       if (labels !== undefined && (Array.isArray(labels) ? labels : [labels]).some(label => typeof label !== "string" || !/^\[?[\w:.]+\]?$/.test(label))) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
     }
-    if (fileFilters.has(item.filter)) {
+    if (fileFilters.has(filterName)) {
       if (!item.options || typeof item.options !== "object" || Array.isArray(item.options)) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
       const options = item.options as Record<string, unknown>;
       const allowed = new Set(["filename", "f", "fontsdir", "original_size", "alpha", "charenc", "stream_index", "si", "wrap_unicode", "loop", "seek_point", "s", "streams"]);
@@ -104,7 +105,7 @@ export async function validateFfmpegRequest(request: BrowserFfmpegRequest, resol
     for (const [key, value] of values) {
       if (/[\\:'";,\[\]\x00-\x1f]/.test(String(key))) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
       if (value !== undefined && typeof value !== "number" && (typeof value !== "string" || /[\\'";,\[\]\x00-\x1f]/.test(value))) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
-      if (fileFilters.has(item.filter) && typeof value === "string" && value.includes(":") && !transfer?.isLocalPath?.(value)) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
+      if (fileFilters.has(filterName) && typeof value === "string" && value.includes(":") && !transfer?.isLocalPath?.(value)) invalid("滤镜不在允许范围内，请使用结构化参数与工作区相对路径");
     }
   }
 
