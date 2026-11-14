@@ -53,6 +53,8 @@
 
 文件上传和读取可以在画布页面关闭时使用；节点操作需要页面保持连接。文本节点通过 `node:setText` 写入，沿用画布的保存和文件冲突处理。
 
+运镜库通过视频节点的 `node:getCameraPresets` 读取，现有读取和编辑凭证均可查询，无须重新生成 Key 或勾选视频生成。先用 `getNodeTools` 查询该函数，再选择返回的真实名称与 `tag`；编辑凭证可通过 `node:setPrompt` 将标签写入对应分镜。只读凭证不能修改提示词，生成仍需另行授权视频生成能力。
+
 ## 扩展工具
 
 - `generateImage`、`generateVideo`：先调用 `listMediaModels` 查询实际模型，再提交提示词及工作区参考素材；图片和视频生成结果自动加入目标画布。节点内生成仍先查询 `getNodeTools`，再调用对应 `node:generateImage` 等函数。
