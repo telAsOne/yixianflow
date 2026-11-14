@@ -49,7 +49,7 @@
       <mediaPreviewStatus :preview="mediaPreview" />
     </div>
     <div class="promptReviewStatusRow nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
-      <el-button text size="small" :type="reviewStatus === 'pass' ? 'success' : ['needs_revision', 'needs_clarification'].includes(reviewStatus) ? 'warning' : 'info'" :title="`编辑稿 · ${reviewLabel}`" @click.stop="reviewPanelVisible = true"><span class="reviewBadgeText">编辑稿 · {{ reviewLabel }}</span></el-button>
+      <el-button text size="small" :type="reviewStatus === 'pass' ? 'success' : ['needs_revision', 'needs_clarification'].includes(reviewStatus) ? 'warning' : 'info'" :title="`编辑稿 · ${reviewLabel}`" @click.stop="openPromptReview()"><span class="reviewBadgeText">编辑稿 · {{ reviewLabel }}</span></el-button>
     </div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
@@ -90,11 +90,11 @@
         </template>
         <div v-if="selectedModel?.referenceAudioInput === 'url'" class="referenceHint">连接音频节点作为参考音频，按上方音频引用顺序使用；本地音频会通过「设置 → 素材存储」中的阿里云 OSS 自动上传。</div>
         <div class="promptReviewTools" role="status" aria-live="polite">
-          <el-button text size="small" @click="reviewPanelVisible = true">编辑稿 · {{ reviewLabel }}</el-button>
+          <el-button text size="small" @click="openPromptReview()">编辑稿 · {{ reviewLabel }}</el-button>
           <el-button v-if="reviewing" size="small" @click="cancelPromptReview">停止等待审查</el-button>
           <el-button v-else size="small" :disabled="deleting || !generationPrompt.trim()" @click="openPromptReview()">审查</el-button>
           <el-button v-if="reviewStatus !== 'pass'" size="small" type="primary" plain :icon="IconSparkles" :loading="reviewing" :disabled="!reviewEditable || !generationPrompt.trim()"
-            title="最多 3 轮审查、自动局部修改与复审；遇到待确认项即停止，每轮按用量计费" @click="openPromptReview(true)">AI 一键审查</el-button>
+            title="先确认审查范围和模型，再开始最多 3 轮审查、自动局部修改与复审；遇到待确认项即停止，每轮按用量计费" @click="openPromptReview(true)">AI 一键审查</el-button>
           <span>按用量计费 · 可直接生成</span>
         </div>
         <p v-if="data.model && !selectedModel && !modelsLoading" role="alert">模型不可用，请选择其他模型</p>
@@ -183,7 +183,7 @@
   <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="generating || deleting || uploading" />
   <h3MediaLibrary v-if="isZealmanU06" v-model="libraryVisible" :importReferences="importPanelReferences" />
   <promptReviewPanel v-model="reviewPanelVisible" v-model:includeMedia="data.promptReviewMedia" v-model:audioInput="data.promptReviewAudio" v-model:model="data.promptReviewModel" :models="reviewModels" :record="reviewRecord" :run="reviewRun" :current="reviewCurrent" :reviewing="reviewing" :status="reviewStatus" :label="reviewLabel" :error="reviewError"
-    :editable="reviewEditable" :canReview="!deleting && !!generationPrompt.trim()" @review="force => reviewPrompt(force)" @cancel="cancelPromptReview" @apply="applyReviewEdits" />
+    :automatic="reviewPanelAutomatic" :editable="reviewEditable" :canReview="!deleting && !!generationPrompt.trim()" @review="force => reviewPrompt(force)" @reviewAutomatically="reviewPromptAutomatically" @cancel="cancelPromptReview" @apply="applyReviewEdits" />
 </template>
 
 <script setup lang="ts">
@@ -485,6 +485,7 @@ const generationPrompt = computed(() => {
 });
 
 const reviewPanelVisible = ref(false);
+const reviewPanelAutomatic = ref(false);
 watch(reviewPanelVisible, visible => {
   if (visible && !reviewModels.value.length) void ai.getModels().then(models => { if (!disposed) reviewModels.value = models; }).catch(() => {});
 });
@@ -538,8 +539,8 @@ const { record: reviewRecord, run: reviewRun, current: reviewCurrent, reviewing,
 const reviewEditable = computed(() => !deleting.value && !uploadingReferences.value && !zealmanEnqueuing.value && (isZealmanU06.value || !generating.value && !pendingTask.value));
 
 function openPromptReview(oneClick = false) {
+  reviewPanelAutomatic.value = oneClick;
   reviewPanelVisible.value = true;
-  if (oneClick) void reviewPromptAutomatically().catch(() => {});
 }
 
 function setReviewPrompt(prompt: string) {

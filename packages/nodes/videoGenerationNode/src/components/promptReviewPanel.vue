@@ -13,7 +13,7 @@
           <el-option v-for="item in models" :key="item.modelId" :label="item.label" :value="item.modelId" />
         </el-select>
       </div>
-      <p class="scopeHint">素材按所选模型的实际用量计费。听取原音需要支持音频输入的模型；未勾选时不判断音色、情绪或口音。</p>
+      <p class="scopeHint">请先确认审查范围和模型，再开始审查。参考音频需勾选「听取参考音频原音」并使用支持音频输入的模型；未勾选时不判断音色、情绪或口音。素材按所选模型的实际用量计费。</p>
       <p class="scopeHint">AI 一键审查会自动采用可直接执行的局部修改并复审，最多 3 轮，每轮按用量计费；遇到待确认项即停止。</p>
       <p v-if="reviewing" class="scopeHint">正在审查本次快照，期间可以继续编辑或生成。</p>
       <p v-if="run" class="scopeHint" role="status" aria-live="polite">最近一次多轮审查：{{ run.message }}</p>
@@ -58,6 +58,7 @@
     <template #footer>
       <el-button @click="visible = false">返回创作</el-button>
       <el-button v-if="reviewing" @click="emit('cancel')">停止等待审查</el-button>
+      <el-button v-else-if="automatic" type="primary" :disabled="!canReview || !editable" @click="emit('reviewAutomatically')">开始 AI 一键审查（按用量计费）</el-button>
       <el-button v-else type="primary" :disabled="!canReview" @click="emit('review', !!record)">{{ record ? '重新审查（按用量计费）' : '审查（按用量计费）' }}</el-button>
     </template>
   </el-dialog>
@@ -76,8 +77,8 @@ const visible = defineModel<boolean>({ default: false });
 const includeMedia = defineModel<boolean>("includeMedia", { default: true });
 const audioInput = defineModel<boolean>("audioInput", { default: false });
 const model = defineModel<string>("model", { default: "" });
-const props = defineProps<{ models: { modelId: string; label: string }[]; record?: PromptReviewRecord; run?: PromptReviewRun; current: boolean; reviewing: boolean; status: string; label: string; error: string; editable: boolean; canReview: boolean }>();
-const emit = defineEmits<{ review: [force: boolean]; cancel: []; apply: [edits: PromptReviewEdit[]] }>();
+const props = defineProps<{ models: { modelId: string; label: string }[]; record?: PromptReviewRecord; run?: PromptReviewRun; automatic: boolean; current: boolean; reviewing: boolean; status: string; label: string; error: string; editable: boolean; canReview: boolean }>();
+const emit = defineEmits<{ review: [force: boolean]; reviewAutomatically: []; cancel: []; apply: [edits: PromptReviewEdit[]] }>();
 const sourceVisible = ref(false);
 const selectedTarget = ref<PromptReviewTarget>();
 const highlightedQuote = ref<HTMLElement>();
