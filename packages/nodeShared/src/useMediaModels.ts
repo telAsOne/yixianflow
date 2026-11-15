@@ -4,6 +4,49 @@ import type { NodeMediaModel } from "@toonflow/nodes-scaffold/nodeAi";
 import { showNodeError } from "./showNodeError";
 import { groupNodeModels } from "./groupNodeModels";
 
+function modelPriceLabel(model?: NodeMediaModel) {
+  const pricing = model?.pricing;
+  if (!pricing) return "价格暂不可用";
+  const { price, groupRatio, quotaPerUnit } = pricing;
+  const money = (amount: number) => {
+    const value = amount * groupRatio;
+    return `US$${value > 0 && value < 0.00000001 ? value.toExponential(2) : new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 8 }).format(value)}`;
+  };
+  const variants = price.billing_plugin_variants?.length ? price.billing_plugin_variants : [price];
+  if (variants.some(item => item.billing_usage_schema && Object.keys(item.billing_usage_schema).length)) {
+    const labels = variants.map(item => {
+      if (item.billing_mode !== "tiered_expr" || !item.billing_expr) return "价格未配置";
+      // ACT: 仅展示能完整识别的平价用量表达式；条件和额外倍率保留按规格计费，避免显示不完整的单价。
+      const body = /^(?:v1:)?\s*tier\(\s*"[^"\\]*"\s*,\s*(.*?)\s*\)\s*$/.exec(item.billing_expr)?.[1];
+      if (!body) return "按规格计费";
+      const terms: string[] = [];
+      for (const text of body.split(/\s*\+\s*/)) {
+        const term = /^u\(\s*"([^"\\]+)"\s*\)\s*\*\s*(\d+(?:\.\d+)?|\.\d+)(?:\s*\/\s*(1000000))?$/.exec(text);
+        if (!term) return "按规格计费";
+        const amount = Number(term[2]);
+        if (!Number.isFinite(amount)) return "价格暂不可用";
+        if (amount === 0) continue;
+        const unit = item.billing_usage_schema?.[term[1]!] as { unit?: string } | undefined;
+        const label = unit?.unit === "second" ? "秒" : unit?.unit === "count" ? (model?.type === "image" ? "张" : "次")
+          : unit?.unit === "token" && term[3] ? "百万 token" : unit?.unit === "credit" ? "积分" : undefined;
+        if (!label || term[3] && unit?.unit !== "token") return "按规格计费";
+        terms.push(`${money(amount)}/${label}`);
+      }
+      return terms.join(" + ") || "免费";
+    });
+    const unique = [...new Set(labels)];
+    return unique.length === 1 ? unique[0]! : "按渠道/规格计费";
+  }
+  if (price.billing_mode === "tiered_expr") {
+    if (!price.billing_expr) return "价格未配置";
+    const fixed = /^(?:v1:)?\s*tier\(\s*"[^"\\]*"\s*,\s*fixed\(\s*(\d+(?:\.\d+)?|\.\d+)\s*\)\s*\)(?:\s*\*\s*image_count)?\s*$/.exec(price.billing_expr);
+    return fixed ? `${money(Number(fixed[1]))}/${model?.type === "image" ? "张" : "次"}` : "按用量计费";
+  }
+  if (price.quota_type === 1) return `${money(price.model_price)}/${model?.type === "image" ? "张" : "次"}`;
+  const input = price.model_ratio * 1_000_000 / quotaPerUnit;
+  return `输入 ${money(input)} · 输出 ${money(input * price.completion_ratio)}/百万 token`;
+}
+
 export function useMediaModels(type: "image" | "video" | "audio", data: Readonly<Ref<{ model: string }>>,
   isBusy: () => boolean, getModels: () => Promise<NodeMediaModel[]>) {
   const models = ref<NodeMediaModel[]>([]);
@@ -47,5 +90,5 @@ export function useMediaModels(type: "image" | "video" | "audio", data: Readonly
     return pending;
   }
 
-  return { models, modelsLoading, modelGroups, loadModels };
+  return { models, modelsLoading, modelGroups, loadModels, modelPriceLabel };
 }

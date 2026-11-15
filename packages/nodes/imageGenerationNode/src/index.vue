@@ -74,13 +74,17 @@
             placement="top-start"
             @visibleChange="(visible: boolean) => visible && loadModels().catch((error) => showNodeError(error, '模型读取失败'))">
             <template #prefix><icon-sparkles :size="17" /></template>
-            <template #label="{ label }"><span class="modelLabel" :title="`${selectedModel?.providerLabel ?? ''} · ${label}`"><span class="providerName">{{ selectedModel?.providerLabel }}</span><span class="modelName">{{ label }}</span></span></template>
+            <template #label="{ label }"><span class="modelLabel" :title="`${selectedModel?.providerLabel ?? ''} · ${label} · ${modelPriceLabel(selectedModel)}`"><span class="providerName">{{ selectedModel?.providerLabel }} · {{ modelPriceLabel(selectedModel) }}</span><span class="modelName">{{ label }}</span></span></template>
             <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
               <el-option
                 v-for="item in provider.models"
                 :key="item.modelId"
+                class="modelOption"
                 :label="item.label"
-                :value="JSON.stringify([item.providerId, item.modelId])" />
+                :value="JSON.stringify([item.providerId, item.modelId])">
+                <span class="optionName">{{ item.label }}</span>
+                <span class="optionPrice">{{ modelPriceLabel(item) }}</span>
+              </el-option>
             </el-option-group>
           </el-select>
           <div class="generationActions">
@@ -186,7 +190,7 @@ data.value.model ??= "";
 data.value.size ??= "";
 data.value.ratio ??= "";
 const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
-const { models, modelsLoading, modelGroups, loadModels } = useMediaModels("image", data, () => generating.value || deleting.value, ai.getMediaModels);
+const { models, modelsLoading, modelGroups, loadModels, modelPriceLabel } = useMediaModels("image", data, () => generating.value || deleting.value, ai.getMediaModels);
 const { uploading, replaceOutput } = useOutputReplace("image", files, () => taskRunning.value || pendingTask.value || taskChecking.value || deleting.value || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy,
   value => { outputs.value.image = { dataType: "IMAGE", value }; });
 const fileInput = ref<HTMLInputElement>();
@@ -539,6 +543,19 @@ registerGenerationTools({
 </script>
 
 <style scoped lang="scss">
+.modelOption {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: auto;
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 1.5;
+  .optionName { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .optionPrice { max-width: 55%; color: var(--el-text-color-secondary); font-size: 12px; text-align: right; white-space: normal; font-variant-numeric: tabular-nums; }
+}
+
 .imageContent {
   position: relative;
   display: grid;
