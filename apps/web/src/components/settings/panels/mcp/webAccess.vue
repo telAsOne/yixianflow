@@ -7,7 +7,7 @@
       </div>
       <p>让你自己的 Agent 读取、编辑画布并传入文本、图片和视频。实时节点操作需要保持项目的画布网页打开。</p>
       <el-input :modelValue="endpoint" readonly aria-label="MCP 服务地址" />
-      <p>每个凭证只授权一个项目，30 天有效，可随时撤销。素材传输单文件最多 20 MiB，生成、整理和 Agent 委托按账户正常计费。</p>
+      <p>每个凭证只授权一个项目，30 天有效，可随时撤销。素材传输单文件最多 20 MiB，生成、审查、整理和 Agent 委托按账户正常计费。</p>
     </section>
 
     <section class="mcpSection" aria-labelledby="webMcpCreateTitle">
@@ -67,11 +67,12 @@ import { writeClipboardText } from "@/lib/clipboard";
 import { saveSettings, settings } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 
-type Scope = "generateImage" | "generateVideo" | "arrangeCanvas" | "runAgent" | "localComputer";
+type Scope = "generateImage" | "generateVideo" | "reviewPrompt" | "arrangeCanvas" | "runAgent" | "localComputer";
 type Access = { id: string; name: string; projectName: string; permission: "read" | "edit"; scopes: Scope[]; expiresAt: string };
 type Device = { id: string; name: string; online: boolean };
 const scopeOptions: { value: Scope; label: string }[] = [
   { value: "generateImage", label: "图片生成" }, { value: "generateVideo", label: "视频生成" },
+  { value: "reviewPrompt", label: "提示词审查（按用量计费）" },
   { value: "arrangeCanvas", label: "智能整理" }, { value: "runAgent", label: "内置 Agent 委托" }, { value: "localComputer", label: "本机工具" },
 ];
 const workspaceStore = useWorkspaceStore();

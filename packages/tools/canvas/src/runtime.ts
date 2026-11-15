@@ -80,8 +80,8 @@ export type CanvasRequest = {
 }[CanvasOperationName];
 
 export function getCanvasCallTimeout(name: string) {
-  // ACT: 智能整理包含模型分析和人工确认，所有桥接共用十分钟等待；其他操作保持两分钟。
-  return name === "arrangeCanvas" ? 600000 : 120000;
+  // ACT: 智能整理等待人工确认；网页媒体解码与聊天读取通道共用三分钟等待。
+  return name === "arrangeCanvas" ? 600000 : name === "readMedia" ? 180000 : 120000;
 }
 
 export const canvasOperations = [

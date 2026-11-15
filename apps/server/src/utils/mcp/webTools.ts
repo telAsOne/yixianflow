@@ -7,8 +7,11 @@ import type { McpTool } from "@toonflow/mcp";
 import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import { validateFfmpegRequest } from "@toonflow/ffmpeg/validateRequest";
 import type { BrowserFfmpegRequest } from "@toonflow/ffmpeg";
-import { defineTool, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createAgentToolContext, createAgentTools } from "@/agent/tools";
+import { createMediaReadTool } from "@/agent/tools/media";
+import { mediaReadSchema, readMedia } from "@/utils/media/read";
+import type { BrowserMediaReader, BrowserMediaResult } from "@/utils/media/readTypes";
 import { run as runAgent } from "@/agent";
 import { getSettings } from "@/utils/conf";
 import { getWebProject, resolveWebProject } from "@/utils/web/projects";
@@ -21,12 +24,14 @@ import { assertWebMcpScope, requireWebMcpAccess, runWebMcpCall, runWebMcpOperati
 const targetSchema = z.strictObject({ connectionId: z.uuid().optional(), directory: z.uuid().optional(), canvasId: z.string().min(1).max(256).optional() });
 type Target = z.infer<typeof targetSchema>;
 const readOperations = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools"]);
-const readNodeFunctions = ["node:getConfig", "node:getPrompt", "node:getCameraPresets", "node:getGenerationStatus", "node:getSubtitleStatus"];
-const editNodeFunctions = ["node:setText", "node:setPrompt", "node:setConfig", "node:setImage", "node:setVideo", "node:setAudio", "node:setSubtitle", "node:saveSubtitle"];
+const readNodeFunctions = ["node:getConfig", "node:getPrompt", "node:getCameraPresets", "node:getGenerationStatus", "node:getSubtitleStatus", "node:getPromptReview", "node:getPromptReviewConfig"];
+const editNodeFunctions = ["node:setText", "node:setPrompt", "node:setConfig", "node:setImage", "node:setVideo", "node:setAudio", "node:setSubtitle", "node:saveSubtitle", "node:setPromptReviewConfig", "node:cancelPromptReview", "node:continueVideo", "node:createNewGeneration", "node:cancelGeneration"];
+const reviewNodeFunctions = ["node:reviewPrompt", "node:autoReviewPrompt"];
 const generationScopes = ["generateImage", "generateVideo"] as const;
 
 function operationScope(name: string, args: Record<string, unknown>): WebMcpScope | undefined {
   const method = name === "nodeTools" && typeof args.name === "string" ? args.name.slice(5) : name;
+  if (reviewNodeFunctions.includes(`node:${method}`)) return "reviewPrompt";
   if (method === "ffprobe" || method === "ffmpeg") return "localComputer";
   if (generationScopes.some(scope => scope === method) || ["arrangeCanvas", "runAgent", "localComputer"].includes(method)) return method as WebMcpScope;
   return method === "resumeVideoTask" ? "generateVideo" : undefined;
@@ -43,7 +48,7 @@ function resolveConnection(target: Target) {
   return connection;
 }
 
-function createTool<T extends z.ZodType>(name: string, description: string, argsSchema: T, edit: boolean | ((args: z.output<T>) => boolean), execute: (args: z.output<T>, target: Target, signal: AbortSignal) => Promise<unknown>): McpTool {
+function createTool<T extends z.ZodType>(name: string, description: string, argsSchema: T, edit: boolean | ((args: z.output<T>) => boolean), execute: (args: z.output<T>, target: Target, signal: AbortSignal, requestId?: string) => Promise<unknown>): McpTool {
   const schema = z.strictObject({ target: targetSchema.optional(), requestId: z.uuid().optional(), args: argsSchema });
   return {
     name, description, inputSchema: z.toJSONSchema(schema, { io: "input" }),
@@ -53,8 +58,8 @@ function createTool<T extends z.ZodType>(name: string, description: string, args
       return runWebMcpCall(signal, typeof edit === "function" ? edit(args) : edit, currentSignal => {
         const scope = operationScope(name, args as Record<string, unknown>);
         if (scope) assertWebMcpScope(scope);
-        if (!scope || name === "resumeVideoTask") return execute(args, target, currentSignal);
-        return runWebMcpOperation(requestId, { name, args, target }, () => execute(args, target, currentSignal));
+        if (!scope || name === "resumeVideoTask") return execute(args, target, currentSignal, requestId);
+        return runWebMcpOperation(requestId, { name, args, target }, () => execute(args, target, currentSignal, requestId));
       });
     },
   };
@@ -63,7 +68,9 @@ function createTool<T extends z.ZodType>(name: string, description: string, args
 export async function getWebMcpTools(): Promise<McpTool[]> {
   const access = requireWebMcpAccess();
   const editable = access.permission === "edit";
-  const nodeFunctions = [...readNodeFunctions, ...(editable ? editNodeFunctions : []), ...generationScopes.filter(scope => editable && access.scopes.includes(scope)).map(scope => `node:${scope}`)];
+  const nodeFunctions = [...readNodeFunctions, ...(editable ? editNodeFunctions : []),
+    ...(editable && access.scopes.includes("reviewPrompt") ? reviewNodeFunctions : []),
+    ...generationScopes.filter(scope => editable && access.scopes.includes(scope)).map(scope => `node:${scope}`)];
   const tools: McpTool[] = [{
     name: "getAppState", description: "读取已授权项目及自己打开的画布页面。先获取 connectionId 和 canvasId；后续工具使用 {target:{connectionId,directory,canvasId},args:{...}}。directory 是项目 ID，凭证只允许此项目。",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -94,7 +101,7 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
       return callControl(connection.id, operation.name, parameters, signal, access.projectId);
     }));
   }
-  tools.push(createTool("nodeTools", "调用 getNodeTools 返回的节点函数，生成能力由 Key 权限控制。生成时必须在顶层提供唯一 UUID requestId；重复请求沿用原 requestId，避免重复提交。", z.strictObject({
+  tools.push(createTool("nodeTools", "调用 getNodeTools 返回的节点函数，生成和审查能力由 Key 权限控制。生成或启动审查时必须在顶层提供唯一 UUID requestId；重复请求沿用原 requestId，避免重复提交。续接和复制新生成节点不会提交生成，后续须在新节点填写设置并生成。", z.strictObject({
     nodeId: z.string().min(1).max(256), name: z.enum(nodeFunctions as [string, ...string[]]), args: z.record(z.string(), z.json()),
   }), args => !readNodeFunctions.includes(args.name), async (args, target, signal) => {
     const connection = resolveConnection(target);
@@ -139,6 +146,28 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
       } finally { releaseOperation(); }
     }));
   const directory = await resolveWebProject(access.projectId);
+  const mediaDefinition = createMediaReadTool(directory);
+  tools.push(createTool("readMedia", `${mediaDefinition.description}\n${(mediaDefinition.promptGuidelines ?? []).join("\n")}\n本机绝对路径、声音、转写和信号检测需要本机工具授权；detect/audio/transcribe/note 须提供顶层 UUID requestId。工作区视频支持网页备用解码。`, mediaReadSchema,
+    args => args.action === "note", async (args, target, signal, requestId) => {
+      if (!/^[a-z]:[\\/]/i.test(args.path)) await resolvePublicPath(directory, args.path);
+      const browser: BrowserMediaReader = async (request, currentSignal) => {
+        const connection = resolveConnection(target);
+        return callControl(connection.id, "readMedia", { ...request }, currentSignal ?? signal, access.projectId) as Promise<BrowserMediaResult>;
+      };
+      const authorize = (request: z.output<typeof mediaReadSchema>) => {
+        if (request.action !== args.action) throw new Error("续读必须沿用原来的 action，不能通过 cursor 切换操作");
+        if (/^[a-z]:[\\/]/i.test(request.path) || request.engine === "local" || ["detect", "audio", "transcribe", "transcript"].includes(request.action)) assertWebMcpScope("localComputer");
+      };
+      const execute = () => readMedia(directory, args, browser, signal, undefined, authorize);
+      const result = ["detect", "audio", "transcribe", "note"].includes(args.action)
+        ? await runWebMcpOperation(requestId, { name: "readMedia", args, target }, execute) : await execute();
+      const details = result.details as { audio?: { path: string } } | undefined;
+      if (args.action !== "audio" || !details?.audio) return result;
+      const audio = await resolveWorkspacePath(directory, details.audio.path);
+      const bytes = await readFile(audio.path, { signal });
+      return { ...result, content: [...result.content, { type: "audio", data: bytes.toString("base64"), mimeType: "audio/wav" }],
+        details: { ...details, audioSuppliedToClient: true, limitation: "PCM audio supplied as MCP audio content. Listening depends on the client and selected model; supply alone does not certify listening or quality." } };
+    }));
   const stub: CanvasContext = { id: "mcp", tools: [], async call() { throw new Error("请先指定已打开的画布页面"); } };
   if (editable && access.scopes.some(scope => generationScopes.includes(scope as typeof generationScopes[number]) || scope === "localComputer")) {
     const definitions = await createAgentTools(directory, stub);
@@ -202,6 +231,12 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
           if (tool.name === "getAppState") {
             const state = (result as { connections: { id: string; state: { canvasId: string | null } }[] }).connections.find(item => item.id === connection.id)?.state;
             if (state?.canvasId) agentTarget.canvasId = state.canvasId;
+          }
+          if (tool.name === "readMedia" && result && typeof result === "object" && "content" in result && Array.isArray(result.content)) {
+            const media = result as { content: { type: string }[]; details?: Record<string, unknown> };
+            const content = media.content.filter(item => item.type === "text" || item.type === "image") as Awaited<ReturnType<ToolDefinition["execute"]>>["content"];
+            if (media.content.some(item => item.type === "audio")) content.push({ type: "text", text: "此内置委托仅接收图像和文字，原声片段未作为音频送入模型；不能宣称已经听过原声。" });
+            return { content, details: { ...media.details, audioSuppliedToClient: false } };
           }
           return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
         },
