@@ -8,7 +8,7 @@ import { readWebAccount } from "@/utils/web/auth";
 import { getWebProject } from "@/utils/web/projects";
 import { getWebBasePath, getWebDatabase, getWebOrigin, hashWebToken } from "@/utils/web/store";
 
-export const scopeSchema = z.enum(["generateImage", "generateVideo", "arrangeCanvas", "runAgent", "localComputer"]);
+export const scopeSchema = z.enum(["generateImage", "generateVideo", "reviewPrompt", "arrangeCanvas", "runAgent", "localComputer"]);
 export type WebMcpScope = z.infer<typeof scopeSchema>;
 type WebMcpAccess = { id: string; userId: number; projectId: string; name: string; permission: "read" | "edit"; scopes: WebMcpScope[]; deviceId: string | null; expiresAt: Date };
 const accessContext = new AsyncLocalStorage<WebMcpAccess>();
@@ -85,7 +85,7 @@ export async function createWebMcpAccess(projectId: string, name: string, permis
   if (!isWebMode() || !isWebMcpEnabled()) throw Object.assign(new Error("请先开启 MCP"), { status: 403 });
   await getWebProject(projectId, permission);
   const userId = requireWebAccount().user.id;
-  scopes = [...new Set(z.array(scopeSchema).max(5).parse(scopes))];
+  scopes = [...new Set(z.array(scopeSchema).max(scopeSchema.options.length).parse(scopes))];
   if (scopes.length && permission !== "edit") throw Object.assign(new Error("扩展能力需要读取和编辑权限"), { status: 400 });
   if (scopes.includes("localComputer")) {
     const [device] = deviceId ? await getWebDatabase()`SELECT id FROM yixianflow.localDevices WHERE id = ${deviceId} AND "ownerId" = ${userId} AND NOT revoked` : [];
@@ -133,7 +133,7 @@ export function assertWebMcpScope(scope: WebMcpScope) {
 }
 
 export async function runWebMcpOperation<T>(requestId: string | undefined, input: unknown, operation: () => Promise<T>) {
-  if (!requestId) throw new Error("生成、智能整理、Agent 委托和本机操作必须在顶层提供唯一 UUID requestId；重试须沿用相同 requestId");
+  if (!requestId) throw new Error("生成、审查、智能整理、Agent 委托和本机操作必须在顶层提供唯一 UUID requestId；重试须沿用相同 requestId");
   const { id } = requireWebMcpAccess();
   const hash = createHash("sha256").update(JSON.stringify(input, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
     ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value)).digest("hex");

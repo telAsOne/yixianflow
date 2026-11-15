@@ -200,8 +200,9 @@ async function verifySource(cwd: string, source: Source, signal?: AbortSignal) {
 }
 
 export async function readMedia(cwd: string, input: Request, browser?: BrowserMediaReader, signal?: AbortSignal,
-  onUpdate?: Parameters<ToolDefinition["execute"]>[3]): ReturnType<ToolDefinition["execute"]> {
+  onUpdate?: Parameters<ToolDefinition["execute"]>[3], authorize?: (request: Request) => void): ReturnType<ToolDefinition["execute"]> {
   signal?.throwIfAborted();
+  authorize?.(input);
   if (isAbsolute(input.path) && isWithin(cwd, input.path)) input = { ...input, path: relative(cwd, input.path).replaceAll("\\", "/") };
   const source = await sourceInfo(cwd, input.path, signal);
   const root = (await resolveWorkspacePath(cwd, ".agent/mediaReads", true)).path;
@@ -221,6 +222,7 @@ export async function readMedia(cwd: string, input: Request, browser?: BrowserMe
       index = saved.index ?? 0;
       query = saved.query ?? hash({ ...saved.request, cursor: undefined, pageSize: undefined, maxBytes: undefined });
     }
+    authorize?.(request);
     const stored = await jsonFile<ReadRecord>(manifest);
     if (!stored && request.action === "history" && request.recordId) throw new Error("指定的视频读取记录不存在");
     const record = stored ?? { version: 1, id, source: source.path, revision: source.revision, frames: [], detections: [], audio: [], notes: [] };

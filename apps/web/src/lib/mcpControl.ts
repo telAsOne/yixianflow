@@ -7,6 +7,8 @@ import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeModels";
 import { saveSettings, settings } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { webMode, webUserId } from "@/lib/webRuntime";
+import { readBrowserMedia } from "@/lib/mediaRead";
+import type { BrowserMediaRequest } from "@toonflow/server/mediaRead";
 
 type ControlCall = { type: "call"; callId: string; name: string; args: Record<string, unknown>; directory?: string };
 type WorkspaceControl = {
@@ -143,6 +145,10 @@ export function useMcpControl() {
             callSignal.throwIfAborted();
             if (router.currentRoute.value.path !== "/workspace" || workspaceStore.project?.directory !== openedDirectory) throw new Error("工作区打开已取消");
             result = getState();
+          } else if (request.name === "readMedia") {
+            const directory = workspaceStore.project?.directory;
+            if (!directory || request.directory !== directory) throw new Error("工作区已切换，请重新读取应用状态");
+            result = await readBrowserMedia(directory, request.args as BrowserMediaRequest, callSignal);
           } else {
             const control = workspaceControl.value;
             if (!control) throw new Error("请先打开工作区");

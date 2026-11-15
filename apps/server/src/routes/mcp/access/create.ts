@@ -5,7 +5,7 @@ import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 
 const fields = z.strictObject({ projectId: z.uuid(), name: z.string().trim().min(1).max(100), permission: z.enum(["read", "edit"]),
-  scopes: z.array(u.mcpAccess.scopeSchema).max(5).default([]), deviceId: z.uuid().optional() });
+  scopes: z.array(u.mcpAccess.scopeSchema).max(u.mcpAccess.scopeSchema.options.length).default([]), deviceId: z.uuid().optional() });
 
 export default Router().post("/", validateFields(fields.shape), async (req, res) => {
   u.mcpControl.assertAppRequest(req);

@@ -557,6 +557,13 @@ function getPromptReviewState() {
     record: reviewRecord.value, run: reviewRun.value };
 }
 
+async function getPromptReviewConfig() {
+  const models = await ai.getModels();
+  if (disposed) throw new Error("节点已关闭");
+  reviewModels.value = models;
+  return { model: data.value.promptReviewModel, includeMedia: data.value.promptReviewMedia, audioInput: data.value.promptReviewAudio, models };
+}
+
 async function applyReviewEdits(edits: PromptReviewEdit[]) {
   try {
     if (!reviewCurrent.value || !reviewRecord.value || !reviewEditable.value || reviewing.value) throw new Error("当前编辑稿已变化或正在处理，请稍后核对并重新审查");
@@ -1038,6 +1045,28 @@ nodeTools.register({
   },
 });
 
+nodeTools.register({
+  name: "getPromptReviewConfig",
+  description: "读取辅助审查的模型、是否结合素材及是否送入原声，并查询当前账户可选的审查模型；不启动审查，不产生模型费用。model 为空表示使用默认审查模型",
+  parameters: z.strictObject({}),
+  execute: getPromptReviewConfig,
+});
+nodeTools.register({
+  name: "setPromptReviewConfig",
+  description: "设置辅助审查的 model、includeMedia 和 audioInput，不修改生成参数、不启动审查。model 使用 getPromptReviewConfig 返回的 modelId，空字符串恢复默认；audioInput=true 才请求送入原音，实际读取以审查报告的素材证据为准",
+  parameters: z.strictObject({ model: z.string().max(512).optional(), includeMedia: z.boolean().optional(), audioInput: z.boolean().optional() }),
+  async execute(args, { signal }) {
+    if (!reviewEditable.value || reviewing.value) throw new Error("节点正在处理或审查中，请稍后修改审查设置");
+    const config = await getPromptReviewConfig();
+    signal?.throwIfAborted();
+    if (!reviewEditable.value || reviewing.value) throw new Error("节点正在处理或审查中，请稍后修改审查设置");
+    if (args.model && !config.models.some(model => model.modelId === args.model)) throw new Error("请选择 getPromptReviewConfig 返回的有效审查模型");
+    if (args.model !== undefined) data.value.promptReviewModel = args.model;
+    if (args.includeMedia !== undefined) data.value.promptReviewMedia = args.includeMedia;
+    if (args.audioInput !== undefined) data.value.promptReviewAudio = args.audioInput;
+    return { ...config, model: data.value.promptReviewModel, includeMedia: data.value.promptReviewMedia, audioInput: data.value.promptReviewAudio };
+  },
+});
 nodeTools.register({
   name: "reviewPrompt",
   description: "仅对当前视频节点编辑稿做一次辅助审查，不修改原文、不启动视频生成，按文本模型用量计费。用户要求「AI 一键审查」或自动修改并复审时使用 autoReviewPrompt。返回 reviewing 后可继续其他工作，按需用 getPromptReview 查询报告；同一内容已有有效报告时复用，force=true 会重新计费审查。审查失败或未通过不妨碍生成、排队和恢复原任务，不循环重试",
