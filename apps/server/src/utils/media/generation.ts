@@ -14,6 +14,7 @@ import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
 import { file } from "@toonflow/file/bun";
 import { requireAccount, getAccount, getApiKey, getBaseUrl, getConfigState, refreshConfig } from "@/utils/account";
+import { getManagedConfig } from "@/utils/account/config";
 import { detectMimeType } from "@/utils/media/mimeType";
 import { uploadVideoContinuationSource, validateVideoContinuation } from "@/utils/media/continuation";
 export { getImageTask, getImageTaskRequest } from "@/utils/media/imageTasks";
@@ -42,6 +43,7 @@ function imageOptions(value: unknown, pattern: RegExp) {
 export async function listMediaModels(): Promise<MediaModel[]> {
   if (!getAccount() || !getConfigState().revision) return [];
   const installedProviders = await listMediaProviders();
+  const pricing = getManagedConfig()?.pricing;
   const { limits: uploadLimits, imageTotalMaxBytes } = getConfigState();
   const defaults = getSettings().defaultModels as Record<string, { modelId: string } | null> | undefined;
   const defaultImage = installedProviders.flatMap(provider => provider.models.map(model => ({ providerId: provider.id, ...model })))
@@ -51,6 +53,7 @@ export async function listMediaModels(): Promise<MediaModel[]> {
     const builtIn = (mediaProviders as readonly Provider[]).find(item => item.id === provider.id)?.models.find(item => item.id === model.id);
     return [{
       providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label, type: model.type,
+      pricing: provider.id === "yixianVideo" ? pricing?.[model.id] : undefined,
       uploadLimits: model.type === "image" ? { ...uploadLimits, requestTotalMaxBytes: imageTotalMaxBytes } : uploadLimits,
       isDefault: model.type === "image" && defaultImage ? provider.id === defaultImage.providerId && model.id === defaultImage.id
         : defaults?.[model.type]?.modelId === model.id,

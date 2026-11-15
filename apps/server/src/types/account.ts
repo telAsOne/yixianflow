@@ -37,8 +37,18 @@ const textAndImageCategorySchema = createCategorySchema(modelSchema.extend({
   audio: modelSchema.shape.audio.nullable().transform(value => value ?? undefined),
 }));
 const videoCategorySchema = createCategorySchema(modelSchema.required({ audio: true }));
+const usageSchema = z.record(z.string(), z.object({ unit: z.string().optional() })).nullable().transform(value => value ?? undefined);
+const expressionPricingSchema = z.object({ billing_mode: z.string().optional(), billing_expr: z.string().optional(),
+  billing_usage_schema: usageSchema.optional() });
+const mediaPricingSchema = z.object({ groupRatio: z.number().nonnegative(), quotaPerUnit: z.number().positive(),
+  price: expressionPricingSchema.extend({ quota_type: z.number(), model_price: z.number().nonnegative(),
+    model_ratio: z.number().nonnegative(), completion_ratio: z.number().nonnegative(),
+    billing_plugin_variants: z.array(expressionPricingSchema.required({ billing_mode: true, billing_expr: true })).nullish().transform(value => value ?? undefined),
+  }),
+});
 export const platformConfigSchema = z.object({ revision: z.string().min(1), min_client_version: z.string(),
-  categories: z.object({ text: textAndImageCategorySchema, image: textAndImageCategorySchema, video: videoCategorySchema }), limits: uploadLimitsSchema });
+  categories: z.object({ text: textAndImageCategorySchema, image: textAndImageCategorySchema, video: videoCategorySchema }),
+  pricing: z.record(z.string(), mediaPricingSchema).optional(), limits: uploadLimitsSchema });
 export type PlatformConfig = z.infer<typeof platformConfigSchema>;
 export const accountInfoSchema = z.object({ user: userSchema, balance: z.object({ quota: z.number(), display: z.string() }),
   storage: z.object({ used_bytes: z.number().nonnegative(), quota_bytes: z.number().nonnegative() }),

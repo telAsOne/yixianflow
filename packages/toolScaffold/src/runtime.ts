@@ -73,6 +73,24 @@ export interface CanvasContext extends CanvasInfo {
 
 export interface MediaModel {
   isDefault?: boolean;
+  pricing?: {
+    groupRatio: number;
+    quotaPerUnit: number;
+    price: {
+      quota_type: number;
+      model_price: number;
+      model_ratio: number;
+      completion_ratio: number;
+      billing_mode?: string;
+      billing_expr?: string;
+      billing_usage_schema?: Record<string, { unit?: string }>;
+      billing_plugin_variants?: {
+        billing_mode: string;
+        billing_expr: string;
+        billing_usage_schema?: Record<string, { unit?: string }>;
+      }[];
+    };
+  };
   uploadLimits?: { imageMaxBytes: number; audioMaxBytes: number; videoMaxBytes: number; requestTotalMaxBytes: number; maxReferencesPerRequest: number };
   providerId: string;
   providerLabel: string;
