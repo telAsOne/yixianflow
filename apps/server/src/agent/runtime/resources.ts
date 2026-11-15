@@ -8,7 +8,10 @@ import { resolveWorkspacePath } from "@/utils/workspace/files";
 import { isMemoryEnabled, readDocument } from "@/utils/personalization";
 import { getSettings } from "@/utils/conf";
 
-export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = SettingsManager.inMemory(), instructions = "") {
+export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = SettingsManager.inMemory({
+  // ACT: 仅由会话层恢复当前模型步骤，避免供应商内部重试与外层重试叠加。
+  retry: { maxRetries: 2, baseDelayMs: 2000, provider: { maxRetries: 0 } },
+}), instructions = "") {
   const savedPrompt = getSettings().agentSystemPrompt;
   const systemPrompt = typeof savedPrompt === "string" ? savedPrompt : undefined;
   const agentDir = join(cwd, ".agent");
