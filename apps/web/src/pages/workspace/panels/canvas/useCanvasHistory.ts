@@ -219,7 +219,7 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
     capture();
     return [...pendingDeletions.values()].map(({ node, version, edges }) => ({ version,
       node: JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(node).filter(([key]) => key === "data" || !nodeRuntimeFields.has(key))))) as Node,
-      edges: edges.map(edge => JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(edge).filter(([key]) => !edgeRuntimeFields.has(key))))) as Edge),
+      edges: edges.map(edge => JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(edge).filter(([key]) => key === "data" || !edgeRuntimeFields.has(key))))) as Edge),
     }));
   }
   function acknowledgeDeletions(entries: ReturnType<typeof getDeletedNodes>) {
