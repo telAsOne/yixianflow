@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { t } from "@/lib/i18n";
+import { resolveWorkspacePath } from "@/utils/workspace/files";
 import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, CreateAgentSessionOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { QuestionContext } from "@toonflow/tools-scaffold/runtime";
@@ -215,7 +216,7 @@ export async function run(options: {
     const thinkingLevel = options.thinkingLevel ?? defaultThinkingLevel;
     active.controller.signal.throwIfAborted();
     const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
-    const agentDir = join(state.cwd, ".agent");
+    const { path: agentDir } = await resolveWorkspacePath(state.cwd, ".agent", true);
     const systemPrompt = [...new Set([state.systemPrompt || "请根据用户要求完成当前任务，按需使用提供的工具。", ...tools.flatMap(tool => tool.promptGuidelines ?? [])])].filter(Boolean).join("\n\n");
     const resourceLoader = new DefaultResourceLoader({
       cwd: state.cwd, agentDir, settingsManager,

@@ -6,13 +6,13 @@ import type { SkillContext, SkillLocation, SkillScope } from "@toonflow/tools-sc
 import conf from "@/utils/conf";
 import { isWebMode, webContext } from "@/lib/webContext";
 import { directory, isEnabled } from "@/utils/skills/files";
-import { isWithin, lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { getAgentDirectory, isWithin, lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 
 export function loadAgentSkills(cwd: string, scope?: SkillScope) {
   if (scope !== undefined && scope !== "workspace" && scope !== "global") throw new Error("技能范围无效");
   const result = loadSkills({
     cwd,
-    agentDir: join(cwd, ".agent"),
+    agentDir: getAgentDirectory(cwd),
     includeDefaults: false,
     // 同名技能由工作区优先，列表与运行时共用 SDK 的扫描规则。
     skillPaths: [

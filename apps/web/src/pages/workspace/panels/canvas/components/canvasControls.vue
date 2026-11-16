@@ -103,6 +103,7 @@ import { shortcutLabel, type CanvasShortcutAction } from "@/lib/canvasShortcuts"
 
 const props = defineProps<{
   active: boolean;
+  readOnly?: boolean;
   canvasId: string;
   directory: string | undefined;
   projectName: string;
@@ -124,7 +125,7 @@ const arrangeDialogRef = ref<InstanceType<typeof arrangeDialog>>();
 const canArrange = computed(() => {
   const nodes = getNodes.value.filter((node) => node.type !== "canvasGroup");
   return (
-    props.active &&
+    props.active && !props.readOnly &&
     !!props.canvasId &&
     !!props.directory &&
     !arrangeDialogRef.value?.visible &&

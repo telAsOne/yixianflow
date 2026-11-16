@@ -1,35 +1,43 @@
 <template>
   <section v-show="visible" class="agent">
-    <agentMenu
-      :key="conversationKey"
-      :name="name"
-      :history="history"
-      :hasMoreHistory="historyOffset !== undefined"
-      :sessionFile="sessionFile"
-      :parentFile="selectedConversation?.parentFile"
-      :subAgents="selectedConversation?.subAgents"
-      :loading="loading || historyLoading"
-      @openSubAgent="selectConversation"
-      @back="backToParent"
-      @newChat="newConversation"
-      @history="loadHistory(!initialized)"
-      @moreHistory="loadHistory(false, true)"
-      @select="selectConversation"
-      @rename="renameConversation"
-      @remove="removeConversation"
-      @close="visible = false">
-      <template #actions><slot name="menuActions" /></template>
-    </agentMenu>
+    <div v-if="webMode && collaboration.canManage" class="conversationTabs">
+      <el-segmented v-model="collaboration.panel" :options="[{ label: '我的 AI', value: 'ai' }, { label: '成员 AI 记录', value: 'records' }]" block aria-label="AI 对话记录">
+        <template #default="{ item }"><span class="conversationTab"><icon-sparkles v-if="item.value === 'ai'" :size="15" aria-hidden="true" /><icon-users v-else :size="15" aria-hidden="true" />{{ item.label }}</span></template>
+      </el-segmented>
+    </div>
+    <memberConversations v-if="webMode && collaboration.canManage && collaboration.panel === 'records'" :active="visible"><template #actions><slot name="menuActions" /><el-button text circle aria-label="关闭成员对话" title="关闭" @click="visible = false"><icon-x :size="17" /></el-button></template></memberConversations>
+    <div v-show="!webMode || collaboration.panel === 'ai'" class="personalMenu">
+      <agentMenu
+        :key="conversationKey"
+        :name="name"
+        :history="history"
+        :hasMoreHistory="historyOffset !== undefined"
+        :sessionFile="sessionFile"
+        :parentFile="selectedConversation?.parentFile"
+        :subAgents="selectedConversation?.subAgents"
+        :loading="loading || historyLoading"
+        @openSubAgent="selectConversation"
+        @back="backToParent"
+        @newChat="newConversation"
+        @history="loadHistory(!initialized)"
+        @moreHistory="loadHistory(false, true)"
+        @select="selectConversation"
+        @rename="renameConversation"
+        @remove="removeConversation"
+        @close="visible = false">
+        <template #actions><slot name="menuActions" /></template>
+      </agentMenu>
+    </div>
     <conversation
       v-for="item in conversations"
-      v-show="item.key === conversationKey"
+      v-show="item.key === conversationKey && (!webMode || collaboration.panel === 'ai')"
       :key="item.key"
       :ref="instance => setConversationRef(item, instance)"
-      :active="visible && item.key === conversationKey"
+      :active="visible && item.key === conversationKey && (!webMode || collaboration.panel === 'ai')"
       :visible="visible"
       :initialSession="item.session"
       :sessionFile="item.file"
-      :disabled="loading || !initialized"
+      :disabled="loading || !initialized || (webMode && !collaboration.canEdit)"
       @session="setSessionFile(item, $event)"
       @event="receiveAgentEvent"
       @retention="item.retained = $event"
@@ -48,8 +56,13 @@ import type { AgentConversation, AgentHistory } from "./types";
 import type { AgentEvent, AgentSubAgent } from "@toonflow/server/agent/types";
 import agentMenu from "./menu.vue";
 import conversation from "./conversation.vue";
+import memberConversations from "./memberConversations.vue";
+import { webMode } from "@/lib/webRuntime";
+import { useCollaborationStore } from "@/stores/collaboration";
 
 const visible = defineModel<boolean>({ default: false });
+const collaboration = useCollaborationStore();
+watch(() => collaboration.canManage, allowed => { if (!allowed) collaboration.panel = "ai"; });
 type OpenConversation = { key: number; name: string; file?: string; parentFile?: string; subAgents: AgentSubAgent[]; session: AgentConversation | null; retained: boolean; lastUsed: number };
 // ACT: 最多保留 6 个闲置会话；运行、草稿、待回答与未保存消息不参与淘汰。
 const conversations = ref<OpenConversation[]>([]);
@@ -335,5 +348,21 @@ onBeforeUnmount(() => { requestId++; });
   overflow: hidden;
   font-size: 13px;
   font-family: var(--el-font-family);
+  .personalMenu { flex-shrink: 0; }
+  .conversationTabs {
+    flex-shrink: 0;
+    padding: 12px 14px 8px;
+
+    .el-segmented {
+      --el-segmented-bg-color: var(--el-fill-color-light);
+      --el-segmented-item-selected-bg-color: var(--el-bg-color-overlay);
+      --el-segmented-item-selected-color: var(--el-text-color-primary);
+      min-height: 36px;
+      padding: 3px;
+      font-size: 12px;
+      :deep(.el-segmented__item-selected) { box-shadow: var(--el-box-shadow-lighter); }
+      .conversationTab { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 5px; line-height: 28px; }
+    }
+  }
 }
 </style>

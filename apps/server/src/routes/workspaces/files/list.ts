@@ -15,8 +15,9 @@ export default router.get("/", validateFields({ directory: z.string().min(1).max
   res.set("Cache-Control", "no-store").json(success({
     directory: isWebMode() ? req.query.directory : directory,
     empty: entries.length === 0,
-    entries: entries.filter(entry => entry.isFile() || entry.isDirectory()).map(entry => ({
-      name: entry.name, path: relative(directory, join(path, entry.name)).split(sep).join("/"), type: entry.isDirectory() ? "directory" : "file",
+    entries: entries.filter(entry => (entry.isFile() || entry.isDirectory()) && !(isWebMode() && path === directory && entry.name === ".agent")).map(entry => ({
+      name: entry.name, path: u.workspaceFile.isWithin(directory, path) ? relative(directory, join(path, entry.name)).split(sep).join("/")
+        : `${String(req.query.path ?? "").replace(/[\\/]+$/, "")}/${entry.name}`.replaceAll("\\", "/"), type: entry.isDirectory() ? "directory" : "file",
     })).sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true })),
   }));
 });

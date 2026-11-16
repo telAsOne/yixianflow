@@ -46,6 +46,8 @@ export async function createApp({
   if (isWebMode()) {
     const { initializeWebStore } = await import("@/utils/web/store");
     await initializeWebStore();
+    const { initializeWebUserRoles } = await import("@/utils/web/auth");
+    await initializeWebUserRoles();
   }
   const systemLocale = detectLocale([Intl.DateTimeFormat().resolvedOptions().locale]);
   const readLocale = () => normalizeLocale((conf.get("settings", {}).ui as { language?: unknown } | undefined)?.language) ?? systemLocale;

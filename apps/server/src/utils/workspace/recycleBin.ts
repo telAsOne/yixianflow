@@ -4,7 +4,8 @@ import type { Request } from "express";
 import { lstat, mkdir, readFile, readdir, realpath, rm, writeAtomic } from "@toonflow/file";
 import { z } from "zod";
 import conf from "@/utils/conf";
-import { lockWorkspaceFiles, resolveWorkspacePath } from "./files";
+import { getProjectAgentDirectory, lockWorkspaceFiles, resolveWorkspacePath } from "./files";
+import { isWebMode } from "@/lib/webContext";
 import { beginWorkspaceCleanup } from "./activity";
 import { validateCanvas, type CanvasSnapshot } from "./canvasMerge";
 import { recycleAssetRoots, recycleNodeRoots, type RecycleEntry, type RecycleOverview } from "./recycleTypes";
@@ -193,6 +194,30 @@ async function protectedRoots(directory: string, records: RecycleRecord[], exclu
         }
         collect(value);
       } else collect(text);
+    }
+  }
+  if (isWebMode()) {
+    const users = await readdir(join(dirname(conf.path), "users"), { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
+    // 私人聊天和恢复稿只在服务端提取素材引用，不能因迁出共享目录而提前清理其素材。
+    for (const user of users) {
+      if (!/^[1-9][0-9]*$/.test(user.name)) continue;
+      if (user.isSymbolicLink()) failure("个人资料存在符号链接，已停止清理", 422);
+      if (!user.isDirectory()) continue;
+      const root = getProjectAgentDirectory(directory, Number(user.name));
+      const info = await lstat(root).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
+      if (!info) continue;
+      const pending = [root];
+      while (pending.length) {
+        const path = pending.pop()!;
+        const item = await lstat(path);
+        if (item.isSymbolicLink()) failure("个人资料存在符号链接，已停止清理", 422);
+        if (item.isDirectory()) { for (const name of await readdir(path)) pending.push(join(path, name)); continue; }
+        if (!item.isFile() || !/\.(json|jsonl|md|txt)$/i.test(path)) continue;
+        if (item.size > 100 * 1024 * 1024) failure("个人引用记录过大，已停止清理", 422);
+        if (path.endsWith(".archived.json") && Date.now() - item.mtimeMs >= retentionMs) continue;
+        const text = await readFile(path, "utf8");
+        collect(/\.json$/i.test(path) ? JSON.parse(text.replace(/^\uFEFF/, "")) : text);
+      }
     }
   }
   for (const record of records) {

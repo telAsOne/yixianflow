@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
+import { isWebMode } from "@/lib/webContext";
 
 const router = Router();
 const maxBytes = 1024 * 1024 * 1024;
@@ -28,6 +29,7 @@ export default router.get("/", validateFields({ directory: z.string().min(1).max
       signal.throwIfAborted();
       const current = pending.pop()!;
       for await (const child of await opendir(current.path)) {
+        if (isWebMode() && current.path === directory && child.name === ".agent") continue;
         signal.throwIfAborted();
         if (entries.length >= 10000) throw Object.assign(new Error("项目导出最多包含 10000 个文件和目录"), { status: 413 });
         if (/[\\:]/.test(child.name)) throw Object.assign(new Error("项目包含无法安全导出为 ZIP 的文件名"), { status: 400 });

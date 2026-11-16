@@ -83,14 +83,34 @@ export async function readWebSession(req: Request) {
 
 export async function readWebAccount(userId: number, version: string) {
   const sql = getWebDatabase();
-  const [record] = await sql`SELECT credentials, settings FROM yixianflow.users WHERE id = ${userId}`;
+  const [record] = await sql`SELECT credentials, settings, name, role FROM yixianflow.users WHERE id = ${userId}`;
   if (!record) return;
   const baseUrl = getBaseUrl();
   const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${userId}`)));
   if (account.baseUrl !== baseUrl || account.user.id !== userId) throw new Error("服务端账户凭据不匹配");
   const accountInfo = await checkWebUser(account, version);
   account.user = accountInfo.user;
+  const name = account.user.display_name || account.user.username;
+  if (record.name !== name || record.role !== account.user.role) {
+    await sql`UPDATE yixianflow.users SET name = ${name}, role = ${account.user.role!} WHERE id = ${userId}`;
+    if (account.user.role! >= 10) await sql`UPDATE yixianflow.projectActivity SET "platformOnly" = true WHERE "userId" = ${userId} AND NOT "platformOnly"`;
+  }
   return { account, settings: record.settings as Record<string, unknown>, accountInfo };
+}
+
+export async function initializeWebUserRoles() {
+  const sql = getWebDatabase();
+  const baseUrl = getBaseUrl();
+  // ACT: 迁移只使用服务端已保存的身份；角色未知的旧账号保持隐藏，下一次平台身份校验后补齐。
+  for (const record of await sql`SELECT id, credentials FROM yixianflow.users WHERE role IS NULL`) {
+    try {
+      const account = credentialSchema.parse(JSON.parse(decryptWebSecret(record.credentials, `account:${baseUrl}:${record.id}`)));
+      if (account.baseUrl !== baseUrl || account.user.id !== record.id || account.user.role === undefined) continue;
+      await sql`UPDATE yixianflow.users SET role = ${account.user.role} WHERE id = ${record.id} AND role IS NULL`;
+    } catch { console.warn(`[web] account role could not be restored userId=${record.id}`); }
+  }
+  await sql`UPDATE yixianflow.projectActivity AS activity SET "platformOnly" = true
+    FROM yixianflow.users AS account WHERE account.id = activity."userId" AND account.role >= 10 AND NOT activity."platformOnly"`;
 }
 
 export async function startWebLogin(req: Request, res: Response, screen: "signin" | "signup") {
@@ -141,12 +161,13 @@ export async function completeWebLogin(req: Request, res: Response, state: strin
     const remaining = await transaction`DELETE FROM yixianflow.logins WHERE hash = ${hash}
       AND "browserHash" = ${hashWebToken(browser)} AND "claimedAt" IS NOT NULL AND "expiresAt" > CURRENT_TIMESTAMP RETURNING hash`;
     if (!remaining.length) throw Object.assign(new Error("此次登录已取消，请重新登录"), { status: 400 });
-    await transaction`INSERT INTO yixianflow.users (id, credentials)
-      VALUES (${account.user.id}, ${encryptWebSecret(JSON.stringify(account), `account:${baseUrl}:${account.user.id}`)})
-      ON CONFLICT (id) DO UPDATE SET credentials = EXCLUDED.credentials`;
+    await transaction`INSERT INTO yixianflow.users (id, credentials, name, role)
+      VALUES (${account.user.id}, ${encryptWebSecret(JSON.stringify(account), `account:${baseUrl}:${account.user.id}`)}, ${account.user.display_name || account.user.username}, ${account.user.role!})
+      ON CONFLICT (id) DO UPDATE SET credentials = EXCLUDED.credentials, name = EXCLUDED.name, role = EXCLUDED.role`;
+    if (account.user.role! >= 10) await transaction`UPDATE yixianflow.projectActivity SET "platformOnly" = true WHERE "userId" = ${account.user.id} AND NOT "platformOnly"`;
     await transaction`DELETE FROM yixianflow.sessions WHERE hash = ${hashWebToken(oldToken ?? "")} OR "expiresAt" <= CURRENT_TIMESTAMP`;
-    await transaction`INSERT INTO yixianflow.sessions (hash, "userId", "expiresAt")
-      VALUES (${hashWebToken(token)}, ${account.user.id}, CURRENT_TIMESTAMP + INTERVAL '12 hours')`;
+    await transaction`INSERT INTO yixianflow.sessions (hash, "userId", "expiresAt", "userAgent")
+      VALUES (${hashWebToken(token)}, ${account.user.id}, CURRENT_TIMESTAMP + INTERVAL '12 hours', ${(req.get("user-agent") ?? "").slice(0, 512)})`;
   });
   res.cookie(sessionCookie, token, { ...cookieOptions, maxAge: 12 * 60 * 60_000 });
   console.info(`[web] login userId=${account.user.id}`);
@@ -164,4 +185,18 @@ export async function logoutWebSession(res?: Response, req?: Request) {
   if (browser) await sql`DELETE FROM yixianflow.logins WHERE "browserHash" = ${hashWebToken(browser)}`;
   res?.clearCookie(sessionCookie, cookieOptions);
   res?.clearCookie(loginCookie, cookieOptions);
+}
+
+export async function listWebSessions() {
+  const current = webContext.getStore();
+  if (!current) throw Object.assign(new Error("请先登录"), { status: 401 });
+  return getWebDatabase()`SELECT id, "userAgent", "seenAt", hash = ${current.sessionHash} AS current FROM yixianflow.sessions
+    WHERE "userId" = ${current.account.user.id} AND "expiresAt" > CURRENT_TIMESTAMP
+      AND hash NOT LIKE 'mcp:%' AND "seenAt" > CURRENT_TIMESTAMP - INTERVAL '30 minutes' ORDER BY "seenAt" DESC`;
+}
+
+export async function revokeWebSession(id: string) {
+  const current = webContext.getStore();
+  if (!current) throw Object.assign(new Error("请先登录"), { status: 401 });
+  await getWebDatabase()`DELETE FROM yixianflow.sessions WHERE id = ${id} AND "userId" = ${current.account.user.id} AND hash <> ${current.sessionHash}`;
 }

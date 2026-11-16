@@ -33,16 +33,16 @@ import chatReasoning from "@tdesign-vue-next/chat/es/chat-reasoning";
 import type { AgentToolCall } from "@toonflow/server/agent/types";
 import messageMarkdown from "@/components/messageMarkdown.vue";
 
-const { tool, directory, toolSessionId } = defineProps<{ tool: AgentToolCall; directory?: string; toolSessionId?: string }>();
+const { tool, directory, toolSessionId, readOnly } = defineProps<{ tool: AgentToolCall; directory?: string; toolSessionId?: string; readOnly?: boolean }>();
 const emit = defineEmits<{ copy: [content: string] }>();
 const renderer = shallowRef<Component>();
 const rendererError = ref("");
-watch(() => [tool.name, tool.question?.callId] as const, async ([name], _previous, onCleanup) => {
+watch(() => [tool.name, tool.question?.callId, readOnly] as const, async ([name], _previous, onCleanup) => {
   let active = true;
   onCleanup(() => { active = false; });
   renderer.value = undefined;
   rendererError.value = "";
-  if (name === "subAgent") return;
+  if (readOnly || name === "subAgent") return;
   try {
     const component = await loadToolComponent(name);
     if (active) {

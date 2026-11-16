@@ -1,5 +1,6 @@
 <template>
   <div class="home">
+    <projectInvite v-if="webMode" />
     <aside class="sideBar" aria-label="工作台导航">
       <div class="brand">
         <img class="brandLogo" :src="logoUrl" alt="" aria-hidden="true" />
@@ -100,6 +101,7 @@
                 <span class="projectVisual" aria-hidden="true"><span class="visualGrid" /><icon-layout-dashboard :size="32" /><span class="visualLabel">画布项目</span><span class="openProjectHint"><icon-arrow-up-right :size="18" />打开项目</span></span>
                 <span class="projectName" :title="project.name">{{ project.name }}</span>
                 <span v-if="!webMode" class="projectPath" :title="project.directory">{{ project.directory }}</span>
+                <span v-else class="projectPath">{{ project.role === 'owner' ? '我的项目' : project.role === 'admin' ? '管理员访问' : '共享项目' }} · {{ project.ownerName || `用户 ${project.ownerId}` }}{{ project.role === 'viewer' ? ' · 仅查看' : '' }}</span>
                 <span class="projectUsage" :title="projectUsageErrors[project.directory] || '按已保存到项目的文件统计，包含上传与生成素材；账户共享素材库不计入单个项目。'">
                   <template v-if="projectUsages[project.directory]">
                     <span>素材 {{ formatBytes(projectUsages[project.directory]!.assetBytes) }} · {{ projectUsages[project.directory]!.assetCount }} 个</span>
@@ -136,7 +138,7 @@
 import { locale, translate } from "@toonflow/i18n/vue";
 import axios from "axios";
 import { storeToRefs } from "pinia";
-import { computed, defineAsyncComponent, nextTick, onMounted, onWatcherCleanup, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, onScopeDispose, onWatcherCleanup, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type InputInstance } from "element-plus";
 import {
@@ -159,6 +161,7 @@ import useWorkspaceFiles, { type WorkspaceUsage } from "@/lib/workspaceFiles";
 import settings from "@/components/settings/index.vue";
 import workspacePicker from "./workspacePicker.vue";
 import api, { errorMessage } from "@/lib/api";
+import projectInvite from "./projectInvite.vue";
 import { webCanViewAllProjects, webMode, webUserId } from "@/lib/webRuntime";
 
 const settingsVisible = ref(false);
@@ -197,7 +200,7 @@ const projectScope = ref("mine");
 const selectedOwnerId = ref<number>();
 const projectSearch = ref("");
 const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }));
-const ownProjects = computed(() => projectList.value.filter(project => !webMode.value || project.ownerId === webUserId.value));
+const ownProjects = computed(() => projectList.value.filter(project => !webMode.value || project.ownerId === webUserId.value || project.role === "editor" || project.role === "viewer"));
 const memberProjects = computed(() => webCanViewAllProjects.value ? projectList.value.filter(project => project.ownerId !== webUserId.value) : []);
 const browsingMembers = computed(() => webCanViewAllProjects.value && projectScope.value === "members");
 const projectOwners = computed(() => {
@@ -232,6 +235,22 @@ onMounted(async () => {
     projectUsageErrors.value = Object.fromEntries(projectList.value.map(project => [project.directory, message]));
     ElMessage.error(message);
   }
+});
+
+onMounted(() => {
+  if (!webMode.value) return;
+  let loading = false;
+  const refreshProjects = async () => {
+    if (loading || document.visibilityState !== "visible" || !webUserId.value) return;
+    loading = true;
+    try { await workspaceStore.loadProjects(); }
+    catch (error) { ElMessage.error({ message: errorMessage(error, "读取项目失败"), grouping: true }); }
+    finally { loading = false; }
+  };
+  window.addEventListener("focus", refreshProjects);
+  document.addEventListener("visibilitychange", refreshProjects);
+  const timer = setInterval(refreshProjects, 15000);
+  onScopeDispose(() => { clearInterval(timer); window.removeEventListener("focus", refreshProjects); document.removeEventListener("visibilitychange", refreshProjects); });
 });
 
 watch(() => usageReady.value && (!webMode.value || webUserId.value) ? visibleProjects.value.map(project => project.directory) : [], async directories => {

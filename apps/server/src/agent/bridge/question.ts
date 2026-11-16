@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { QuestionAnswer, QuestionContext, QuestionRequest } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent } from "@/agent/runtime/types";
+import { isWebMode, requireWebAccount } from "@/lib/webContext";
 
 type PendingQuestion = { cwd: string; ownerId?: string; request: QuestionRequest; cancel(): void; finish(result: QuestionAnswer | Error): void };
 
@@ -8,6 +9,7 @@ type PendingQuestion = { cwd: string; ownerId?: string; request: QuestionRequest
 const pendingQuestions = new Map<string, PendingQuestion>();
 
 export function createQuestionContext(cwd: string, send: (event: Extract<AgentEvent, { type: "question" }>) => void, onCancel?: () => void, ownerId?: string) {
+  ownerId ??= isWebMode() ? `user:${requireWebAccount().user.id}` : undefined;
   const activeQuestions = new Set<string>();
   let disposed = false;
   const context: QuestionContext = {
@@ -42,6 +44,7 @@ export function createQuestionContext(cwd: string, send: (event: Extract<AgentEv
 }
 
 export function answerQuestion(cwd: string, callId: string, response: { answer?: string; values?: unknown; cancelled?: boolean; skipped?: boolean }, ownerId?: string) {
+  ownerId ??= isWebMode() ? `user:${requireWebAccount().user.id}` : undefined;
   const pending = pendingQuestions.get(callId);
   if (!pending || pending.cwd !== cwd) throw Object.assign(new Error("提问不存在或已结束"), { status: 404 });
   if (pending.ownerId !== undefined && pending.ownerId !== ownerId) throw Object.assign(new Error("此提问只能由授权本机目录的设备回答"), { status: 403 });

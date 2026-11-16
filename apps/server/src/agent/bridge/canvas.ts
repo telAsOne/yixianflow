@@ -1,14 +1,16 @@
 import { canvasOperations, getCanvasCallTimeout } from "@toonflow/tool-canvas/runtime";
 import type { CanvasInfo, CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent } from "@/agent/runtime/types";
+import { isWebMode, requireWebAccount } from "@/lib/webContext";
 
 type CanvasResult = { result?: unknown; error?: string };
-type PendingCall = { cwd: string; finish(response: CanvasResult): void };
+type PendingCall = { cwd: string; ownerId?: number; finish(response: CanvasResult): void };
 
 // ACT: 回传仅在当前 Server 进程存活期间有效；多进程部署需共享请求通道。
 const pendingCalls = new Map<string, PendingCall>();
 
 export function createCanvasContext(cwd: string, canvas: CanvasInfo, send: (event: Extract<AgentEvent, { type: "canvasCall" }>) => void) {
+  const ownerId = isWebMode() ? requireWebAccount().user.id : undefined;
   const activeCalls = new Set<string>();
   let queue = Promise.resolve();
   let disposed = false;
@@ -36,7 +38,7 @@ export function createCanvasContext(cwd: string, canvas: CanvasInfo, send: (even
           // 人工确认超时先由前端关闭窗口，额外留出取消结果的回传时间。
           const timeout = getCanvasCallTimeout(operation.name) + (operation.name === "arrangeCanvas" ? 10000 : 0);
           const timer = setTimeout(() => finish({ error: "画布调用超时，操作回执尚未确认。请确认目标画布仍然打开，先查询节点、输出及原任务状态；不要直接重试新建节点或生成" }), timeout);
-          pendingCalls.set(callId, { cwd, finish });
+          pendingCalls.set(callId, { cwd, ownerId, finish });
           activeCalls.add(callId);
           signal?.addEventListener("abort", abort, { once: true });
           try { send({ type: "canvasCall", callId, name: operation.name, args }); }
@@ -61,5 +63,6 @@ export function finishCanvasCall(cwd: string, callId: string, response: CanvasRe
   // 超时、取消或完成后仍可能收到回传，幂等忽略，避免中断整轮对话。
   if (!pending) return;
   if (pending.cwd !== cwd) throw Object.assign(new Error("画布调用不存在或已结束"), { status: 404 });
+  if (pending.ownerId !== undefined && pending.ownerId !== requireWebAccount().user.id) throw Object.assign(new Error("无权回传他人的画布操作"), { status: 403 });
   pending.finish(response);
 }
