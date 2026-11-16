@@ -4,7 +4,7 @@
     <aside class="sideBar" aria-label="工作台导航">
       <div class="brand">
         <img class="brandLogo" :src="logoUrl" alt="" aria-hidden="true" />
-        <div><span class="brandName">UnionFlfow</span><span class="brandCaption">AI 影像创作空间</span></div>
+        <div><span class="brandName">UnionFlow</span><span class="brandCaption">AI 影像创作空间</span></div>
       </div>
       <el-button class="newProjectButton" type="primary" :icon="IconPlus" :disabled="creating || opening" @click="createProject(false)">新建项目</el-button>
       <nav class="sideNav" aria-label="创作导航">
