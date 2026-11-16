@@ -7,6 +7,10 @@ import { getVideoTask } from "@/utils/media/videoTasks";
 import { getImageTask } from "@/utils/media/imageTasks";
 import { canvasChanges, mergeCanvas, sameCanvasValue, validateCanvas, type CanvasChange, type CanvasSnapshot } from "./canvasMerge";
 import { captureDeletedNodes, commitRecycleRecord, validateRecycledMedia } from "./recycleBin";
+import { isWebMode } from "@/lib/webContext";
+import { publishProjectEvent } from "@/utils/web/projectEvents";
+import { recordProjectActivity } from "@/utils/web/collaboration";
+import { basename } from "node:path";
 
 export const elementSchema = z.looseObject({ id: z.string().min(1).max(500) });
 export const canvasSchema = z.object({ toonflowCanvas: z.literal(true),
@@ -25,6 +29,7 @@ const normalize = (path: string) => process.platform === "win32" ? path.toLowerC
 const hash = (bytes: string | Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 function recordChange(directory: string, event: CanvasEvent) {
+  if (isWebMode()) publishProjectEvent(basename(directory), { type: "canvas", ...event });
   eventHistory.push({ sequence: ++eventSequence, directory: normalize(directory), event });
   // ACT: 全进程最多保留 256 条文件变更标记，不缓存画布正文；游标过旧时客户端重新同步打开的画布。
   if (eventHistory.length > 256) eventHistory.shift();
@@ -44,6 +49,8 @@ export function getUpdates(directory: string, cursor?: string) {
 
 export function notifyFileChange(directory: string, path: string) {
   const name = relative(directory, path).replaceAll("\\", "/");
+  if (name === ".." || name.startsWith("../") || name.startsWith(".agent/") || name.startsWith(".toonflow/")) return;
+  if (isWebMode()) publishProjectEvent(basename(directory), { type: "file", path: name });
   if (!name.endsWith(".json") || name.startsWith(".toonflow/")) return;
   recordChange(directory, { path: name });
 }
@@ -65,11 +72,28 @@ export async function saveRecovery(directory: string, path: string, author: stri
   const target = await recoveryPath(directory, path, author);
   await mkdir(dirname(target), { recursive: true });
   await writeAtomic(target, JSON.stringify({ path, savedAt: Date.now(), ...value }));
-  return relative(directory, target).replaceAll("\\", "/");
+  return isWebMode() ? `.agent/recovery/${basename(target)}` : relative(directory, target).replaceAll("\\", "/");
 }
 
-export async function readRecovery(directory: string, path: string, author: string) {
-  const text = await readFile(await recoveryPath(directory, path, author), "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
+export async function readRecovery(directory: string, path: string, author: string, legacyAuthor?: string) {
+  const target = await recoveryPath(directory, path, author);
+  const read = (file: string) => readFile(file, "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
+  let text = await read(target);
+  if (!text && legacyAuthor && legacyAuthor !== author) {
+    const legacy = await recoveryPath(directory, path, legacyAuthor);
+    const release = lockWorkspaceFiles([target, legacy]);
+    try {
+      text = await read(target);
+      if (!text) {
+        text = await read(legacy);
+        if (text) {
+          await mkdir(dirname(target), { recursive: true });
+          await writeAtomic(target, text, { exclusive: true });
+          await rm(legacy);
+        }
+      }
+    } finally { release(); }
+  }
   return text ? JSON.parse(text) : null;
 }
 
@@ -144,6 +168,8 @@ export async function saveCanvas(directory: string, path: string, baseRevision: 
         await writeAtomic(resolved.path, bytes);
         revision = hash(bytes);
         recordChange(directory, { path, revision });
+        if (isWebMode()) await recordProjectActivity(directory, `保存画布：${accepted.filter(change => change.kind === "nodes").slice(0, 5).map(change => change.after?.data?.label || change.before?.data?.label || change.id).join("、") || "连线修改"}`, path,
+          accepted.filter(change => change.kind === "nodes").map(change => change.id)).catch(() => { console.warn("[collaboration] canvas activity could not be saved"); });
       }
       await commitRecycleRecord(directory, recycled);
       return { conflict: false as const, revision, baseRevision: disk.revision, changes: accepted, ...(baseRevision === disk.revision ? {} : { canvas: result.canvas }) };

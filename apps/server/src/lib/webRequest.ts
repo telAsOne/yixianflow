@@ -18,6 +18,7 @@ const privateRoutes = new Set([
   "GET /api/localHelper/status", "GET /api/localHelper/download", "POST /api/localHelper/bind", "PUT /api/localHelper/select", "DELETE /api/localHelper/revoke",
   "GET /api/projects/list", "POST /api/projects/create", "PUT /api/projects/rename", "PUT /api/settings/save",
   "GET /api/account/limits", "GET /api/workspaces/check",
+  "GET /api/account/sessions/list", "DELETE /api/account/sessions/revoke",
   "GET /api/mcp/status", "GET /api/mcp/access/list", "POST /api/mcp/access/create", "DELETE /api/mcp/access/revoke",
   "GET /api/mcp/control/events", "POST /api/mcp/control/state", "POST /api/mcp/control/result",
   "GET /api/ai/models", "GET /api/ai/media/models",
@@ -71,7 +72,7 @@ export default async function webRequest(req: Request, res: Response, next: Next
   const personalData = /^\/api\/(projects|settings|workspaces|ai|agent|assets|singleAgent|whisper|localHelper|mcp)(\/|$)/.test(req.path)
     && !["/api/workspaces/files/media", "/api/localHelper/download"].includes(req.path);
   if (session && personalData && !expectedUser) throw Object.assign(new Error("请刷新页面后继续访问个人项目"), { status: 409 });
-  if (!publicRoutes.has(route) && !privateRoutes.has(route) && !creativeRoutes.test(req.path) && !pluginRoutes.test(req.path))
+  if (!publicRoutes.has(route) && !privateRoutes.has(route) && !/^\/api\/projects\//.test(req.path) && !creativeRoutes.test(req.path) && !pluginRoutes.test(req.path))
     throw Object.assign(new Error("此能力需要桌面客户端或独立的服务配置"), { status: 403 });
   if (session) return webContext.run(session, async () => {
     if (pluginRoutes.test(req.path) && req.method !== "GET" && session.account.user.role! < 100)

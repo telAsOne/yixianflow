@@ -18,7 +18,8 @@
     "./whisper/types": "./src/utils/whisper/types.ts",
     "./agent/mentionSources": "./src/agent/mentionSources.ts",
     "./i18n": "./src/lib/i18n.ts",
-    "./account": "./src/types/account.ts"
+    "./account": "./src/types/account.ts",
+    "./collaboration": "./src/types/collaboration.ts"
   },
   "scripts": {
     "routes": "bun src/core.ts",

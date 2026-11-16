@@ -60,10 +60,15 @@ export async function initializeWebStore() {
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.users (
     id INTEGER PRIMARY KEY, credentials TEXT NOT NULL, settings JSONB NOT NULL DEFAULT '{}'
   )`;
+  await sql`ALTER TABLE yixianflow.users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE yixianflow.users ADD COLUMN IF NOT EXISTS role INTEGER`;
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.sessions (
     hash TEXT PRIMARY KEY, "userId" INTEGER NOT NULL REFERENCES yixianflow.users(id),
     "expiresAt" TIMESTAMPTZ NOT NULL, "seenAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`;
+  await sql`ALTER TABLE yixianflow.sessions ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid()`;
+  await sql`ALTER TABLE yixianflow.sessions ADD COLUMN IF NOT EXISTS "userAgent" TEXT NOT NULL DEFAULT ''`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS "sessionsId" ON yixianflow.sessions (id)`;
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.logins (
     hash TEXT PRIMARY KEY, "browserHash" TEXT NOT NULL, verifier TEXT NOT NULL, "claimedAt" TIMESTAMPTZ,
     "expiresAt" TIMESTAMPTZ NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '10 minutes')
@@ -82,11 +87,32 @@ export async function initializeWebStore() {
   )`;
   await sql`CREATE INDEX IF NOT EXISTS "mcpAccessUser" ON yixianflow.mcpAccess ("userId", "createdAt" DESC)`;
   await sql`ALTER TABLE yixianflow.mcpAccess ADD COLUMN IF NOT EXISTS scopes JSONB NOT NULL DEFAULT '[]'`;
+  await sql`UPDATE yixianflow.mcpAccess SET scopes = scopes - 'generateAudio' WHERE scopes ? 'generateAudio'`;
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.mcpOperations (
     "accessId" UUID NOT NULL REFERENCES yixianflow.mcpAccess(id) ON DELETE CASCADE, "requestId" UUID NOT NULL,
     hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running', result JSONB, error TEXT,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY ("accessId", "requestId")
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.projectMembers (
+    "projectId" UUID NOT NULL REFERENCES yixianflow.projects(id) ON DELETE CASCADE,
+    "userId" INTEGER NOT NULL REFERENCES yixianflow.users(id), role TEXT NOT NULL CHECK (role IN ('editor', 'viewer')),
+    "joinedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY ("projectId", "userId")
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS "projectMembersUser" ON yixianflow.projectMembers ("userId")`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.projectInvites (
+    hash TEXT PRIMARY KEY, "projectId" UUID NOT NULL REFERENCES yixianflow.projects(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('editor', 'viewer')), "createdBy" INTEGER NOT NULL REFERENCES yixianflow.users(id),
+    "expiresAt" TIMESTAMPTZ NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days'),
+    "acceptedBy" INTEGER REFERENCES yixianflow.users(id), revoked BOOLEAN NOT NULL DEFAULT false
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS yixianflow.projectActivity (
+    id BIGSERIAL PRIMARY KEY, "projectId" UUID NOT NULL REFERENCES yixianflow.projects(id) ON DELETE CASCADE,
+    "userId" INTEGER NOT NULL REFERENCES yixianflow.users(id), name TEXT NOT NULL, action TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '', "nodeIds" JSONB NOT NULL DEFAULT '[]',
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`;
+  await sql`ALTER TABLE yixianflow.projectActivity ADD COLUMN IF NOT EXISTS "platformOnly" BOOLEAN NOT NULL DEFAULT false`;
+  await sql`CREATE INDEX IF NOT EXISTS "projectActivityPage" ON yixianflow.projectActivity ("projectId", id DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS yixianflow.localDevices (
     id UUID PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "pairHash" TEXT UNIQUE, "pairExpiresAt" TIMESTAMPTZ,
     name TEXT NOT NULL, "ownerId" INTEGER REFERENCES yixianflow.users(id), "ownerName" TEXT,

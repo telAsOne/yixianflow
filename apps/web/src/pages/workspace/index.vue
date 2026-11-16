@@ -14,7 +14,7 @@
         v-if="activePanel === 'document'"
         :key="workspaceStore.project?.directory"
         :ref="setDocumentPanel"
-        :inert="refreshing"
+        :inert="refreshing || (webMode && !collaboration.canEdit)"
         :readNode="readDocumentNode"
         :readNodes="readDocumentNodes"
         :mountNode="mountDocumentNode"
@@ -28,6 +28,14 @@
       <workspaceMenu class="workspaceMenu" :exporting="exporting" :exportDisabled="refreshing || !workspaceStore.project" @exportProject="exportProject" @openSettings="openSettings()" @openRecycleBin="recycleVisible = true" />
       <div v-show="activePanel === 'canvas'" ref="menuTarget" class="canvasMenuTarget" :inert="refreshing" />
       <div class="workspaceActions">
+        <el-button v-if="webMode" class="agentButton collaborationButton" :title="collaboration.error || onlineMembers" :aria-label="`项目成员，${collaboration.error || onlineMembers}`" @click="openSettings('projectMembers')">
+          <span class="collaborationAvatars" aria-hidden="true">
+            <span v-for="member in onlinePeople.slice(0, 3)" :key="member.userId" class="collaborationAvatar" :style="{ '--memberColor': member.color }" :title="member.name">{{ member.name.slice(0, 1) }}</span>
+            <icon-users v-if="!onlinePeople.length" :size="18" />
+          </span>
+          <span class="buttonLabel">{{ onlinePeople.length }} 人<span class="sessionCount">{{ onlineSessions.length }} 个会话</span></span>
+          <span class="connectionDot" :class="{ disconnected: !collaboration.connected }" aria-hidden="true" />
+        </el-button>
         <el-segmented :modelValue="activePanel" class="panelSwitcher" :options="panelOptions" aria-label="切换面板" @change="switchPanel">
           <template #default="{ item }">
             <span class="panelOption">
@@ -65,6 +73,7 @@
         </el-button>
       </div>
     </header>
+    <p v-if="webMode && (collaboration.accessLost || collaboration.role === 'viewer')" class="collaborationNotice" role="status">{{ collaboration.accessLost ? collaboration.error : '当前为仅查看权限' }}</p>
     <floatingAgent v-if="agentMounted" :key="workspaceStore.project?.directory" v-model="agentVisible" v-model:layout="agentLayout" :topOffset="headerHeight" :maxDockedWidth="agentMaxWidth" :inert="refreshing" />
     <settings v-model="settingsVisible" :panel="settingsPanel" />
     <recycleBin v-if="workspaceStore.project" :key="workspaceStore.project.directory" v-model="recycleVisible" :directory="workspaceStore.project.directory" :flushSave="flushSave" :preparePurge="prepareRecyclePurge" :afterRestore="refreshProject" />
@@ -75,10 +84,11 @@
 import { computed, defineAsyncComponent, nextTick, onMounted, onScopeDispose, provide, ref, shallowRef, toRefs, watch, type ComponentPublicInstance } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import axios from "axios";
-import { IconLayoutDashboard, IconFileText, IconSparkles, IconLayoutSidebarRight } from "@tabler/icons-vue";
+import { IconLayoutDashboard, IconFileText, IconSparkles, IconLayoutSidebarRight, IconUsers } from "@tabler/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import settings from "@/components/settings/index.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useCollaborationStore } from "@/stores/collaboration";
 import { flushSettings } from "@/stores/settings";
 import { webMode } from "@/lib/webRuntime";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
@@ -96,14 +106,34 @@ const floatingAgent = defineAsyncComponent(() => import("./components/floatingAg
 const documentPanel = defineAsyncComponent(() => import("./panels/document/index.vue"));
 
 const workspaceStore = useWorkspaceStore();
+const collaboration = useCollaborationStore();
+const onlineSessions = computed(() => collaboration.presence.filter(member => !member.agent));
+const onlinePeople = computed(() => {
+  const members = new Map<number, (typeof collaboration.presence)[number]>();
+  for (const member of onlineSessions.value) members.set(member.userId, member);
+  return [...members.values()];
+});
+const onlineMembers = computed(() => collaboration.presence.map(member => `${member.name}：${member.activity}`).join("\n"));
+watch([webMode, () => workspaceStore.project?.directory], ([enabled, id], _previous, onCleanup) => {
+  if (!enabled || !id) return;
+  collaboration.start(id);
+  onCleanup(() => collaboration.stop());
+}, { immediate: true });
 const recycleVisible = ref(false);
 async function prepareRecyclePurge(directory: string) {
   if (workspaceStore.project?.directory !== directory) throw new Error("项目已切换，请重新打开回收站");
   await canvasPanelRef.value?.clearHistory();
 }
 const { activePanel, agentVisible, inspectorVisible, inspectorWidth, agent: agentLayout } = toRefs(useWorkspaceView(() => workspaceStore.project?.directory));
+watch([activePanel, () => collaboration.projectId], ([panel, id], _previous, onCleanup) => {
+  if (!webMode.value || !id || panel !== "document") return;
+  const update = () => void collaboration.updatePresence({ path: "", panel: "document", visible: document.visibilityState === "visible", activity: "查看文档", selected: [] }).catch(() => {});
+  update();
+  const timer = setInterval(update, 10000);
+  onCleanup(() => clearInterval(timer));
+}, { immediate: true });
 watch(() => workspaceStore.pendingAgentMessage, message => {
-  if (message && message.directory === workspaceStore.project?.directory) agentVisible.value = true;
+  if (message && message.directory === workspaceStore.project?.directory) { collaboration.panel = "ai"; agentVisible.value = true; }
 }, { immediate: true });
 const agentMounted = ref(false);
 watch([() => workspaceStore.project?.directory, agentVisible], ([directory, visible], previous) => {
@@ -355,6 +385,7 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
   width: 100%;
   height: 100dvh;
   background-color: var(--el-bg-color);
+  .collaborationNotice { position: absolute; top: calc(var(--workspaceHeaderHeight) + 6px); left: 50%; transform: translateX(-50%); z-index: 2002; max-width: 80%; margin: 0; padding: 6px 14px; border-radius: 16px; background: var(--el-color-warning-light-9); color: var(--el-color-warning-dark-2); font-size: 12px; }
 
   .canvasPanel {
     position: absolute;
@@ -393,6 +424,35 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
       align-items: center;
       gap: 8px;
       margin-left: auto;
+      .collaborationButton {
+        position: relative;
+        background: var(--el-bg-color);
+        color: var(--el-text-color-regular);
+        :deep(> span) { gap: 8px; }
+
+        .collaborationAvatars {
+          display: inline-flex;
+          align-items: center;
+          padding-right: 4px;
+
+          .collaborationAvatar {
+            display: grid;
+            place-items: center;
+            width: 25px;
+            height: 25px;
+            margin-right: -4px;
+            border: 2px solid var(--el-bg-color);
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--memberColor) 12%, var(--el-bg-color));
+            color: var(--el-text-color-primary);
+            font-size: 11px;
+            font-weight: 600;
+          }
+        }
+
+        .buttonLabel { display: inline-flex; align-items: center; gap: 8px; .sessionCount { padding-left: 8px; border-left: 1px solid var(--el-border-color); color: var(--el-text-color-secondary); font-size: 11px; } }
+        .connectionDot { width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-success); &.disconnected { background: var(--el-color-warning); } }
+      }
     }
 
     .panelSwitcher {
@@ -456,6 +516,11 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 
       .agentButton { width: 38px; padding: 0; }
       .agentButton .buttonLabel { display: none; }
+      .workspaceActions .collaborationButton {
+        .buttonLabel { display: none; }
+        .collaborationAvatars { padding: 0; .collaborationAvatar { margin: 0; &:nth-child(n + 2) { display: none; } } }
+        .connectionDot { position: absolute; top: 5px; right: 4px; width: 7px; height: 7px; border: 1px solid var(--el-bg-color); }
+      }
     }
 
     @media (max-width: 760px) {

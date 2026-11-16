@@ -40,6 +40,30 @@ const canvasId = computed(() => activeInstance.value?.canvasId ?? "");
 const canvasReady = computed(() => activeInstance.value?.canvasReady ?? false);
 const lifetime = new AbortController();
 const workspaceStore = useWorkspaceStore();
+window.addEventListener("toonflow:canvas-update", receiveProjectUpdate);
+window.addEventListener("toonflow:workspace-file-update", receiveFileUpdate);
+window.addEventListener("toonflow:locate-collaboration", locateCollaboration);
+window.addEventListener("toonflow:activate-collaboration", activateCollaboration);
+onScopeDispose(() => { window.removeEventListener("toonflow:canvas-update", receiveProjectUpdate); window.removeEventListener("toonflow:workspace-file-update", receiveFileUpdate); window.removeEventListener("toonflow:locate-collaboration", locateCollaboration); window.removeEventListener("toonflow:activate-collaboration", activateCollaboration); });
+function receiveFileUpdate(event: Event) {
+  const detail = (event as CustomEvent<{ directory: string; path: string }>).detail;
+  if (detail.directory !== workspaceStore.project?.directory) return;
+  void Promise.allSettled([...instances.values()].filter(panel => panel.canvasReady).map(panel => panel.refreshNodeFiles(detail.path)));
+}
+function receiveProjectUpdate(event: Event) {
+  const detail = (event as CustomEvent).detail;
+  if (detail.directory !== workspaceStore.project?.directory) return;
+  const path = detail.event?.path;
+  void Promise.allSettled([...instances.values()].filter(panel => panel.canvasReady && (!path || panel.canvasId === path)).map(panel => panel.receiveCanvasUpdate(detail.event)));
+}
+function activateCollaboration(event: Event) {
+  const path = (event as CustomEvent<{ path: string }>).detail.path;
+  if (path) void activateCanvas(path).catch(error => { syncError.value = error instanceof Error ? error.message : "无法打开协作画布"; });
+}
+function locateCollaboration(event: Event) {
+  const detail = (event as CustomEvent<{ path: string; nodeIds: string[] }>).detail;
+  if (detail.path) void ensureCanvas(detail.path, lifetime.signal, true).then(panel => panel.focusNodes(detail.nodeIds)).catch(error => { syncError.value = error instanceof Error ? error.message : "无法定位节点"; });
+}
 watch(canvasId, path => {
   const directory = workspaceStore.project?.directory;
   if (directory && path) settingsStorage.setItem(`toonflow:lastCanvas:${directory}`, JSON.stringify(path));

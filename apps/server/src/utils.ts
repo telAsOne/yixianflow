@@ -40,9 +40,11 @@ import * as mentionFiles from "@/agent/mentionFiles";
 import * as webAuth from "@/utils/web/auth";
 import * as webStore from "@/utils/web/store";
 import * as webProjects from "@/utils/web/projects";
+import * as collaboration from "@/utils/web/collaboration";
 import * as localHelper from "@/utils/localHelper";
 
 export default {
+  collaboration,
   localHelper,
   webAuth,
   webStore,

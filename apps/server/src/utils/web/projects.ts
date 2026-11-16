@@ -6,13 +6,19 @@ import conf from "@/utils/conf";
 import { canViewAllWebProjects, requireWebAccount } from "@/lib/webContext";
 import { credentialSchema, getBaseUrl } from "@/utils/account";
 import { decryptWebSecret, getWebDatabase } from "./store";
+import type { ProjectRole } from "@/types/collaboration";
 
 export async function listWebProjects(all = false) {
   const userId = requireWebAccount().user.id;
   if (all && !canViewAllWebProjects()) throw Object.assign(new Error("仅管理员可以查看其他人员的项目"), { status: 403 });
   const sql = getWebDatabase();
-  const projects: { id: string; ownerId: number; name: string; lastOpenedAt: Date }[] = await sql`SELECT id, "ownerId", name, "lastOpenedAt" FROM yixianflow.projects
-    WHERE (${all} OR "ownerId" = ${userId}) ORDER BY "lastOpenedAt" DESC, id`;
+  const account = requireWebAccount();
+  const projects = await sql<{ id: string; ownerId: number; name: string; ownerName: string; role: ProjectRole; lastOpenedAt: Date }[]>`SELECT project.id, project."ownerId", project.name, project."lastOpenedAt", owner.name AS "ownerName",
+    CASE WHEN project."ownerId" = ${userId} THEN 'owner' WHEN ${(account.user.role ?? 0) >= 10} THEN 'admin' ELSE member.role END AS role
+    FROM yixianflow.projects AS project JOIN yixianflow.users AS owner ON owner.id = project."ownerId"
+    LEFT JOIN yixianflow.projectMembers AS member ON member."projectId" = project.id AND member."userId" = ${userId}
+    WHERE project."ownerId" = ${userId} OR member."userId" IS NOT NULL OR ${(account.user.role ?? 0) >= 10}
+    ORDER BY project."lastOpenedAt" DESC, project.id`;
   const ownerNames = new Map<number, string>();
   if (all && projects.length) {
     const baseUrl = getBaseUrl();
@@ -24,7 +30,7 @@ export async function listWebProjects(all = false) {
       ownerNames.set(owner.id, account.user.display_name || account.user.username);
     }
   }
-  return projects.map(project => ({ ...project, directory: project.id, ownerName: ownerNames.get(project.ownerId), lastOpenedAt: new Date(project.lastOpenedAt).getTime() }));
+  return projects.map(project => ({ ...project, directory: project.id, ownerName: project.ownerName || ownerNames.get(project.ownerId), lastOpenedAt: new Date(project.lastOpenedAt).getTime() }));
 }
 
 export async function createWebProject(name: string) {
@@ -39,18 +45,24 @@ export async function createWebProject(name: string) {
     await mkdir(directory);
     // ACT: 初始化失败保留已写文件供恢复，避免递归删除与外部操作并发写入的内容。
     await writeAtomic(resolve(directory, "画布1.json"), JSON.stringify({ toonflowCanvas: true, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }), { exclusive: true });
-    return { id, ownerId, directory: id, name, lastOpenedAt: Date.now() };
+    return { id, ownerId, directory: id, name, role: "owner", lastOpenedAt: Date.now() };
   });
 }
 
 export async function getWebProject(id: string, permission: "read" | "edit" | "manage" = "read") {
-  // ACT: 当前项目仅向所有者和平台管理员开放，两者都具备读写管理权限。
   if (!z.uuid().safeParse(id).success) throw Object.assign(new Error("请选择有效的项目"), { status: 400 });
   const sql = getWebDatabase();
-  const [project] = await sql`SELECT id, "ownerId", name FROM yixianflow.projects WHERE id = ${id}
-    AND ("ownerId" = ${requireWebAccount().user.id} OR ${canViewAllWebProjects()})`;
+  const account = requireWebAccount();
+  const [project] = await sql`SELECT project.*, owner.name AS "ownerName", member.role AS "memberRole"
+    FROM yixianflow.projects AS project JOIN yixianflow.users AS owner ON owner.id = project."ownerId"
+    LEFT JOIN yixianflow.projectMembers AS member ON member."projectId" = project.id AND member."userId" = ${account.user.id}
+    WHERE project.id = ${id}`;
   if (!project) throw Object.assign(new Error("项目不存在或无权访问"), { status: 404 });
-  return project;
+  const role = project.ownerId === account.user.id ? "owner" : (account.user.role ?? 0) >= 10 ? "admin" : project.memberRole;
+  if (!role) throw Object.assign(new Error("项目不存在或无权访问"), { status: 404 });
+  if (permission === "manage" && !["owner", "admin"].includes(role) || permission === "edit" && role === "viewer")
+    throw Object.assign(new Error("当前项目权限不允许此操作"), { status: 403 });
+  return { ...project, role };
 }
 
 export async function resolveWebProject(id: string, permission: "read" | "edit" | "manage" = "read") {
@@ -64,8 +76,18 @@ export async function resolveWebProject(id: string, permission: "read" | "edit" 
   return directory;
 }
 
+export async function requireProjectAgentRead(id: string, userId: number) {
+  const { user } = requireWebAccount();
+  if (userId === user.id) return;
+  await getWebProject(id, "manage");
+  if ((user.role ?? 0) >= 10) return;
+  const [account] = await getWebDatabase()`SELECT id FROM yixianflow.users WHERE id = ${userId} AND role < 10`;
+  if (!account) throw Object.assign(new Error("对话不存在或无权访问"), { status: 404 });
+}
+
 export async function renameWebProject(id: string, name: string) {
+  await getWebProject(id, "manage");
   const sql = getWebDatabase();
-  const rows = await sql`UPDATE yixianflow.projects SET name = ${name} WHERE id = ${id} AND "ownerId" = ${requireWebAccount().user.id} RETURNING id`;
+  const rows = await sql`UPDATE yixianflow.projects SET name = ${name} WHERE id = ${id} RETURNING id`;
   if (!rows.length) throw Object.assign(new Error("项目不存在或无权访问"), { status: 404 });
 }

@@ -16,6 +16,7 @@ import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
 import { createLocalComputerTools } from "@/utils/localHelper/tools";
+import { createProjectReadTool } from "./projectRead";
 import { createMediaReadTool } from "./media";
 import type { BrowserMediaReader } from "@/utils/media/readTypes";
 
@@ -119,7 +120,8 @@ export async function createAgentTools(cwd: string, canvas?: CanvasContext, ques
       });
     }
   }
-  for (const tool of [createMediaReadTool(cwd, mediaReader), ...await createLocalComputerTools()]) {
+  const projectRead = await createProjectReadTool(cwd, directory => createAgentToolContext(directory).files);
+  for (const tool of [createMediaReadTool(cwd, mediaReader), ...(projectRead ? [projectRead] : []), ...await createLocalComputerTools()]) {
     if (names.has(tool.name)) throw new Error(t`工具名称重复：${tool.name}`);
     tools.push(tool);
   }

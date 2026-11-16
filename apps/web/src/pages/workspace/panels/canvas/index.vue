@@ -19,14 +19,14 @@
     <vue-flow
       :id="runtimeKey"
       :onlyRenderVisibleElements="false"
-      :nodesDraggable="true"
+      :nodesDraggable="!readOnly"
       :nodeTypes="nodeTypes"
       :edgeTypes="edgeTypes"
       :snapToGrid="snapEnabled"
       :snapGrid="[16, 16]"
       :minZoom="0.02"
       :maxZoom="8"
-      :nodesConnectable="true"
+      :nodesConnectable="!readOnly"
       :connectionMode="ConnectionMode.Strict"
       :nodesFocusable="false"
       :edgesFocusable="false"
@@ -58,6 +58,7 @@
       <template v-for="type in remoteNodeTypes" :key="type" #[`node-${type}`]="nodeProps">
         <remoteNode
           v-if="!canvasReloading"
+          :inert="readOnly"
           v-bind="nodeProps"
           :component="nodeTypes[type]"
           :error="nodeErrors[type]"
@@ -66,7 +67,7 @@
       <background :gap="16" patternColor="var(--el-border-color)" />
       <teleport :to="workspaceLayout.menuTarget.value ?? 'body'" :disabled="!workspaceLayout.menuTarget.value">
         <div v-show="active" class="canvasMenuHost">
-          <canvasMenu ref="canvasMenuRef" v-model:canvasId="canvasId" :directory="project?.directory" :initialCanvasId="initialCanvasId" :activateCanvas="activateCanvas" :flushSave="flushCanvases ?? flushCanvasSave" @loaded="resetSavedState" @reload="canvasReloading = $event" />
+          <canvasMenu ref="canvasMenuRef" v-model:canvasId="canvasId" :readOnly="readOnly" :canManageProject="!webMode || collaboration.canManage" :directory="project?.directory" :initialCanvasId="initialCanvasId" :activateCanvas="activateCanvas" :flushSave="flushCanvases ?? flushCanvasSave" @loaded="resetSavedState" @reload="canvasReloading = $event" />
           <el-tooltip :showArrow="false" :content="searchHint" placement="bottom" :hideAfter="0" :enterable="false" :triggerKeys="[]">
             <el-button class="searchButton" text :disabled="!active || !canvasId || !project?.directory" aria-label="搜索节点与分组" @click="nodeSearchRef?.open()">
               <icon-search :size="17" />
@@ -78,6 +79,7 @@
         <canvasMap v-if="showMap" :active="active && !settingsVisible && !!canvasId && !!project?.directory" :navigation="navigation" @zoom="zoomCanvas($event, true)" @close="showMap = false" />
         <canvasControls
           ref="canvasControlsRef"
+          :readOnly="readOnly"
           :active="active && !settingsVisible && canvasView.ready.value"
           v-model:showMap="showMap"
           v-model:snapEnabled="snapEnabled"
@@ -110,7 +112,7 @@
         ref="selectionToolbarRef"
         :batchHistory="canvasHistory.batch"
         :getSignal="() => canvasController.signal"
-        :disabled="!canvasId || !project?.directory" />
+        :disabled="readOnly || !canvasId || !project?.directory" />
       </teleport>
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" :nodeTypes="availableNodes" :focusNodes="navigation.focusNodes" />
       <teleport :to="flow.viewportRef.value ?? 'body'" :disabled="!flow.viewportRef.value">
@@ -127,6 +129,7 @@
       </div>
       </teleport>
     </vue-flow>
+    <canvasCollaboration v-if="webMode" :flow="flow" :path="canvasId" :active="active" />
     <canvasStarter
       v-if="canvasReady && !canvasReloading && !flow.getNodes.value.length && !fileImports.size && !placingNode"
       :nodeOptions="nodeCreation.nodeOptions.value"
@@ -148,7 +151,7 @@
     <div class="assetPanel">
       <assetLibrary ref="assetLibraryRef" v-model="assetsVisible" :directory="project?.directory" />
     </div>
-    <nodeInspector v-show="inspectorShown" v-model:width="workspaceLayout.inspectorWidth.value" :maxWidth="workspaceLayout.inspectorMaxWidth.value" :title="inspectorTitle" :requiresModel="inspectorRequiresModel" @close="workspaceLayout.inspectorVisible.value = false">
+    <nodeInspector v-show="inspectorShown" :inert="readOnly" v-model:width="workspaceLayout.inspectorWidth.value" :maxWidth="workspaceLayout.inspectorMaxWidth.value" :title="inspectorTitle" :requiresModel="inspectorRequiresModel" @close="workspaceLayout.inspectorVisible.value = false">
       <div class="nodeDock">
         <div ref="nodeDockSelection" class="dockSlot" />
         <div ref="nodeDockTop" class="dockSlot" />
@@ -212,6 +215,9 @@ import { useRemoteNodes } from "./useRemoteNodes";
 import { useNodeCreation } from "./useNodeCreation";
 import { useCanvasClipboard } from "./useCanvasClipboard";
 import canvasConflict from "./components/canvasConflict.vue";
+import canvasCollaboration from "./components/canvasCollaboration.vue";
+import { webMode } from "@/lib/webRuntime";
+import { useCollaborationStore } from "@/stores/collaboration";
 import type { CanvasSnapshot } from "@toonflow/server/canvasMerge";
 import type { CanvasUpdate } from "@/lib/workspaceFiles";
 import { useCanvasNavigation } from "./useCanvasNavigation";
@@ -308,6 +314,8 @@ const assetsVisible = ref(false);
 const assetLibraryRef = ref<InstanceType<typeof assetLibrary>>();
 const edgeDisconnect = ref<{ id: string; x: number; y: number }>();
 const flow = useVueFlow(props.runtimeKey);
+const collaboration = useCollaborationStore();
+const readOnly = computed(() => webMode.value && (!collaboration.canEdit || collaboration.accessLost));
 const fileImports = shallowReactive(new Map<string, CanvasFileImport>());
 const inspectorShown = computed(() => workspaceLayout.inspectorVisible.value && workspaceLayout.inspectorAvailable.value);
 const inspectorTitle = computed(() => flow.getSelectedNodes.value.length > 1 ? `已选中 ${flow.getSelectedNodes.value.length} 个节点` : flow.getSelectedNodes.value[0]?.data.label || "节点设置");
@@ -367,7 +375,7 @@ const canvasSync = useCanvasSync(flow, () => project.value?.directory && canvasI
     if (canvasDirty.value) scheduleCanvasSave();
   });
 const canvasSave = useCanvasSave(flow, canvasSync, {
-  directory: () => project.value?.directory, path: () => canvasId.value, ready: () => !!canvasMenuRef.value, dirty: canvasDirty, error: canvasSaveError,
+  directory: () => project.value?.directory, path: () => canvasId.value, ready: () => !!canvasMenuRef.value, readOnly: () => readOnly.value, dirty: canvasDirty, error: canvasSaveError,
 });
 const { scheduleCanvasSave, resetSavedState, cancelCanvasSave } = canvasSave;
 function flushCanvasSave(action?: () => Promise<void>) {
@@ -403,10 +411,10 @@ const createCanvasContext = useCanvasTools({
   resolveCanvasContext: id => props.resolveCanvasContext?.(id),
 });
 function getCanvasContext() {
-  return canvasId.value ? createCanvasContext(canvasId.value, canvasController.signal, workspaceController.signal) : undefined;
+  return canvasId.value && !readOnly.value ? createCanvasContext(canvasId.value, canvasController.signal, workspaceController.signal) : undefined;
 }
 const canvasReady = computed(() => !!canvasId.value && !nodeListLoading.value && nodeLoads.size === 0);
-const canCreate = computed(() => props.active && !props.settingsVisible && canvasReady.value && !!project.value?.directory && !workspaceRefreshing.value && !creatingNode.value);
+const canCreate = computed(() => !readOnly.value && props.active && !props.settingsVisible && canvasReady.value && !!project.value?.directory && !workspaceRefreshing.value && !creatingNode.value);
 const nodeCreation = useNodeCreation(flow, {
   availableNodes, ensureNodeType, batchHistory: canvasHistory.batch, focusNodes: navigation.focusNodes, signal: () => canvasController.signal,
 });
@@ -417,7 +425,7 @@ provide("createVideoContinuation", (sourceId: string, sourceHandle?: string) => 
 const placingNode = computed(() => nodeCreation.nodeOptions.value.find(node => node.type === placingType.value));
 watch([canCreate, canvasId, canvasReloading], cancelNodePlacement, { flush: "sync" });
 const { copySelectedNodes, pasteNodeAtCenter, pasteClipboardNode } = useCanvasClipboard(flow, {
-  active: () => props.active, settingsVisible: () => props.settingsVisible, canvasId, directory: () => project.value?.directory,
+  active: () => props.active && !readOnly.value, settingsVisible: () => props.settingsVisible, canvasId, directory: () => project.value?.directory,
   canvasElement, pointer: () => pointerPosition, signal: () => canvasController.signal, availableNodes, imports: fileImports, batchHistory: canvasHistory.batch,
 });
 const searchHint = computed(() => {
@@ -451,6 +459,8 @@ defineExpose({ canvasId, canvasReady, getCanvasContext, readDocumentNode, saveDo
   syncCanvasPath: (previous: string, target: string) => canvasMenuRef.value?.syncCanvasPath(previous, target),
   getMentionNodes: () => flow.nodes.value, findMentionNode: flow.findNode,
   getRetainedNodes: canvasHistory.getRetainedNodes,
+  focusNodes: navigation.focusNodes,
+  refreshNodeFiles: (path: string) => Promise.all(flow.getNodes.value.map(node => useNodeEvent(node.id, flow).emit("refresh", path))),
   clearHistory: async () => { canvasHistory.reset(); await protectRecycleHistory(); },
   get saveBusy() { return canvasSave.paused; }, get loadError() { return canvasMenuRef.value?.loadError ?? ""; }, saveError: canvasSaveError,
 });
@@ -482,13 +492,14 @@ async function prepareCanvasDelete() {
 }
 
 function showEdgeDisconnect({ event, edge }: EdgeMouseEvent) {
-  if (edge.deletable === false) return;
+  if (readOnly.value || edge.deletable === false) return;
   if (!(event instanceof MouseEvent)) return;
   event.stopPropagation();
   edgeDisconnect.value = { id: edge.id, x: event.clientX, y: event.clientY };
 }
 
 function dragFilesOver(event: DragEvent) {
+  if (readOnly.value) return;
   if (!props.active || props.settingsVisible || !canvasId.value || !project.value?.directory) return;
   if (!nodeCreation.isNodeDrag(event) && !isCanvasFileDrag(event)) return;
   if (!(event.target instanceof Element) || !event.target.closest(".vue-flow__pane, .nodePlacement")) return;
@@ -510,6 +521,7 @@ async function dropFiles(event: DragEvent) {
 }
 
 function selectFiles(position: { x: number; y: number }) {
+  if (readOnly.value) return;
   const directory = project.value?.directory;
   if (!props.active || props.settingsVisible || !canvasId.value || !directory) return;
   const context = { directory, availableNodes: availableNodes.value, signal: canvasController.signal, imports: fileImports, flow };
@@ -581,6 +593,7 @@ function uploadAtCenter() {
 }
 
 function openNodeMenu(event: MouseEvent) {
+  if (readOnly.value) return;
   if (event.target instanceof Element && event.target.classList.contains("vue-flow__pane")) nodeMenuRef.value?.openMenu(event, true);
 }
 
@@ -592,6 +605,7 @@ function addNodeAtPointer() {
 }
 
 async function changeHistory(direction: "undo" | "redo") {
+  if (readOnly.value) return;
   try {
     await canvasHistory[direction]();
     edgeDisconnect.value = undefined;
@@ -889,6 +903,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
     if (panKeyPressed.value || nativeClipboardKey) event.preventDefault();
     return;
   }
+  if (readOnly.value && ["group", "mergeGroup", "ungroup", "addNode", "arrange", "delete", "paste", "undo", "redo"].includes(action)) { event.preventDefault(); return; }
   if (!canvasId.value || !project.value?.directory) return;
   if (action === "copy" && (!flow.getSelectedNodes.value.length || window.getSelection()?.toString())) return;
   // 桌面快捷键直接复用原生剪贴板桥接；浏览器 Ctrl/Cmd+V 保留原生事件，避免额外读取权限。

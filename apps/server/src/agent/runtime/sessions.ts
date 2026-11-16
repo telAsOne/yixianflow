@@ -11,7 +11,7 @@ import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/a
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
 import { getSettings } from "@/utils/conf";
 import { providerSchema, getModelLimits } from "@/utils/ai";
-import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { getAgentDirectory, lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { answerQuestion } from "@/agent/bridge/question";
 
 export const agentAttachmentsSchema = z
@@ -103,7 +103,7 @@ export function hasPendingAgentQuestion(active: ActiveAgentSession, visited = ne
 
 export function trackAgentEvent(cwd: string, file: string | undefined, event: AgentEvent) {
   if (!file || event.type !== "question") return;
-  const active = getActiveAgentSession(resolve(cwd, ".agent/sessions", file));
+  const active = getActiveAgentSession(resolve(getAgentDirectory(cwd), "sessions", file));
   const tool = active?.tools.get(event.toolCallId);
   if (tool) tool.question = { callId: event.callId, title: event.title, question: event.question, options: event.options, fields: event.fields };
 }

@@ -21,7 +21,14 @@ export function canManagePlugins(req: Request) {
 }
 
 export async function resolveWorkspace(req: Request, path: string) {
-  if (isWebMode()) return trackWorkspaceRequest(req, await resolveWebProject(path));
+  if (isWebMode()) {
+    const route = req.originalUrl.split("?")[0];
+    const reading = ["GET", "HEAD"].includes(req.method) || ["/api/workspaces/files/mediaAccess", "/api/workspaces/presence/update", "/api/projects/presence", "/api/ai/media/tasks"].includes(route!);
+    const directory = await resolveWebProject(path, reading ? "read" : "edit");
+    const { resolveWorkspacePath } = await import("./files");
+    await resolveWorkspacePath(directory, ".agent", true);
+    return trackWorkspaceRequest(req, directory);
+  }
   if (!isAbsolute(path)) throw Object.assign(new Error("工作目录必须是绝对路径"), { status: 400 });
   const directory = await realpath(path).catch((err: NodeJS.ErrnoException) => {
     if (err.code === "ENOENT" || err.code === "ENOTDIR") throw Object.assign(new Error("工作目录不存在，请重新选择文件夹"), { status: 404 });

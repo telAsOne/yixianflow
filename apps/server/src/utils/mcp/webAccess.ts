@@ -63,8 +63,8 @@ export async function runWebMcpRequest(req: Request, next: () => void) {
     if (access.scopes.includes("localComputer") && access.deviceId) await sql.begin(async transaction => {
       const [current] = await transaction`SELECT id FROM yixianflow.mcpAccess WHERE id = ${access.id} AND NOT revoked AND "expiresAt" > CURRENT_TIMESTAMP FOR SHARE`;
       if (!current) throw Object.assign(new Error("MCP 授权已撤销或过期"), { status: 401 });
-      await transaction`INSERT INTO yixianflow.sessions (hash, "userId", "localDeviceId", "expiresAt")
-        SELECT ${`mcp:${access.id}`}, ${access.userId}, device.id, ${access.expiresAt}
+      await transaction`INSERT INTO yixianflow.sessions (hash, "userId", "localDeviceId", "expiresAt", "userAgent")
+        SELECT ${`mcp:${access.id}`}, ${access.userId}, device.id, ${access.expiresAt}, 'MCP'
         FROM yixianflow.localDevices AS device WHERE device.id = ${access.deviceId} AND device."ownerId" = ${access.userId} AND NOT device.revoked
         ON CONFLICT (hash) DO UPDATE SET "seenAt" = CURRENT_TIMESTAMP, "localDeviceId" = EXCLUDED."localDeviceId", "expiresAt" = EXCLUDED."expiresAt"`;
     });
@@ -75,6 +75,7 @@ export async function runWebMcpRequest(req: Request, next: () => void) {
 export async function listWebMcpAccess() {
   const { user } = requireWebAccount();
   return getWebDatabase()`SELECT access.id, access."projectId", CASE WHEN project."ownerId" = ${user.id} OR ${(user.role ?? 0) >= 10}
+    OR EXISTS (SELECT 1 FROM yixianflow.projectMembers AS member WHERE member."projectId" = project.id AND member."userId" = ${user.id})
     THEN project.name ELSE '无权访问的项目' END AS "projectName", access.name, access.permission, access.scopes, access."deviceId", access."createdAt", access."expiresAt"
     FROM yixianflow.mcpAccess AS access JOIN yixianflow.projects AS project ON project.id = access."projectId"
     WHERE access."userId" = ${user.id} AND NOT access.revoked AND access."expiresAt" > CURRENT_TIMESTAMP

@@ -8,7 +8,7 @@ import type { CanvasSnapshot } from "@toonflow/server/canvasMerge";
 import type { useCanvasSync } from "./useCanvasSync";
 
 export function useCanvasSave(flow: ReturnType<typeof useVueFlow>, sync: ReturnType<typeof useCanvasSync>, state: {
-  directory(): string | undefined; path(): string; ready(): boolean; dirty: Ref<boolean>; error: Ref<string>;
+  directory(): string | undefined; path(): string; ready(): boolean; readOnly?(): boolean; dirty: Ref<boolean>; error: Ref<string>;
 }) {
   let saving = Promise.resolve();
   let flushing = Promise.resolve();
@@ -42,6 +42,7 @@ export function useCanvasSave(flow: ReturnType<typeof useVueFlow>, sync: ReturnT
   }, 500);
 
   function scheduleCanvasSave() {
+    if (state.readOnly?.()) return;
     if (sync.applying.value) return;
     if (saveCancelled || !state.directory() || !state.path()) return;
     state.dirty.value = true;
@@ -76,6 +77,7 @@ export function useCanvasSave(flow: ReturnType<typeof useVueFlow>, sync: ReturnT
   }
 
   async function saveCanvasState(action?: () => Promise<void>) {
+    if (state.readOnly?.()) { if (action) throw new Error("当前项目为仅查看权限"); return; }
     if (saveCancelled) throw new Error("画布保存已取消");
     if (sync.conflict.value) { await sync.flushRecovery(); throw new Error(sync.conflict.value.message); }
     await Promise.all(flow.getNodes.value.map((node) => useNodeEvent(node.id, flow).emit("save")));

@@ -24,7 +24,7 @@
         <el-form-item label="允许操作">
           <el-select v-model="permission" :disabled="busy || !enabled" aria-label="允许操作">
             <el-option label="仅读取" value="read" />
-            <el-option label="读取和编辑" value="edit" />
+            <el-option label="读取和编辑" value="edit" :disabled="selectedProject?.role === 'viewer'" />
           </el-select>
         </el-form-item>
         <el-form-item label="扩展能力">
@@ -84,6 +84,8 @@ const scopes = ref<Scope[]>([]);
 const devices = ref<Device[]>([]);
 const deviceId = ref<string>();
 watch(permission, value => { if (value === "read") scopes.value = []; });
+const selectedProject = computed(() => workspaceStore.projectList.find(project => project.directory === projectId.value));
+watch(selectedProject, project => { if (project?.role === "viewer") permission.value = "read"; }, { immediate: true });
 const endpoint = ref("");
 const accesses = ref<Access[]>([]);
 const busy = ref(false);

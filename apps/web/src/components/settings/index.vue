@@ -2,7 +2,7 @@
   <el-dialog v-model="visible" class="settingsDialog" title="设置" width="min(1080px, calc(100vw - 32px))" alignCenter appendToBody>
     <div class="settings">
       <aside class="sidebar" aria-label="设置分类">
-        <template v-for="item in settingsPanels" :key="item.id">
+        <template v-for="item in availablePanels" :key="item.id">
           <h3 v-if="item.groupLabel" class="settingsGroupLabel">{{ item.groupLabel }}</h3>
           <button
             class="settingsItem"
@@ -22,8 +22,9 @@
             <keep-alive include="personalization">
               <component
                 :is="activePanel.component"
+                :key="activePanel.id === 'projectMembers' ? collaboration.projectId : activePanel.id"
                 v-bind="
-                  ['pluginMarket', 'languageModel', 'mediaModel', 'account', 'personalization', 'deviceLink', 'localHelper'].includes(activePanel.id) ? { visible } : {}
+                  ['pluginMarket', 'languageModel', 'mediaModel', 'account', 'personalization', 'deviceLink', 'localHelper', 'projectMembers'].includes(activePanel.id) ? { visible } : {}
                 " />
             </keep-alive>
           </transition>
@@ -34,9 +35,10 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, shallowRef, watch } from "vue";
+import { computed, defineAsyncComponent, shallowRef, watch } from "vue";
 import { isMobile } from "@/lib/mobile";
 import { webMode } from "@/lib/webRuntime";
+import { useCollaborationStore } from "@/stores/collaboration";
 import {
   IconPalette,
   IconSettings,
@@ -48,6 +50,7 @@ import {
   IconSubtitlesAi,
   IconDevices,
   IconUser,
+  IconUsers,
 } from "@tabler/icons-vue";
 
 const props = defineProps<{ panel?: string }>();
@@ -63,6 +66,7 @@ const settingsPanels = [
   },
   { id: "mediaModel", label: "媒体模型", icon: IconPhotoVideo, component: defineAsyncComponent(() => import("./panels/mediaModel/index.vue")) },
   { id: "account", label: "UnionAIGC 账户", icon: IconUser, component: defineAsyncComponent(() => import("./panels/account.vue")) },
+  ...(webMode.value ? [{ id: "projectMembers", label: "项目成员", icon: IconUsers, component: defineAsyncComponent(() => import("./panels/projectMembers.vue")) }] : []),
   {
     id: "pluginMarket",
     label: "插件市场",
@@ -85,10 +89,13 @@ const settingsPanels = [
   { id: "developer", label: "开发者选项", icon: IconCode, component: defineAsyncComponent(() => import("./panels/developer/index.vue")) },
 ].filter(panel => !webMode.value || panel.id !== "deviceLink");
 const activePanel = shallowRef(settingsPanels[0]!);
+const collaboration = useCollaborationStore();
+const availablePanels = computed(() => settingsPanels.filter(panel => panel.id !== "projectMembers" || !!collaboration.projectId));
 const visible = defineModel<boolean>({ default: false });
-watch([visible, () => props.panel], ([open, panel]) => {
+watch([visible, () => props.panel, () => collaboration.projectId], ([open, panel]) => {
+  if (!availablePanels.value.includes(activePanel.value)) activePanel.value = availablePanels.value[0]!;
   if (!open || !panel) return;
-  const selectedPanel = settingsPanels.find(item => item.id === panel);
+  const selectedPanel = availablePanels.value.find(item => item.id === panel);
   if (selectedPanel) activePanel.value = selectedPanel;
 }, { immediate: true });
 </script>

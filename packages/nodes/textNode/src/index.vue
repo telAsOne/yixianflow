@@ -105,12 +105,14 @@ let textFiles: ReturnType<typeof files.getWorkspaceFiles>;
 let textLoading: Promise<void> | undefined;
 let textSaving = Promise.resolve();
 let textSnapshot: Awaited<ReturnType<typeof textFiles.readTextSnapshot>> | undefined;
+let textConflict: Error | undefined;
 let textRevision = 0;
 const documentState = useNodeDocumentState();
 function saveText(value: string) {
   const revision = ++textRevision;
   documentState.dirty = true;
   textSaving = textSaving.catch(() => {}).then(async () => {
+    if (textConflict) throw textConflict;
     if (!textSnapshot) throw new Error("文本尚未加载，无法保存");
     textSnapshot.revision = await textFiles.writeTextSnapshot(textPath, value, textSnapshot);
     textSnapshot.text = value;
@@ -119,9 +121,14 @@ function saveText(value: string) {
       documentState.error = "";
     }
   }).catch(error => {
-    documentState.error = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-      || (error instanceof Error ? error.message : "文本保存失败");
-    throw error;
+    if (textConflict) throw textConflict;
+    const response = (error as { response?: { status?: number; data?: { message?: string; data?: { code?: string } } } })?.response;
+    const message = response?.data?.message || (error instanceof Error ? error.message : "文本保存失败");
+    const conflict = response?.status === 409 && response.data?.data?.code === "ESTALE";
+    documentState.error = `文本节点「${nodeProps.value.label}」保存失败：${message}`;
+    const failure = new Error(conflict ? `${documentState.error}；请先复制当前正文，再在该节点点击“重新读取磁盘”。处理前不要重复调用或新建替代节点。` : documentState.error, { cause: error });
+    if (conflict) textConflict = failure;
+    throw failure;
   });
   return textSaving;
 }
@@ -134,12 +141,20 @@ nodeEvent.on("save", async (reason) => {
   let pending: Promise<void>;
   do {
     pending = textSaving;
-    try { await pending; }
-    catch { await saveText(outputs.value.text.value); }
+    await pending;
   } while (pending !== textSaving);
   if (reason === "reload" && generating.value) throw new Error("文本正在生成，请完成后再刷新节点");
 });
 onMounted(() => { textLoading = loadText(); });
+nodeEvent.on("refresh", async path => {
+  if (path !== textPath || !textReady.value || textReloading.value || generating.value || documentState.dirty || documentState.error) return;
+  const snapshot = await textFiles.readTextSnapshot(textPath);
+  if (snapshot.revision === textSnapshot?.revision || !textReady.value || generating.value || documentState.dirty || documentState.error) return;
+  textReady.value = false;
+  outputs.value.text.value = snapshot.text;
+  textSnapshot = snapshot;
+  textReady.value = true;
+});
 async function loadText(fromDisk = false) {
   textReloading.value = true;
   textReady.value = false;
@@ -171,6 +186,7 @@ async function loadText(fromDisk = false) {
     // ACT: 成功落盘后才排除内联正文；迁移失败时画布仍保留原内容。
     if (!Object.hasOwn(outputs.value, "toJSON")) Object.defineProperty(outputs.value, "toJSON", { value: () => ({}) });
     textSaving = Promise.resolve();
+    textConflict = undefined;
     textReady.value = true;
     documentState.dirty = false;
     documentState.error = "";
@@ -266,6 +282,7 @@ nodeTools.register({
   async execute({ text }) {
     if (!textReady.value) throw new Error("文本尚未加载");
     if (generating.value) throw new Error("文本生成中，请稍后修改");
+    if (textConflict) throw textConflict;
     if (outputs.value.text.value === text) await saveText(text);
     else { outputs.value.text.value = text; await textSaving; }
     return { text };

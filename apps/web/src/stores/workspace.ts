@@ -9,6 +9,7 @@ export type Project = {
   id?: string;
   ownerId?: number;
   ownerName?: string;
+  role?: "owner" | "admin" | "editor" | "viewer";
   directory: string;
   name: string;
   lastOpenedAt: number;

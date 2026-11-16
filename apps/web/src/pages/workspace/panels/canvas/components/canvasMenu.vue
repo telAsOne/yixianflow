@@ -2,7 +2,7 @@
   <div class="canvasMenuPanel">
     <el-card class="canvasMenu" shadow="never" :bodyStyle="{ padding: '3px 4px 3px 6px' }">
       <div class="menuContent">
-        <el-input v-model="projectNameDraft" class="workspaceNameInput" :style="{ '--workspaceName': JSON.stringify(projectNameDraft || ' ') }" size="small" :title="directory" :disabled="!workspaceStore.project" aria-label="项目名称"
+        <el-input v-model="projectNameDraft" class="workspaceNameInput" :style="{ '--workspaceName': JSON.stringify(projectNameDraft || ' ') }" size="small" :title="directory" :disabled="!workspaceStore.project || !canManageProject" aria-label="项目名称"
           @keydown.stop @keydown.enter="saveProjectName" @keydown.esc.prevent="projectNameDraft = workspaceName" @blur="saveProjectName" />
         <el-divider direction="vertical" />
         <el-popover v-model:visible="canvasListVisible" trigger="click" placement="bottom-start" :width="320" :showArrow="false" :disabled="!directory">
@@ -14,8 +14,8 @@
           <div ref="canvasPicker" class="canvasPicker" @keydown.esc="canvasListVisible = false">
             <div class="pickerToolbar">
               <el-input v-model="searchQuery" :prefixIcon="IconSearch" placeholder="搜索画布" aria-label="搜索画布" clearable @keydown.esc.stop="searchQuery = ''" />
-              <el-button class="iconButton" text :icon="IconFolderPlus" :disabled="pickerBusy || editingId !== null || folderDraft !== null" title="新建文件夹" aria-label="新建画布文件夹" @click="startFolder" />
-              <el-button class="iconButton" text :icon="IconPlus" :disabled="pickerBusy || editingId !== null || folderDraft !== null" title="新增画布" aria-label="新增画布" @click="handleAddCanvas" />
+              <el-button class="iconButton" text :icon="IconFolderPlus" :disabled="readOnly || pickerBusy || editingId !== null || folderDraft !== null" title="新建文件夹" aria-label="新建画布文件夹" @click="startFolder" />
+              <el-button class="iconButton" text :icon="IconPlus" :disabled="readOnly || pickerBusy || editingId !== null || folderDraft !== null" title="新增画布" aria-label="新增画布" @click="handleAddCanvas" />
             </div>
             <el-scrollbar v-loading="loadingTree" maxHeight="min(440px, calc(100dvh - 198px))">
               <el-tree :key="JSON.stringify([directory, !!searchQuery.trim()])" ref="canvasTree" class="canvasTree" :data="treeEntries" nodeKey="path" :props="{ label: 'name' }" :currentNodeKey="activeCanvasId" :filterNodeMethod="filterEntry" :defaultExpandedKeys="canvasExpansion.expandedKeys.value" :autoExpandParent="false" highlightCurrent emptyText="" @nodeExpand="canvasExpansion.expand" @nodeCollapse="canvasExpansion.collapse" @nodeClick="selectEntry">
@@ -27,12 +27,12 @@
                     <el-input v-else-if="editingId === data.path" ref="nameInput" v-model="canvasName" class="nameEditor" size="small" :disabled="busy" :maxlength="120" :aria-label="newCanvasId === data.path ? '新画布名称' : '画布名称'" @click.stop @keydown.stop @keydown.enter="saveCanvas" @keydown.esc.prevent="finishEdit" @blur="saveCanvas" />
                     <span v-else class="entryName">{{ data.name }}</span>
                     <icon-check v-if="activeCanvasId === data.path" class="selectedIcon" :size="16" aria-hidden="true" />
-                    <el-button v-if="!data.draft && editingId !== data.path" class="moreButton" text :icon="IconDots" :disabled="pickerBusy || editingId !== null || folderDraft !== null" :aria-label="'更多 ' + data.name" title="更多" @click.stop="openItemMenu($event, data)" />
+                    <el-button v-if="!readOnly && !data.draft && editingId !== data.path" class="moreButton" text :icon="IconDots" :disabled="pickerBusy || editingId !== null || folderDraft !== null" :aria-label="'更多 ' + data.name" title="更多" @click.stop="openItemMenu($event, data)" />
                   </div>
                 </template>
               </el-tree>
             </el-scrollbar>
-            <el-button v-if="activeCanvasId" text type="danger" :disabled="pickerBusy" @click="clearCurrentCanvas">清空当前画布</el-button>
+            <el-button v-if="activeCanvasId" text type="danger" :disabled="readOnly || pickerBusy" @click="clearCurrentCanvas">清空当前画布</el-button>
             <el-text v-if="renameError" type="danger" role="alert">{{ renameError }}</el-text>
           </div>
         </el-popover>
@@ -75,6 +75,8 @@ import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import type { CanvasSnapshot } from "@toonflow/server/canvasMerge";
 
 const props = defineProps<{
+  readOnly?: boolean;
+  canManageProject?: boolean;
   directory?: string;
   initialCanvasId?: string;
   activateCanvas?: (id: string, signal?: AbortSignal) => Promise<void>;
@@ -89,6 +91,7 @@ watch([() => workspaceStore.project?.directory, workspaceName], () => {
 }, { immediate: true });
 
 async function saveProjectName(event: Event) {
+  if (!props.canManageProject || projectNameDraft.value === workspaceName.value) return;
   if (event instanceof KeyboardEvent && event.isComposing) return;
   const project = workspaceStore.project;
   try {
@@ -427,6 +430,7 @@ async function removeCanvas(canvas: Canvas) {
 }
 
 async function createCanvasFile(directory: string, name?: string, signal?: AbortSignal) {
+  if (props.readOnly) throw new Error("当前项目尚无画布，请由项目所有者创建");
   if (name !== undefined) name = normalizeCanvasName(name);
   const files = useWorkspaceFiles(directory);
   const flow = { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };

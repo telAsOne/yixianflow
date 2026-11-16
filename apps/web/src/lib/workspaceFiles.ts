@@ -3,6 +3,7 @@ import { isMobile, isRemoteConnection } from "./mobile";
 import { toValue, type MaybeRefOrGetter } from "vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { registerApiLanguage } from "@/lib/i18n";
+import { webMode } from "@/lib/webRuntime";
 import type { CanvasChange, CanvasSnapshot, CanvasElement } from "@toonflow/server/canvasMerge";
 import type { RecycleOverview } from "@toonflow/server/recycleTypes";
 
@@ -14,6 +15,16 @@ const client = axios.create({ baseURL: "/api/workspaces/files", headers: { "x-to
 registerApiLanguage(client);
 const fileUrls = new Map<string, { directory: string; path: string; url: Promise<string>; users: number }>();
 const listRequests = new Map<string, Promise<{ directory: string; empty: boolean; entries: WorkspaceEntry[] }>>();
+let recoverySessionId: string | undefined;
+
+function getRecoverySessionId() {
+  if (!webMode.value) return;
+  if (!recoverySessionId) {
+    recoverySessionId = sessionStorage.getItem("toonflow.recoveryWindow") || crypto.randomUUID();
+    sessionStorage.setItem("toonflow.recoveryWindow", recoverySessionId);
+  }
+  return recoverySessionId;
+}
 type MediaAccess = { path: string; url: string; mimeType: string; revision: string; width?: number; height?: number; duration?: number };
 const mediaRequests = new Map<string, Map<string, { promise: Promise<MediaAccess>; resolve(value: MediaAccess): void; reject(reason: unknown): void }>>();
 
@@ -94,17 +105,17 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
   }
 
   async function saveCanvasRecovery(path: string, base: CanvasSnapshot, local: CanvasSnapshot) {
-    const { data } = await client.post<{ data: { path: string } }>("../canvas/recovery/save", { directory: getDirectory(), path, base, local });
+    const { data } = await client.post<{ data: { path: string } }>("../canvas/recovery/save", { directory: getDirectory(), path, base, local, sessionId: getRecoverySessionId() });
     return data.data.path;
   }
 
   async function getCanvasRecovery(path: string) {
-    const { data } = await client.get<{ data: { base: CanvasSnapshot; local: CanvasSnapshot; savedAt: number } | null }>("../canvas/recovery/get", { params: { directory: getDirectory(), path } });
+    const { data } = await client.get<{ data: { base: CanvasSnapshot; local: CanvasSnapshot; savedAt: number } | null }>("../canvas/recovery/get", { params: { directory: getDirectory(), path, sessionId: getRecoverySessionId() } });
     return data.data;
   }
 
   async function removeCanvasRecovery(path: string) {
-    await client.delete("../canvas/recovery/remove", { data: { directory: getDirectory(), path } });
+    await client.delete("../canvas/recovery/remove", { data: { directory: getDirectory(), path, sessionId: getRecoverySessionId() } });
   }
 
   async function watchCanvases(onUpdate: (event: CanvasUpdate) => void | Promise<void>, onStatus: (error?: unknown) => void, signal: AbortSignal) {
