@@ -83,7 +83,11 @@
         </div>
         <el-button v-if="messages.length && !atLatestMessage" class="scrollBottom" circle aria-label="回到最新消息" title="回到最新消息" @click="messageVirtualizer.scrollToEnd()"><icon-arrow-down :size="18" /></el-button>
       </div>
-      <div v-if="compacting" class="compactionStatus" role="status">
+      <div v-if="waitingForUnionAigc" class="compactionStatus" role="status" aria-live="polite">
+        <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
+        <span>UnionAigc 正在更新，请等待，恢复后会自动继续当前任务。</span>
+      </div>
+      <div v-else-if="compacting" class="compactionStatus" role="status">
         <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
         <span>正在压缩上下文…</span>
       </div>
@@ -235,6 +239,7 @@ const runId = ref(props.initialSession?.runId);
 const running = computed(() => busy.value || remoteRunning.value);
 const hasDraft = ref(false);
 const compacting = ref(false);
+const waitingForUnionAigc = ref(false);
 const deletingId = ref<string>();
 const restoringAttachment = ref(false);
 const clientFilesRef = ref<InstanceType<typeof clientFilesControl>>();
@@ -354,6 +359,52 @@ function handleSenderKeydown(event: KeyboardEvent) {
   }
   if (mentionMenuRef.value?.handleKeydown(event)) return;
   skillMenuRef.value?.handleKeydown(event);
+}
+
+async function isUnionAigcUpdating(response: Response) {
+  if (response.status !== 503) return false;
+  const body = await response.clone().json().catch(() => undefined) as { code?: string; error?: { code?: string } } | undefined;
+  return body?.code === "service_updating" || body?.error?.code === "service_updating";
+}
+
+function waitForRetry(milliseconds: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, milliseconds);
+    const abort = () => {
+      window.clearTimeout(timer);
+      reject(signal.reason ?? new DOMException("请求已停止", "AbortError"));
+    };
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function waitForUnionAigc(signal: AbortSignal, retryAfter: string | null) {
+  const retryAfterSeconds = Number(retryAfter);
+  let delay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+    ? Math.min(30000, retryAfterSeconds * 1000)
+    : 5000;
+
+  while (true) {
+    signal.throwIfAborted();
+    try {
+      const response = await fetch("/_deployment/status.json", {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
+      });
+      const status = await response.json().catch(() => undefined) as { ready?: boolean } | undefined;
+      if (response.ok && status?.ready === true) return;
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
+    await waitForRetry(delay, signal);
+    delay = Math.min(15000, Math.ceil(delay * 1.5));
+  }
 }
 
 async function insertMentions(mentions: AgentMention[]) {
@@ -510,6 +561,10 @@ async function stopMessage() {
   const requestController = controller;
   stopping.value = true;
   try {
+    if (waitingForUnionAigc.value) {
+      requestController?.abort();
+      return;
+    }
     const ready = !runId.value && requestStarted ? await sessionReady?.promise : undefined;
     const currentRunId = ready?.runId ?? runId.value;
     const sessionFile = ready?.file ?? props.sessionFile;
@@ -674,12 +729,22 @@ async function sendMessage(source?: AgentMessage) {
     clientFiles = await clientFilesRef.value?.start(requestController.signal);
     requestController.signal.throwIfAborted();
     requestStarted = true;
-    const response = await fetch("/api/agent", {
-      method: "POST",
-      headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-toonflow-workspace": "1" },
-      body: JSON.stringify({ prompt, messageId: userMessage.id, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, clientFiles, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
-      signal: requestController.signal,
-    });
+    const requestBody = JSON.stringify({ prompt, messageId: userMessage.id, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, clientFiles, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined });
+    let response: Response;
+    while (true) {
+      response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-toonflow-workspace": "1" },
+        body: requestBody,
+        signal: requestController.signal,
+      });
+      if (!await isUnionAigcUpdating(response)) break;
+      waitingForUnionAigc.value = true;
+      await response.body?.cancel().catch(() => {});
+      await waitForUnionAigc(requestController.signal, response.headers.get("Retry-After"));
+      waitingForUnionAigc.value = false;
+    }
+    waitingForUnionAigc.value = false;
     if (response.status === 401) window.dispatchEvent(new Event("toonflow:sign-in"));
     for await (const event of readAgentEvents(response, requestController.signal)) {
       // 子任务复用发起委派时的画布与取消通道，界面切换不改变工具执行目标。
@@ -748,12 +813,13 @@ async function sendMessage(source?: AgentMessage) {
     const cancelled = requestController.signal.aborted || stopping.value;
     const responseMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
     const message = cancelled ? "已停止生成" : responseMessage || (error instanceof Error ? error.message : "发送失败，请重试");
-    if (!accepted || !ownsStream) { userMessage.error = message; ElMessage.error(message); }
+    if (!accepted || !ownsStream) { userMessage.error = message; if (!cancelled) ElMessage.error(message); }
     else (messages.value.findLast(item => item.role === "assistant" && item.streaming) ?? reply).error = message;
     if (ownsStream && props.initialSession?.parentFile && props.sessionFile) {
       emit("event", { type: "subAgentEvent", file: props.sessionFile, event: { type: "error", message } });
     }
   } finally {
+    waitingForUnionAigc.value = false;
     if (clientFiles) {
       try {
         const response = await fetch("/api/agent/clientFileCancel", {

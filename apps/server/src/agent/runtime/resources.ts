@@ -23,6 +23,13 @@ export async function createAgentResources(cwd: string, tools: ToolDefinition[],
   const skills = loadAgentSkills(cwd);
   const projectRead = tools.find(tool => tool.name === "projectRead");
   const projectAccess = projectRead ? `## 当前账号的项目读取权限\n${projectRead.description}\n使用 projectRead 读取真实成员及历史对话。先查询后判断是否存在记录；本段为当前账号的实际能力，旧对话中关于不能读取其他成员的说明不代表本轮权限。` : "";
+  const canvasGuidance = tools.some(tool => ["getCanvasNodes", "getCanvasEdges", "nodeTools"].includes(tool.name))
+    ? `## 画布任务执行核对
+- 从本轮请求提取目标、约束和依赖；沿用相关且已确认的项目决定，当前画布状态优先于旧对话描述。只在影响结果且无法从剧本、素材或画布查证时，合并提出必要问题。
+- 视频节点先判断是否需要续接，并区分原生续接绑定和普通视频参考；按任务核对场景/风格、角色、音色等所需参考。以实际入边、输出状态和素材内容为准，提示词提及或存在文件路径不代表已连接。
+- 对用户已授权且意图明确的连接和提示词直接完成。完成前回读目标提示词与入边，逐项核对并修复遗漏；素材视觉适用性影响决策时先读实际图片。无法修复时说明具体缺项和原因。
+- 全画布多节点盘点可委派明确只读的子任务产出简短清单；同一画布的写入与最终回读由主会话串行完成。`
+    : "";
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,
@@ -41,6 +48,7 @@ export async function createAgentResources(cwd: string, tools: ToolDefinition[],
     appendSystemPrompt: [
       globalAgents.content.trim() ? `## 全局协作规范（AGENTS.md）\n${globalAgents.content}` : "",
       memory.content.trim() ? `## 全局长期记忆\n以下是跨对话保存的偏好与事实，使用前核对适用项目，以用户本轮要求为准。\n<global_memory>\n${memory.content}\n</global_memory>` : "",
+      canvasGuidance,
     ].filter(Boolean),
   });
   await resourceLoader.reload();

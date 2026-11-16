@@ -76,6 +76,7 @@ export function withRequestBudget(stream: Stream, provider: RequestProvider, sta
   directory?: string;
   canCompact(): boolean;
   isCompacting(): boolean;
+  summaryMaxTokens?: number;
   prepareCompaction?(context: Context): void;
 }) {
   const limit = getRequestBodyLimit(provider);
@@ -90,6 +91,8 @@ export function withRequestBudget(stream: Stream, provider: RequestProvider, sta
     const fetchRequest = options.fetch ?? fetch;
     const result = await stream(model, context, {
       ...options,
+      ...(compacting && state.summaryMaxTokens !== undefined
+        ? { maxTokens: Math.min(options.maxTokens ?? state.summaryMaxTokens, state.summaryMaxTokens) } : {}),
       onPayload: async (original, requestModel) => {
         // 附件、提及和工具定义全部装配后再计量，避免只检查界面上的输入文字。
         let payload = (await options.onPayload?.(original, requestModel) ?? original) as Payload;
@@ -156,12 +159,22 @@ export function withRequestBudget(stream: Stream, provider: RequestProvider, sta
 }
 
 export function installRequestBudget(session: AgentSession, provider: RequestProvider) {
+  // SDK also uses reserveTokens for summary output; keep that budget independent of the earlier trigger.
+  const summaryMaxTokens = Math.floor(session.settingsManager.getCompactionReserveTokens() * 0.8);
+  const contextWindow = session.model?.contextWindow ?? 0;
+  if (session.autoCompactionEnabled && contextWindow > 65_536) {
+    // ACT: Compact well before very large context windows are exhausted; the session log remains intact for review.
+    const targetTokens = Math.min(128_000, Math.max(48_000, Math.floor(contextWindow * 0.35)));
+    const reserveTokens = Math.max(session.settingsManager.getCompactionReserveTokens(), contextWindow - targetTokens);
+    session.settingsManager.applyOverrides({ compaction: { reserveTokens } });
+  }
   const keepRecentTokens = session.settingsManager.getCompactionKeepRecentTokens();
   session.subscribe(event => {
     if (event.type === "compaction_end") session.settingsManager.applyOverrides({ compaction: { keepRecentTokens } });
   });
   session.agent.streamFunction = withRequestBudget(session.agent.streamFunction, provider, {
     directory: session.sessionManager.getCwd(),
+    summaryMaxTokens,
     canCompact: () => session.autoCompactionEnabled,
     isCompacting: () => session.isCompacting,
     prepareCompaction: context => {
