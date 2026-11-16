@@ -17,7 +17,7 @@ const recordSchema = z.object({
   deletedAt: z.number(), expiresAt: z.number(), status: z.enum(["pending", "deleted", "restored", "purging"]),
   snapshot: z.object({ toonflowCanvas: z.literal(true), nodes: z.array(z.looseObject({ id: z.string().min(1),
     position: z.object({ x: z.number(), y: z.number() }), parentNode: z.string().optional(), data: z.record(z.string(), z.any()).optional() })),
-    edges: z.array(z.looseObject({ id: z.string(), source: z.string(), target: z.string() })),
+    edges: z.array(z.looseObject({ id: z.string(), source: z.string(), target: z.string(), data: z.record(z.string(), z.any()).optional() })),
     viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() }) }),
   positions: z.record(z.string(), z.object({ x: z.number(), y: z.number() })),
   error: z.string().optional(), restoredPath: z.string().optional(), restoreRevision: z.string().optional(),
@@ -105,7 +105,7 @@ export async function captureDeletedNodes(directory: string, path: string, befor
     id: crypto.randomUUID(), kind: after ? "nodes" : "canvas", canvasPath: path,
     label: after ? nodes.length === 1 ? String(nodes[0]!.data?.label || "未命名节点") : `${nodes.length} 个节点` : basename(path, ".json"),
     deletedAt, expiresAt: deletedAt + retentionMs, status: "pending", positions,
-    snapshot: { ...before, nodes, edges: [...new Map([...before.edges, ...deletedEdges].filter(edge => ids.has(edge.source) || ids.has(edge.target)).map(edge => [edge.id, edge])).values()] } as RecycleRecord["snapshot"],
+    snapshot: { ...before, nodes, edges: [...new Map([...deletedEdges, ...before.edges].filter(edge => ids.has(edge.source) || ids.has(edge.target)).map(edge => [edge.id, edge])).values()] } as RecycleRecord["snapshot"],
   };
   await writeRecord(directory, record);
   return record;
@@ -330,7 +330,20 @@ export async function restoreRecycleEntry(directory: string, id: string) {
       }
       return copy;
     });
-    const edges = record.snapshot.edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target) && !canvas.edges.some(current => current.id === edge.id));
+    const restoredById = new Map(restoredNodes.map(node => [node.id, node]));
+    for (const node of restoredNodes) {
+      const source = node.data?.continuationBinding?.source;
+      if (typeof source === "string" && !nodeIds.has(source)) failure("续接来源视频也已删除，请先从回收站恢复来源视频，再恢复续接节点");
+    }
+    const edges = record.snapshot.edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target) && !canvas.edges.some(current => current.id === edge.id)).map(edge => {
+      const binding = restoredById.get(edge.target)?.data?.continuationBinding;
+      // 旧版删除历史遗漏连线 data；只补回与原绑定完全一致的固定来源标记。
+      if (binding && edge.id === binding.edgeId && edge.source === binding.source && edge.sourceHandle === binding.sourceHandle
+        && edge.targetHandle === "continuation" && edge.deletable === false && edge.updatable === false && edge.data?.videoContinuation === undefined) {
+        return { ...edge, data: { ...edge.data, videoContinuation: true } };
+      }
+      return edge;
+    });
     const next: CanvasSnapshot = { ...canvas, nodes: [...canvas.nodes, ...restoredNodes], edges: [...canvas.edges, ...edges] };
     validateCanvas(next);
     await validateRecycledMedia(directory, restoredNodes);
