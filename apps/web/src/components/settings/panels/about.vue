@@ -1,9 +1,9 @@
 <template>
   <div class="about">
     <div class="brand">
-      <div class="brandMark"><img class="brandLogo" :src="logoUrl" alt="UnionFlfow Logo" /></div>
+      <div class="brandMark"><img class="brandLogo" :src="logoUrl" alt="UnionFlow Logo" /></div>
       <div class="brandInfo">
-        <h3>UnionFlfow</h3>
+        <h3>UnionFlow</h3>
         <div class="brandMeta">
           <span v-if="currentVersion">v{{ currentVersion }}</span>
           <el-tag v-if="clientBuild?.channel || snapshot?.channel" type="info" size="small" round>{{ clientBuild?.channel || snapshot?.channel }}</el-tag>

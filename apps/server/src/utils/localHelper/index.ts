@@ -81,7 +81,7 @@ export async function revokeDevice(id: string, ownerId = requireWebAccount().use
 }
 
 export async function registerDevice(req: Request, input: { id: string; code: string; name: string; version: string }) {
-  if (!isWebMode()) throw unavailable("需要连接 UnionFlfow 网页版", 404);
+  if (!isWebMode()) throw unavailable("需要连接 UnionFlow 网页版", 404);
   const token = deviceToken(req);
   const now = Date.now();
   for (const [key, limit] of registrationLimits) if (limit.until < now) registrationLimits.delete(key);
@@ -103,7 +103,7 @@ function deviceToken(req: Request) {
 }
 
 export async function authenticateDevice(req: Request) {
-  if (!isWebMode()) throw unavailable("需要连接 UnionFlfow 网页版", 404);
+  if (!isWebMode()) throw unavailable("需要连接 UnionFlow 网页版", 404);
   const sql = getWebDatabase();
   const [device] = await sql`SELECT id, "ownerId", "ownerName" FROM yixianflow.localDevices
     WHERE "tokenHash" = ${hashWebToken(deviceToken(req))} AND NOT revoked`;

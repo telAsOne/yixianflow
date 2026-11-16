@@ -17,14 +17,14 @@
       </div>
 
       <footer class="pageFooter">
-        <p>© {{ new Date().getFullYear() }} UnionFlfow · 保留所有权利。</p>
+        <p>© {{ new Date().getFullYear() }} UnionFlow · 保留所有权利。</p>
       </footer>
     </section>
     <div class="artPanel" aria-hidden="true">
       <bg class="artBg" />
       <div class="artBrand">
         <img class="artLogo" :src="logoUrl" alt="" />
-        <span class="artName">UnionFlfow</span>
+        <span class="artName">UnionFlow</span>
       </div>
     </div>
     <mobileConnect v-model="mobileConnectVisible" />
