@@ -8,6 +8,15 @@ const cursor = z.string().min(1).max(4096).optional();
 const nodeIds = z.array(nodeId).min(1).max(20);
 
 export const canvasSchemas = {
+  waitCanvasNodes: z.strictObject({
+    canvasId,
+    nodes: z.array(z.strictObject({
+      nodeId, kind: z.enum(["generation", "review", "output"]),
+      operationId: z.string().min(1).max(256).optional(),
+      previousOutput: z.record(z.string(), z.json()).optional(),
+    })).min(1).max(20).refine(items => new Set(items.map(item => item.nodeId)).size === items.length, "不能重复等待同一节点"),
+    timeoutMs: z.number().int().min(0).max(50000).default(45000),
+  }),
   getCanvas: z.strictObject({
     canvasId,
     include: z.array(z.enum(["canvases", "nodeTypes"])).max(2).optional(),
@@ -85,6 +94,7 @@ export function getCanvasCallTimeout(name: string) {
 }
 
 export const canvasOperations = [
+  { name: "waitCanvasNodes", label: "等待节点完成", description: "只读等待当前画布中节点的真实生成、审查或输出变化，最多50秒。nodes 指定 nodeId、kind；generation 可固定 operationId，output 可传 previousOutput 避免接受旧输出。返回 settled 和逐节点状态；失败、来源变化或节点消失也会结束并说明原因，不发起生成、审查或修改。长任务优先使用内置 waitForCanvas，不用模型反复轮询。", parameters: canvasSchemas.waitCanvasNodes },
   { name: "getCanvas", label: "画布概览", description: "读取激活画布的 ID、节点数、连线数、选中数量和视口，不返回全部节点、连线或函数。include 按需选择 canvases（画布列表）或 nodeTypes（availableNodeTypes），二者共用 cursor/limit 分页。已知节点 ID 时可直接读取节点。所有读取工具每次最多 64 KiB，返回 hasMore/nextCursor；继续分页须保留原参数，仅替换 cursor。cursor 失效时重新查询。canvasId 可选，用于校验目标仍是当前激活画布。不要直接修改画布 JSON。", parameters: canvasSchemas.getCanvas },
   { name: "findCanvasNodes", label: "查找画布节点", description: "按 query（节点 ID 或完整名称）、types 和 selectedOnly 筛选节点，省略筛选时分页列举；返回 nodes 简要信息，其中名称预览最多 512 字符，不返回正文和函数定义。limit 默认 30、最多 100，每次最多扫描 2000 个节点。totalNodes 是画布节点总数而非命中数；selectedOnly 按各页读取时的选择状态筛选，并非冻结快照。即使 nodes 为空，hasMore 为 true 仍须使用 nextCursor 继续扫描。处理全部节点时逐批完成并保留摘要和游标，避免将各页详情不断堆进上下文。", parameters: canvasSchemas.findCanvasNodes },
   { name: "getCanvasNodes", label: "读取节点详情", description: "按已知且不重复的 nodeIds 读取最多 20 个节点，fields 默认 label/type/position；按需指定 ports、data、outputs。dataKeys 仅选择 data 的自身属性。path 可读取投影字段下的嵌套值，如 ['data','promptModel']，仅访问自身属性，ports 对应 data.handles。path 返回 value，数组/对象按 valueOffset/valueLimit 分页（默认 30、最多 100），字符串按 textOffset/textLimit 分段（默认 1000、最多 4000 字符）。textOffset 或 valueOffset 大于 0 时必须提供 path。检查每节点 truncated 的路径、total、nextOffset，沿该路径继续读取，不能把截断当完整。已有文本文件路径应交给文件读取工具。响应受 64 KiB 限制，hasMore 时保留参数用 nextCursor 继续。", parameters: canvasSchemas.getCanvasNodes },

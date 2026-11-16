@@ -10,6 +10,9 @@ import type { BrowserFfmpegRequest } from "@toonflow/ffmpeg";
 import { defineTool, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createAgentToolContext, createAgentTools } from "@/agent/tools";
 import { createMediaReadTool } from "@/agent/tools/media";
+import { createCanvasWaitTool } from "@/agent/tools/waitForCanvas";
+import { createProductionTaskTool } from "@/agent/tools/productionTask";
+import { createAssetEvidenceTool } from "@/agent/tools/assetEvidence";
 import { mediaReadSchema, readMedia } from "@/utils/media/read";
 import type { BrowserMediaReader, BrowserMediaResult } from "@/utils/media/readTypes";
 import { run as runAgent } from "@/agent";
@@ -23,8 +26,8 @@ import { assertWebMcpScope, requireWebMcpAccess, runWebMcpCall, runWebMcpOperati
 
 const targetSchema = z.strictObject({ connectionId: z.uuid().optional(), directory: z.uuid().optional(), canvasId: z.string().min(1).max(256).optional() });
 type Target = z.infer<typeof targetSchema>;
-const readOperations = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools"]);
-const readNodeFunctions = ["node:getConfig", "node:getPrompt", "node:getCameraPresets", "node:getGenerationStatus", "node:getSubtitleStatus", "node:getPromptReview", "node:getPromptReviewConfig"];
+const readOperations = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools", "waitCanvasNodes"]);
+const readNodeFunctions = ["node:getConfig", "node:getPrompt", "node:getReferences", "node:getPreparation", "node:getCameraPresets", "node:getGenerationStatus", "node:getSubtitleStatus", "node:getPromptReview", "node:getPromptReviewConfig"];
 const editNodeFunctions = ["node:setText", "node:setPrompt", "node:setConfig", "node:setImage", "node:setVideo", "node:setAudio", "node:setSubtitle", "node:saveSubtitle", "node:setPromptReviewConfig", "node:cancelPromptReview", "node:continueVideo", "node:createNewGeneration", "node:cancelGeneration"];
 const reviewNodeFunctions = ["node:reviewPrompt", "node:autoReviewPrompt"];
 const generationScopes = ["generateImage", "generateVideo"] as const;
@@ -242,6 +245,30 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
         },
       }));
       const skills = createAgentToolContext(directory).skills!;
+      const wait = createCanvasWaitTool(canvas);
+      const progress = createProductionTaskTool(directory);
+      for (const tool of [wait, progress]) customTools.push({ ...tool,
+        async execute(id, parameters, currentSignal, onUpdate, context) {
+          return runWebMcpCall(currentSignal ?? signal, tool.name === "productionTask" && (parameters as { action?: string }).action === "save", async activeSignal => {
+            assertWebMcpScope("runAgent");
+            return tool.execute(id, parameters, activeSignal, onUpdate, context);
+          });
+        },
+      });
+      const sourceContext = createAgentToolContext(directory);
+      const publicRead = sourceContext.sdk.defineTool(sourceContext.sdk.createReadToolDefinition(directory, { operations: {
+        readFile: async path => { const file = await resolvePublicPath(directory, relative(directory, path)); return readFile(file.path); },
+        access: async path => { await resolvePublicPath(directory, relative(directory, path)); },
+        detectImageMimeType: async path => { await resolvePublicPath(directory, relative(directory, path)); return sourceContext.files.detectImageMimeType(path); },
+      } }));
+      const evidence = createAssetEvidenceTool(directory, publicRead);
+      customTools.push({ ...evidence, async execute(id, parameters, currentSignal, onUpdate, context) {
+        return runWebMcpCall(currentSignal ?? signal, (parameters as { action?: string }).action === "note", async activeSignal => {
+          assertWebMcpScope("runAgent");
+          await resolvePublicPath(directory, (parameters as { path: string }).path);
+          return evidence.execute(id, parameters, activeSignal, onUpdate, context);
+        });
+      } });
       const skillSchema = z.strictObject({ action: z.enum(["list", "read"]), name: z.string().min(1).optional(), path: z.string().min(1).optional(), scope: z.enum(["workspace", "global"]).optional() });
       customTools.push(defineTool({ name: "skillOperator", label: "读取创作技能", description: "仅读取本项目及已安装的创作技能，不能编辑或安装技能。", parameters: z.toJSONSchema(skillSchema),
         async execute(_id, parameters, currentSignal) {

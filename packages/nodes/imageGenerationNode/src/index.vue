@@ -491,7 +491,7 @@ function getConfig() {
 registerGenerationTools({
   configDescription: "读取图片节点当前模型、分辨率、比例、assetIdentity 及可选模型能力，不含密钥。新图片默认 gpt-image-2.6、4K；比例按剧情、资产用途和用户要求选择，不把视频画幅套给全部资产",
   promptDescription: "修改此节点的普通图片生成提示词，支持 {{ref 1}} 等参考标记；不修改局部重绘提示词，不启动生成",
-  loadModels, getConfig,
+  loadModels, getConfig, getPrompt: () => data.value.prompt,
   setPrompt(value) {
     if (generating.value || deleting.value || pendingTask.value) throw new Error("节点存在未完成任务，请先查询或恢复原图片任务，不能修改原任务提示词");
     data.value.prompt = value;

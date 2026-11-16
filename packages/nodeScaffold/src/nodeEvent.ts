@@ -10,11 +10,12 @@ export type NodeEventCallbacks = {
   refresh: (path: string) => void | Promise<void>;
   copy: () => Record<string, unknown> | Promise<Record<string, unknown>>;
   canConnect: ValidConnectionFunc;
+  state: () => void | Promise<void>;
   [name: `input:${string}`]: (values: NodeInputValue[]) => void;
   [name: `output:${string}`]: (output: NodeOutput | undefined) => void;
 };
 type NodeEventListeners = {
-  [name in "delete" | "save" | "refresh" | "copy" | "canConnect"]: Set<NodeEventCallbacks[name]>;
+  [name in "delete" | "save" | "refresh" | "copy" | "canConnect" | "state"]: Set<NodeEventCallbacks[name]>;
 };
 
 // 挂在共享画布实例上，让独立 UMD 共用注册表；不会进入画布 JSON。
@@ -44,28 +45,30 @@ export function useNodeEvent(nodeId = useNodeId(), canvas = useVueFlow()) {
         { deep: true, immediate: true },
       );
     }
-    if (name !== "delete" && name !== "save" && name !== "refresh" && name !== "copy" && name !== "canConnect") throw new Error(`未知节点事件：${name}`);
+    if (name !== "delete" && name !== "save" && name !== "refresh" && name !== "copy" && name !== "canConnect" && name !== "state") throw new Error(`未知节点事件：${name}`);
     let events = registry.get(nodeId);
     if (!events) {
-      events = { delete: new Set(), save: new Set(), refresh: new Set(), copy: new Set(), canConnect: new Set() };
+      events = { delete: new Set(), save: new Set(), refresh: new Set(), copy: new Set(), canConnect: new Set(), state: new Set() };
       registry.set(nodeId, events);
     }
     if (name === "refresh") events.refresh ??= new Set();
-    const listeners = events[name as "delete" | "save" | "refresh" | "copy" | "canConnect"] as Set<NodeEventCallbacks[name]>;
+    if (name === "state") events.state ??= new Set();
+    const listeners = events[name as "delete" | "save" | "refresh" | "copy" | "canConnect" | "state"] as Set<NodeEventCallbacks[name]>;
     listeners.add(callback);
     const off = () => {
-      if (listeners.delete(callback) && !events.delete.size && !events.save.size && !events.refresh?.size && !events.copy.size && !events.canConnect.size) registry.delete(nodeId);
+      if (listeners.delete(callback) && !events.delete.size && !events.save.size && !events.refresh?.size && !events.copy.size && !events.canConnect.size && !events.state?.size) registry.delete(nodeId);
     };
-    onScopeDispose(off);
+    onScopeDispose(off, true);
     return off;
   }
 
   function emit(name: "delete"): Promise<void>;
+  function emit(name: "state"): Promise<void>;
   function emit(name: "save", reason?: "reload"): Promise<void>;
   function emit(name: "refresh", path: string): Promise<void>;
   function emit(name: "copy"): Promise<Record<string, unknown>>;
   function emit(name: "canConnect", ...args: Parameters<ValidConnectionFunc>): boolean;
-  function emit(...args: ["delete"] | ["save", "reload"?] | ["refresh", string] | ["copy"] | ["canConnect", ...Parameters<ValidConnectionFunc>]) {
+  function emit(...args: ["delete"] | ["state"] | ["save", "reload"?] | ["refresh", string] | ["copy"] | ["canConnect", ...Parameters<ValidConnectionFunc>]) {
     const events = registry.get(nodeId);
     if (args[0] === "canConnect") {
       return [...events?.canConnect ?? []].every(callback => callback(args[1], args[2]) === true);

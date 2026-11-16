@@ -7,31 +7,45 @@ export function registerGenerationTools<Shape extends z.ZodRawShape>(options: {
   updateDescription: string;
   loadModels(): Promise<void>;
   getConfig(): unknown;
+  getPrompt(): string;
   setPrompt(prompt: string): void;
   setConfig(args: z.output<z.ZodObject<Shape>>, signal?: AbortSignal): Promise<unknown>;
   generate: { name: string; description: string; execute(context: { source?: "ai" | "user" }): unknown | Promise<unknown> };
 }) {
   const configSchema: z.ZodObject = options.configSchema;
   nodeTools.register({
-    name: "getConfig",
-    description: options.configDescription,
+    name: "getPrompt",
+    description: "读取此生成节点当前完整提示词；仅在需要正文时调用，不查询模型清单、不启动生成。",
     parameters: z.strictObject({}),
-    async execute(_args, { signal }) {
+    execute: () => ({ prompt: options.getPrompt() }),
+  });
+  nodeTools.register({
+    name: "getConfig",
+    description: `${options.configDescription}；includeModels=false省略模型清单，只读取当前配置与能力。`,
+    parameters: z.strictObject({ includeModels: z.boolean().optional() }),
+    async execute({ includeModels }, { signal }) {
       signal?.throwIfAborted();
       await options.loadModels();
       signal?.throwIfAborted();
-      return options.getConfig();
+      const config = options.getConfig();
+      if (includeModels === false && config && typeof config === "object") {
+        const current = { ...config } as Record<string, unknown>;
+        delete current.models;
+        return current;
+      }
+      return config;
     },
   });
   nodeTools.register({
     name: "setPrompt",
-    description: `${options.promptDescription}；可同时提供 setConfig 支持的配置字段，校验通过后一起更新。`,
-    parameters: configSchema.safeExtend({ prompt: z.string() }),
-    async execute({ prompt, ...config }, { signal }) {
+    description: `${options.promptDescription}；可同时提供 setConfig 支持的配置字段，校验通过后一起更新。默认返回精简写入回执，returnPrompt=true 才回传全文；需要读取正文使用 getPrompt。`,
+    parameters: configSchema.safeExtend({ prompt: z.string(), returnPrompt: z.boolean().optional() }),
+    async execute({ prompt, returnPrompt, ...config }, { signal }) {
       if (Object.keys(config).length) await options.setConfig(options.configSchema.parse(config), signal);
       signal?.throwIfAborted();
-      options.setPrompt(z.string().parse(prompt));
-      return { prompt };
+      const text = z.string().parse(prompt);
+      options.setPrompt(text);
+      return { updated: true, promptCharacters: text.length, ...(returnPrompt ? { prompt: text } : {}) };
     },
   });
   nodeTools.register({

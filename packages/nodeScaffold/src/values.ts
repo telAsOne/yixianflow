@@ -16,6 +16,12 @@ export type NodeOutput = {
 }[keyof NodeValueMap];
 
 export type NodeOutputs = Record<string, NodeOutput | undefined>;
+
+export function snapshotNodeOutputs(outputs: NodeOutputs): NodeOutputs {
+  return Object.fromEntries(Object.entries(outputs).filter((entry): entry is [string, NodeOutput] => isNodeOutput(entry[1])).map(([id, output]) => [id, {
+    dataType: output.dataType, value: typeof output.value === "object" ? { url: output.value.url, mimeType: output.value.mimeType } : output.value,
+  }])) as NodeOutputs;
+}
 export type NodeInputValue = (NodeOutput | { dataType: string | string[]; value: undefined }) & { source: string; sourceHandle: string };
 
 export function isNodeOutput(output: unknown): output is NodeOutput {
