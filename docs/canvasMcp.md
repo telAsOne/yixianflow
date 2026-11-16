@@ -87,3 +87,12 @@
 视频声音先读取 `node:getConfig` 返回的 `audio`。`optional` 才可通过 `generateAudio` 切换；`native` 表示由模型原生合成声音，保留提示词里的声音设计，不发送独立开关。H3 旧配置中的 `generateAudio=false` 不代表静音。`unknown` 表示模型未加载、未选择或未声明声音能力，不能据此认定提示词有冲突。没有可用模型时先处理模型可用性；审查是辅助功能，不阻止正常生成。实际结果须通过 FFprobe 查询音轨并播放核对，存在音轨不等于具体音效通过验收。
 
 桌面版现有 HTTP 和 stdio MCP 配置入口继续在「设置 → MCP」提供。
+
+## 完整准备与结果等待
+
+- 视频节点新增只读 `node:getReferences`，返回稳定素材ID、当前标签、来源、路径、用途、未就绪输入、`revision`和`promptRevision`。H3主体按ID绑定；客户接线后由AI读取现场，无需人工复述编号。`node:setPrompt`可同时设置已有配置字段、`referencePurposes`、`expectedReferenceRevision`和`expectedPromptRevision`，版本变化时拒绝覆盖。
+- 图片/视频 `node:getPrompt`单独读取完整正文；`node:getConfig({includeModels:false})`省略重复模型清单。`node:setPrompt`默认返回写入结果和字符数，`returnPrompt:true`才返回正文。
+- 视频 `node:getPreparation`返回真实准备状态、缺少的引用、当前审查和已有输出。节点名字不作为状态依据。`node:getPromptReview`默认返回最新报告与精简轮次，`includeDetails:true`返回完整历史输入；`current:false`不能算当前稿通过。
+- `waitCanvasNodes({nodes:[{nodeId,kind:"generation"|"review"|"output",operationId?,previousOutput?}],timeoutMs?})`只读等待变化，最多50秒，`settled`表示已完成或需要处理失败/变化，并非保证成功。生成等待可固定operationId；等新输出时传旧outputs作为previousOutput，避免接受旧文件。函数不启动生成、审查或计费模型请求，页面须在线；页面切换、停止或断线会结束等待。已存在有效状态会立即返回。
+- 内置AI可用`waitForCanvas`合并最长30分钟的等待，完成后继续当前已授权任务；`productionTask`按账号和项目保存目标、保留项及剩余依赖；`assetEvidence`按图片SHA-256复用实际观察，变更后重新读图。这三项不是网页MCP的独立工具；外部客户端使用上述公开读取/等待入口和其自身任务管理。
+- 已约定审查后交付的任务使用既定模型和素材/原声配置，启动`node:autoReviewPrompt`后等待真实结果；最多3轮局部修正，实际声音读取范围以报告为准。停止原因应直接处理，不反复删素材或重审凑通过。审查与生成权限仍各自检查，准备好不代表自动批准媒体生成。

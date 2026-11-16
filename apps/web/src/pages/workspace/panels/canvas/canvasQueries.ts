@@ -9,7 +9,7 @@ const encoder = new TextEncoder();
 const responseBytes = 64 * 1024;
 const pageBytes = 52 * 1024;
 const scanLimit = 2000;
-const readNames = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools"]);
+const readNames = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools", "waitCanvasNodes"]);
 
 export function isCanvasRead(name: string) {
   return readNames.has(name);

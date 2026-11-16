@@ -49,6 +49,7 @@
       <mediaPreviewStatus :preview="mediaPreview" />
     </div>
     <div class="promptReviewStatusRow nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
+      <span class="preparationLabel" role="status" :title="preparation.label">{{ preparation.label }}</span>
       <el-button text size="small" :type="reviewStatus === 'pass' ? 'success' : ['needs_revision', 'needs_clarification'].includes(reviewStatus) ? 'warning' : 'info'" :title="`编辑稿 · ${reviewLabel}`" @click.stop="openPromptReview()"><span class="reviewBadgeText">编辑稿 · {{ reviewLabel }}</span></el-button>
     </div>
     <template #bottom>
@@ -241,6 +242,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals,
 const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
 const createVideoContinuation = inject<(sourceId: string) => Promise<{ nodeId: string; message: string }>>("createVideoContinuation");
 const creatingGeneration = ref(false);
+const purposeData = computed(() => node.data as { referencePurposes?: Record<string, string> });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 const data = computed(() => node.data as { continuationBinding?: { source: string; sourceHandle: string; edgeId: string }; prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; seed?: number | null; appliedVideoTaskId?: string; referenceImageUrlsText: string; generationTiming?: GenerationTiming; zealmanSettings: Record<string, unknown>; zealmanQueue: { input: NodeVideoRequest; title: string; promptReview?: PromptReviewSubmission }[]; h3Prompt: H3PromptState; promptReview?: PromptReviewRecord; promptReviewRun?: PromptReviewRun; promptReviewMedia: boolean; promptReviewAudio: boolean; promptReviewModel: string; submittedPromptReview?: PromptReviewSubmission });
 if (!data.value.continuationBinding) handles.value = handles.value.filter(handle => handle.id !== "continuation");
@@ -520,7 +522,9 @@ const reviewInput = computed<PromptReviewInput>(() => {
       const value = item.input?.value as { url?: string; mimeType?: string } | undefined;
       const path = value?.url ?? item.voice?.url;
       if (!path) throw new Error(`素材 ${item.value} 缺少可读取的来源，请替换素材或取消结合素材审查；仍可直接生成`);
-      let purpose = "仅按提示词指定的用途参考；未指定的属性不作为硬约束。";
+      const purposes = purposeData.value.referencePurposes;
+      const notes = data.value.h3Prompt.subjects.flatMap(subject => subject.referenceNotes?.[item.id] ? [subject.referenceNotes[item.id]] : []);
+      let purpose = purposes?.[item.id] ?? (notes.join("；") || "仅按提示词指定的用途参考；未指定的属性不作为硬约束。");
       if (frameMode.value && item.category === "picture") {
         const boundary = selectedMode.value === "startFrameOptional" || item.value !== "<Picture 1>" ? "尾帧" : "首帧";
         purpose = `生成参数指定的${boundary}，只约束该边界的构图和状态，中间动作按提示词演进。`;
@@ -531,7 +535,7 @@ const reviewInput = computed<PromptReviewInput>(() => {
     }) : [],
     dependencies: JSON.stringify({ model: data.value.model, mode: data.value.mode, resolution: data.value.resolution,
       referenceImageUrlsText: data.value.referenceImageUrlsText, references: refList.value.map(item => ({ source: item.source, sourceHandle: item.sourceHandle, dataType: item.dataType, value: item.value })),
-      voices: data.value.h3Prompt.voices, continuationBinding: data.value.continuationBinding, continuation: data.value.h3Prompt.continuation }),
+      voices: data.value.h3Prompt.voices, referencePurposes: purposeData.value.referencePurposes, continuationBinding: data.value.continuationBinding, continuation: data.value.h3Prompt.continuation }),
   };
 });
 const { record: reviewRecord, run: reviewRun, current: reviewCurrent, reviewing, status: reviewStatus, label: reviewLabel, error: reviewError,
@@ -541,6 +545,7 @@ const { record: reviewRecord, run: reviewRun, current: reviewCurrent, reviewing,
     editable: () => reviewEditable.value, apply: setReviewPrompt,
   });
 const reviewEditable = computed(() => !deleting.value && !uploadingReferences.value && !zealmanEnqueuing.value && (isZealmanU06.value || !generating.value && !pendingTask.value));
+watch([reviewStatus, reviewCurrent, reviewError], () => { void nodeEvent.emit("state"); });
 
 function openPromptReview(oneClick = false) {
   reviewPanelAutomatic.value = oneClick;
@@ -552,10 +557,56 @@ function setReviewPrompt(prompt: string) {
   data.value.promptModel = prompt.split("\n").map(text => [{ type: "Write", text }]);
 }
 
-function getPromptReviewState() {
+function getPromptReviewState(includeDetails = false) {
   return { status: reviewStatus.value, label: reviewLabel.value, current: reviewCurrent.value, error: reviewError.value || undefined,
-    record: reviewRecord.value, run: reviewRun.value };
+    record: includeDetails ? reviewRecord.value : reviewRecord.value && { finishedAt: reviewRecord.value.finishedAt, error: reviewRecord.value.error, result: reviewRecord.value.result },
+    run: includeDetails ? reviewRun.value : reviewRun.value && { state: reviewRun.value.state, message: reviewRun.value.message,
+      startedAt: reviewRun.value.startedAt, finishedAt: reviewRun.value.finishedAt,
+      rounds: reviewRun.value.rounds.map(round => ({ finishedAt: round.record.finishedAt, status: round.record.result?.status, applied: !!round.appliedPrompt })) } };
 }
+
+function referenceSnapshot() {
+  return JSON.stringify({ references: refList.value.map(item => ({ id: referenceKey(item), type: item.dataType, value: item.value })),
+    urls: data.value.referenceImageUrlsText, voices: data.value.h3Prompt.voices, continuation: data.value.continuationBinding,
+    subjects: data.value.h3Prompt.subjects, audioBindings: data.value.h3Prompt.audioBindings, purposes: purposeData.value.referencePurposes,
+    model: data.value.model, duration: data.value.duration, resolution: data.value.resolution, ratio: data.value.ratio, mode: data.value.mode });
+}
+async function referenceRevision(snapshot = referenceSnapshot()) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(snapshot));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+const missingReferences = computed(() => refList.value.filter(item => item.value === undefined || item.value === null || item.value === "" || typeof item.value === "object" && !(item.value as { url?: string }).url).map(item => referenceKey(item)));
+const preparation = computed(() => {
+  const issues = isH3Prompt.value ? h3PromptIssues(data.value.prompt, h3ReferenceList.value, data.value.duration ?? 0) : [];
+  const status = generating.value ? "generating" : pendingTask.value ? "pending" : reviewing.value ? "reviewing"
+    : !data.value.prompt.trim() ? "empty" : !selectedModel.value ? "modelUnavailable"
+      : missingReferences.value.length || data.value.continuationBinding && !continuationReference.value ? "missingReferences"
+        : issues.length ? "invalidReferences" : reviewStatus.value === "pass" ? "ready"
+          : ["needs_revision", "needs_clarification", "incomplete", "failed"].includes(reviewStatus.value) ? "needsAttention" : "draft";
+  const label = { generating: "生成中", pending: "原任务待恢复或核查", reviewing: "审查中", empty: "待填写", modelUnavailable: "待选择模型", missingReferences: "待参考素材",
+    invalidReferences: "引用需修正", ready: "可预览生成", needsAttention: "待处理审查结果", draft: "当前稿待审查" }[status];
+  return { status, label: `${outputs.value.video?.value ? "已有视频 · " : ""}${label}`, issues, missingReferences: missingReferences.value,
+    hasOutput: !!outputs.value.video?.value, readyToGenerate: status === "ready" };
+});
+
+async function getReferences() {
+  const snapshot = referenceSnapshot();
+  const prompt = data.value.prompt;
+  const revision = await referenceRevision(snapshot);
+  const promptRevision = await referenceRevision(prompt);
+  if (snapshot !== referenceSnapshot() || prompt !== data.value.prompt) throw new Error("引用或提示词在读取期间变化，请重新读取");
+  const purposes = purposeData.value.referencePurposes;
+  const source: H3Reference[] = isH3Prompt.value || isZealmanU06.value ? h3ReferenceList.value : refList.value.map((input, index) => ({ id: referenceKey(input), value: `{{ref ${index + 1}}}`, name: `参考 ${index + 1}`, category: String(input.dataType).toLowerCase(), input }));
+  const references = source.map(item => ({ id: item.id, tag: item.value, label: item.input ? findNode(item.input.source)?.data.label ?? item.name : item.name,
+    sourceNodeId: item.input?.source, sourceHandle: item.input?.sourceHandle, type: item.category,
+    path: (item.input?.value as { url?: string } | undefined)?.url ?? item.voice?.url,
+    ready: item.input ? !missingReferences.value.includes(item.id) : !!item.voice?.url,
+    purpose: purposes?.[item.id], subjects: data.value.h3Prompt.subjects.filter(subject => subject.references.includes(item.id)).map(subject => ({ id: subject.id, name: subject.name, purpose: subject.referenceNotes?.[item.id] })) }));
+  return { revision, promptRevision, notation: isH3Prompt.value || isZealmanU06.value ? "h3" : "generic", references, missingReferences: missingReferences.value, continuation: data.value.continuationBinding ?? null,
+    instruction: "使用稳定id绑定用途与主体，tag为当前实际编号；无需用户说明接线顺序。缺少输出的输入尚无有效H3编号。" };
+}
+nodeTools.register({ name: "getReferences", description: "读取真实素材ID、当前编号、来源节点、文件路径、用途、主体绑定、未就绪输入、引用revision和promptRevision；不返回模型清单，不修改连线。写入时传expectedReferenceRevision和expectedPromptRevision，防止期间连线、素材或正文变化。", parameters: z.strictObject({}), execute: getReferences });
+nodeTools.register({ name: "getPreparation", description: "读取本段真实准备状态、缺失参考、当前审查和生成输出；节点名称中的待编写/已生成不作为依据。不启动生成或审查。", parameters: z.strictObject({}), async execute() { const refs = await getReferences(); return { ...preparation.value, referenceRevision: refs.revision, review: getPromptReviewState(), output: outputs.value.video, config: { model: data.value.model, duration: data.value.duration, ratio: data.value.ratio } }; } });
 
 async function getPromptReviewConfig() {
   const models = await ai.getModels();
@@ -1089,9 +1140,9 @@ nodeTools.register({
 });
 nodeTools.register({
   name: "getPromptReview",
-  description: "按需读取当前编辑稿的辅助审查状态、报告及原文快照，run 包含多轮审查的原稿、逐轮报告、已采用的修改和停止原因。current=false 表示当前报告已失效；未发现文字问题也不保证生成效果。reviewing 时继续其他工作，不循环查询，不会启动审查或视频生成",
-  parameters: z.strictObject({}),
-  execute: getPromptReviewState,
+  description: "读取当前编辑稿真实审查状态、最新报告和多轮停止原因，默认不重复返回完整输入与历史正文。includeDetails=true 才读取全部快照；current=false 表示报告已失效。需等待结果使用 waitForCanvas/waitCanvasNodes，不让用户反复催办。不会启动审查或视频生成，文字通过不保证生成效果。",
+  parameters: z.strictObject({ includeDetails: z.boolean().optional() }),
+  execute: ({ includeDetails }) => getPromptReviewState(includeDetails),
 });
 nodeTools.register({
   name: "cancelPromptReview",
@@ -1101,9 +1152,9 @@ nodeTools.register({
 });
 
 registerGenerationTools({
-  configDescription: "读取视频节点配置、模型能力、比例、引用模式和运镜库支持状态 cameraLibrary，不含密钥；运镜目录使用 getCameraPresets 查询。U06 另返回面板 videoOptions（主模型、CLIP、LoRA、默认值和时长限制），专属参数位于 config.other",
+  configDescription: "读取视频节点配置、模型能力、比例、引用模式和运镜库支持状态 cameraLibrary，不含密钥；includeModels=false省略重复模型清单，引用映射优先用getReferences。运镜目录使用 getCameraPresets。U06 另返回面板 videoOptions，专属参数位于 config.other",
   promptDescription: "修改此节点的视频生成提示词，支持 {{ref 1}} 等参考标记；cameraLibrary.supported 为 true 时可使用运镜库，先用 getCameraPresets 查询并逐字保留返回的 tag，放在 detailed_description 对应镜头中，不猜测 ID 或展开私有提示词；只修改提示词，不启动生成",
-  loadModels, getConfig,
+  loadModels, getConfig, getPrompt: () => data.value.prompt,
   setPrompt(value) {
     if (deleting.value) throw new Error("节点正在删除，请稍后修改");
     if (!isZealmanU06.value && (generating.value || pendingTask.value)) throw new Error("节点存在未完成任务，请先查询或恢复原视频任务；其他创作可使用 createNewGeneration");
@@ -1111,6 +1162,9 @@ registerGenerationTools({
   },
   updateDescription: "修改视频配置，不启动生成。H3 的 subjects 使用 getConfig 返回的 references.id 绑定主体；同一人物的多个形态放在同一主体，referenceNotes 按引用 id 写清每个形态适用的镜头和状态。续接须先调用来源节点的 continueVideo 创建固定来源的新节点，不能在配置中更换或取消来源。全部视频素材合计最多15秒、20MB。providerId 与 modelId 同时提供。seed 为非负安全整数，null 随机；U06 专属参数取自 videoOptions。mode 使用 matchingModes 原值，referenceImageUrls 须有实际能力支持",
   configSchema: z.strictObject({
+    expectedReferenceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    expectedPromptRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    referencePurposes: z.record(z.string().min(1).max(2048), z.string().trim().min(1).max(1000)).optional(),
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     duration: z.number().positive().optional(),
@@ -1135,6 +1189,10 @@ registerGenerationTools({
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async setConfig(args, signal) {
     signal?.throwIfAborted();
+    const initialReferences = referenceSnapshot();
+    const initialPrompt = data.value.prompt;
+    if (args.expectedReferenceRevision && args.expectedReferenceRevision !== await referenceRevision(initialReferences)) throw new Error("引用或源素材已变化，请用 getReferences 核对本段后重新写入；本次未修改");
+    if (args.expectedPromptRevision && args.expectedPromptRevision !== await referenceRevision(initialPrompt)) throw new Error("提示词已被修改，请读取当前稿并保留用户新改动；本次未修改");
     if (generating.value || deleting.value || pendingTask.value || taskChecking.value || uploadingReferences.value || zealmanEnqueuing.value) throw new Error("节点正在处理或有待恢复任务，请稍后修改配置");
     await loadModels();
     signal?.throwIfAborted();
@@ -1193,7 +1251,12 @@ registerGenerationTools({
         if (Object.keys(subject.referenceNotes ?? {}).some(referenceId => !subject.references.includes(referenceId))) throw new Error("referenceNotes 只能说明该主体实际绑定的参考");
       }
     }
+    if (args.referencePurposes && Object.keys(args.referencePurposes).some(id => !h3ReferenceList.value.some(item => item.id === id))) throw new Error("referencePurposes 只能说明 getReferences 返回的真实素材id");
+    signal?.throwIfAborted();
+    if (args.expectedReferenceRevision && initialReferences !== referenceSnapshot()) throw new Error("配置核对期间引用已变化，本次未修改，请重新读取 getReferences");
+    if (args.expectedPromptRevision && initialPrompt !== data.value.prompt) throw new Error("配置核对期间提示词已变化，本次未修改，请读取当前稿");
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
+    if (args.referencePurposes) purposeData.value.referencePurposes = { ...args.referencePurposes };
     if (options && other) {
       zealmanOptions.value = options;
       data.value.zealmanSettings = other;
@@ -1270,7 +1333,8 @@ if (createVideoContinuation) nodeTools.register({
 }
 
 .promptReviewStatusRow {
-  display: flex; min-width: 0; padding-top: 4px;
+  display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 2px; padding-top: 4px;
+  .preparationLabel { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--el-text-color-secondary); }
   :deep(.el-button) { max-width: 100%; margin: 0; }
   .reviewBadgeText { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

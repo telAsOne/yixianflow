@@ -8,7 +8,7 @@ const documentSchema = z.strictObject({ name: z.enum(["workflow", "canvas"]), pa
 const requirementsSchema = z.array(documentSchema).max(16);
 const documentResultSchema = documentSchema.extend({ scope: z.enum(["workspace", "global"]), content: z.string() });
 type RequiredDocument = z.infer<typeof documentSchema>;
-const canvasReads = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools", "selectNodes", "fitCanvas"]);
+const canvasReads = new Set(["getCanvas", "findCanvasNodes", "getCanvasNodes", "getCanvasEdges", "getNodeTools", "waitCanvasNodes", "waitForCanvas", "productionTask", "selectNodes", "fitCanvas"]);
 const canvasChanges = new Set(["addCanvas", "switchCanvas", "renameCanvas", "addNode", "addMediaNodes", "deleteNodes", "moveNodes", "renameNodes", "connectNodes", "deleteEdges", "arrangeCanvas"]);
 
 export function installSkillExecution(session: AgentSession, cwd: string, tools: ToolDefinition[], canvas?: CanvasContext, task = "", signal?: AbortSignal) {

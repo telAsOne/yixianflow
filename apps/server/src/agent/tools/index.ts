@@ -18,6 +18,9 @@ import { createAssetContext } from "@/agent/assets";
 import { createLocalComputerTools } from "@/utils/localHelper/tools";
 import { createProjectReadTool } from "./projectRead";
 import { createMediaReadTool } from "./media";
+import { createProductionTaskTool } from "./productionTask";
+import { createCanvasWaitTool } from "./waitForCanvas";
+import { createAssetEvidenceTool } from "./assetEvidence";
 import type { BrowserMediaReader } from "@/utils/media/readTypes";
 
 export function createAgentToolContext(cwd: string, config: Record<string, unknown> = {}, canvas?: CanvasContext, question?: QuestionContext, workspaceAvailable = true, clientFiles?: ClientFileContext): ToolContext {
@@ -121,7 +124,8 @@ export async function createAgentTools(cwd: string, canvas?: CanvasContext, ques
     }
   }
   const projectRead = await createProjectReadTool(cwd, directory => createAgentToolContext(directory).files);
-  for (const tool of [createMediaReadTool(cwd, mediaReader), ...(projectRead ? [projectRead] : []), ...await createLocalComputerTools()]) {
+  const read = tools.find(tool => tool.name === "read");
+  for (const tool of [createMediaReadTool(cwd, mediaReader), ...(read ? [createAssetEvidenceTool(cwd, read)] : []), ...(canvas ? [createProductionTaskTool(cwd), createCanvasWaitTool(canvas)] : []), ...(projectRead ? [projectRead] : []), ...await createLocalComputerTools()]) {
     if (names.has(tool.name)) throw new Error(t`工具名称重复：${tool.name}`);
     tools.push(tool);
   }

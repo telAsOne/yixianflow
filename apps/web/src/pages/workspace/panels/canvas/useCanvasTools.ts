@@ -1,7 +1,7 @@
 import { nextTick, watch, type Ref } from "vue";
 import { useVueFlow, type XYPosition } from "@vue-flow/core";
 import { useNodeEvent, useNodeToolsContext, validateConnection } from "@toonflow/nodes-scaffold/runtime";
-import { isNodeOutput } from "@toonflow/nodes-scaffold/values";
+import { isNodeOutput, snapshotNodeOutputs } from "@toonflow/nodes-scaffold/values";
 import { canvasSchemas, getCanvasCallTimeout, type CanvasContext, type CanvasToolCall } from "@toonflow/tool-canvas/runtime";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -125,7 +125,7 @@ export function useCanvasTools(options: {
 
   async function execute(request: CanvasToolCall, signal: AbortSignal, canvasId: string): Promise<unknown> {
     signal.throwIfAborted();
-    if (isCanvasRead(request.name)) {
+    if (isCanvasRead(request.name) && request.name !== "waitCanvasNodes") {
       await nextTick();
       signal.throwIfAborted();
       return readCanvas(request, canvasId, signal);
@@ -318,6 +318,69 @@ export function useCanvasTools(options: {
       case "nodeTools": {
         const args = canvasSchemas.nodeTools.parse(request.args);
         return getNodeTools().call(args, signal);
+      }
+      case "waitCanvasNodes": {
+        const args = canvasSchemas.waitCanvasNodes.parse(request.args);
+        const snapshot = async () => {
+          const nodes = [];
+          for (const item of args.nodes) {
+            const node = flow.findNode(item.nodeId);
+            if (!node) { nodes.push({ nodeId: item.nodeId, state: "missing", settled: true }); continue; }
+            if (item.kind === "output") {
+              const outputs = snapshotNodeOutputs(node.data.outputs ?? {});
+              const available = Object.values(outputs).some(output => isNodeOutput(output) && output.value != null
+                && output.value !== "" && (typeof output.value !== "object" || !!(output.value as { url?: string }).url));
+              const version = (values: Record<string, unknown>) => JSON.stringify(Object.entries(values).sort(([a], [b]) => a.localeCompare(b)).map(([id, output]) =>
+                isNodeOutput(output) ? [id, output.dataType, typeof output.value === "object" && output.value ? (output.value as { url?: string }).url : output.value] : [id, null]));
+              const ready = available && (!item.previousOutput || version(outputs) !== version(item.previousOutput));
+              nodes.push({ nodeId: item.nodeId, state: ready ? "ready" : "waiting", settled: ready, outputs });
+              continue;
+            }
+            const state = await getNodeTools().call({ nodeId: item.nodeId, name: item.kind === "review" ? "node:getPromptReview" : "node:getGenerationStatus", args: {} }, signal) as { status: string; operationId?: string; [key: string]: unknown };
+            const changed = item.operationId && state.operationId !== item.operationId;
+            nodes.push({ nodeId: item.nodeId, ...state, state: changed ? "changed" : state.status,
+              settled: !!changed || (item.kind === "review" ? state.status !== "reviewing" : !["running", "idle"].includes(state.status)) });
+          }
+          const attention = nodes.some(node => ["missing", "changed", "failed", "interrupted", "needs_revision", "needs_clarification", "incomplete", "stale", "unreviewed"].includes(node.state));
+          return { settled: attention || nodes.every(node => node.settled), nodes };
+        };
+        return new Promise((resolve, reject) => {
+          let checking = false;
+          let dirty = false;
+          let finished = false;
+          let expired = args.timeoutMs === 0;
+          let stop = () => {};
+          const stopEvents: (() => void)[] = [];
+          const finish = (result?: unknown, error?: unknown) => {
+            if (finished) return;
+            finished = true;
+            stop();
+            stopEvents.forEach(off => off());
+            clearTimeout(timer);
+            signal.removeEventListener("abort", abort);
+            if (error) reject(error); else resolve(result);
+          };
+          const abort = () => finish(undefined, signal.reason ?? new Error("等待已停止"));
+          const check = async () => {
+            if (finished) return;
+            if (checking) { dirty = true; return; }
+            checking = true;
+            try {
+              signal.throwIfAborted();
+              const result = await snapshot();
+              if (result.settled || expired) finish(result);
+            } catch (error) { finish(undefined, error); }
+            finally { checking = false; if (dirty) { dirty = false; void check(); } }
+          };
+          const timer = setTimeout(() => { expired = true; void check(); }, args.timeoutMs);
+          stop = watch(() => args.nodes.map(item => {
+            const data = flow.findNode(item.nodeId)?.data;
+            return data && [data.outputs, data.generationTiming, data.promptReview, data.promptReviewRun, data.prompt];
+          }), () => { void check(); }, { deep: true });
+          for (const item of args.nodes) stopEvents.push(useNodeEvent(item.nodeId, flow).on("state", check));
+          signal.addEventListener("abort", abort, { once: true });
+          void check();
+        });
       }
       default: throw new Error(`未知画布操作：${request.name}`);
     }

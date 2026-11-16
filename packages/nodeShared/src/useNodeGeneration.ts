@@ -1,7 +1,8 @@
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, watch, type Ref } from "vue";
 import { nodeTools, z } from "@toonflow/nodes-scaffold/nodeTools";
-import type { NodeOutputs } from "@toonflow/nodes-scaffold/values";
+import { snapshotNodeOutputs, type NodeOutputs } from "@toonflow/nodes-scaffold/values";
 import { useNode } from "@vue-flow/core";
+import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 
 export type GenerationTiming = { startedAt: number; endedAt?: number; operationId?: string; status: "running" | "succeeded" | "failed" | "interrupted" };
 
@@ -9,12 +10,23 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
   const { node } = useNode();
   const status = ref<"idle" | "running" | "succeeded" | "failed">("idle");
   const error = ref("");
+  const observedTask = ref<GenerationTiming>();
   const generating = computed(() => status.value === "running");
-  const getStatus = () => ({ status: status.value, outputs: outputs.value, ...(error.value ? { error: error.value } : {}) });
+  const nodeEvent = useNodeEvent();
+  watch([status, error, observedTask], () => { void nodeEvent.emit("state"); });
+  const getStatus = () => {
+    const timing = node.data.generationTiming as GenerationTiming | undefined;
+    const observed = observedTask.value?.operationId === timing?.operationId ? observedTask.value : undefined;
+    const outputTask = node.data as { appliedVideoTaskId?: string; appliedImageTaskId?: string };
+    return { status: generating.value ? "running" : observed?.status ?? (timing?.status === "running" ? "interrupted" : timing?.status) ?? status.value, outputs: snapshotNodeOutputs(outputs.value),
+      operationId: timing?.operationId, startedAt: timing?.startedAt, endedAt: timing?.endedAt,
+      outputOperationId: outputTask.appliedVideoTaskId ?? outputTask.appliedImageTaskId,
+      ...(error.value ? { error: error.value } : {}) };
+  };
 
   nodeTools.register({
     name: "getGenerationStatus",
-    description: "按需查询本次打开节点后的生成状态（idle/running/succeeded/failed）、当前输出和最近一次生成错误。running 时默认继续独立工作或结束本轮，不循环查询等待，除非用户明确要求等待结果。当前输出可能来自之前的生成；idle 不表示没有历史输出，只有 succeeded 表示本次生成成功",
+    description: "查询真实生成状态（idle/running/succeeded/failed/interrupted）、持久化 operationId、时间、当前输出和最近错误；重新打开节点仍读取已保存的任务状态。输出可能来自旧任务，须核对 operationId 和当前文件。需要等待依赖时使用 waitForCanvas/waitCanvasNodes，避免模型反复轮询。",
     parameters: z.strictObject({}),
     execute: getStatus,
   });
@@ -35,6 +47,7 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
     if (previous?.operationId !== task.operationId && previous && previous.startedAt > task.startedAt) return;
     const timing: GenerationTiming = { startedAt: task.startedAt, endedAt: task.endedAt, operationId: task.operationId,
       status: task.phase === "completed" ? "succeeded" : ["failed", "expired"].includes(task.phase) ? "failed" : task.running ? "running" : "interrupted" };
+    observedTask.value = timing;
     if (JSON.stringify(previous) !== JSON.stringify(timing)) node.data.generationTiming = timing;
   }
 
