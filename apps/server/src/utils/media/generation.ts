@@ -8,7 +8,7 @@ import { getSettings } from "@/utils/conf";
 import { getMediaProvider, listMediaProviders, loadMediaProviderSource, mediaErrorMessage } from "@/utils/media/provider";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { beginWorkspaceOperation } from "@/utils/workspace/activity";
-import { getVideoContinuationSourceTaskId, runVideoTask } from "@/utils/media/videoTasks";
+import { runVideoTask } from "@/utils/media/videoTasks";
 export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
@@ -245,12 +245,8 @@ async function generateMediaResult(
   let videos: MediaInput[] | undefined;
   let firstFrame: MediaInput | undefined;
   let lastFrame: MediaInput | undefined;
-  let continuationSourceTaskId: string | undefined;
   if (!restoring) {
     const source = request.continuation && request.videos?.[request.continuation.videoIndex];
-    if (source && request.providerId === "yixianVideo") {
-      continuationSourceTaskId = await getVideoContinuationSourceTaskId(directory, source.path, provider.config, signal);
-    }
     const frames = [request.firstFrame, request.lastFrame].filter((frame): frame is MediaReference => !!frame && "path" in frame);
     if (request.referenceImageUrls?.length || [request.firstFrame, request.lastFrame].some(frame => frame && "url" in frame)) invalid("UnionAIGC 参考素材须先保存到工作区");
     const references = [
@@ -265,9 +261,7 @@ async function generateMediaResult(
       images = uploaded.slice(0, index);
       audios = uploaded.slice(index, index += request.audios?.length ?? 0);
       videos = uploaded.slice(index, index += (request.videos?.length ?? 0) - (source ? 1 : 0));
-      if (source) videos.splice(request.continuation!.videoIndex, 0, continuationSourceTaskId
-        ? { type: "url", url: "", mimeType: "video/mp4" }
-        : await uploadVideoContinuationSource(directory, source, signal));
+      if (source) videos.splice(request.continuation!.videoIndex, 0, await uploadVideoContinuationSource(directory, source, signal));
       if (request.firstFrame) firstFrame = uploaded[index++];
       if (request.lastFrame) lastFrame = uploaded[index];
     } else if (mediaType === "image") {
@@ -286,7 +280,7 @@ async function generateMediaResult(
     : await provider.generateVideo!({
       model: request.modelId, prompt: request.prompt, images,
       videos, audios,
-      continuation: request.continuation ? { videoIndex: request.continuation.videoIndex, sourceTaskId: continuationSourceTaskId } : undefined,
+      continuation: request.continuation ? { videoIndex: request.continuation.videoIndex } : undefined,
       firstFrame, lastFrame,
       ratio: request.ratio, resolution: request.resolution, duration: request.duration,
       generateAudio: request.generateAudio, mode: request.mode, seed: request.seed,

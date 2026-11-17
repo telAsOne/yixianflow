@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
-import { stat } from "@toonflow/file";
+import { basename, join, relative } from "node:path";
+import { mkdir, mkdtemp, rm, stat } from "@toonflow/file";
 import { file } from "@toonflow/file/bun";
+import { createFfmpeg } from "@toonflow/ffmpeg/runtime";
 import { z } from "zod";
 import { t } from "@/lib/i18n";
 import type { MediaReference } from "@toonflow/tools-scaffold/runtime";
@@ -121,7 +122,63 @@ export async function uploadPlatformReferences(directory: string, references: Re
   });
 }
 
+// The full workspace video is a continuation source, not a model reference.
+// Only its ending interval enters reference upload limits or the canvas review.
+export async function withVideoContinuationTail<T>(directory: string, source: MediaReference, signal: AbortSignal | undefined, action: (tail: Reference, sourceSeconds: number) => Promise<T>) {
+  signal?.throwIfAborted();
+  const { path } = await resolveWorkspacePath(directory, source.path);
+  const original = await stat(path);
+  if (!original.isFile() || !original.size || original.size > 512 * 1024 * 1024) invalid("续接来源须为不超过 512 MiB 的视频文件", 413);
+  const header = new Uint8Array(await file(path).slice(0, 512).arrayBuffer());
+  if (!detectMimeType(header, "") || !detectMimeType(header, source.mimeType).startsWith("video/")) invalid("续接来源内容不是可识别的视频", 415);
+  const ffmpeg = createFfmpeg(directory);
+  let videoIndex = 0;
+  const seconds = await new Promise<number>((resolve, reject) => {
+    ffmpeg(path).ffprobe((error, metadata) => {
+      if (error) { reject(error); return; }
+      const video = metadata.streams.find(stream => stream.codec_type === "video" && !stream.disposition?.attached_pic);
+      if (!video) { reject(new Error("续接来源没有可读取的视频流")); return; }
+      videoIndex = video.index;
+      const duration = Number(video.duration);
+      resolve(Number.isFinite(duration) && duration > 0 ? duration : Number(metadata.format.duration));
+    });
+  });
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 3600) invalid("续接来源须包含有效视频，时长不超过 1 小时");
+  signal?.throwIfAborted();
+  const root = (await resolveWorkspacePath(directory, ".toonflow/continuationSources", true)).path;
+  await mkdir(root, { recursive: true });
+  const temporary = await mkdtemp(join(root, "source"));
+  try {
+    const output = join(temporary, "tail.mp4");
+    await new Promise<void>((resolve, reject) => {
+      // Decode to EOF: a container's nominal duration can precede its last packet.
+      const command = ffmpeg({ source: path, timeout: 180 }).seekInput(Math.max(0, seconds - 3))
+        .inputOptions("-nostdin", "-protocol_whitelist", "file,pipe", "-threads", "1")
+        .videoFilters("pad=ceil(iw/2)*2:ceil(ih/2)*2").audioFilters("atrim=duration=3").videoCodec("libx264").audioCodec("aac").format("mp4")
+        .outputOptions("-n", "-map", `0:${videoIndex}`, "-map", "0:a:0?", "-threads", "1", "-preset", "fast", "-crf", "18", "-fps_mode", "passthrough", "-movflags", "+faststart");
+      const cancel = () => command.kill("SIGKILL");
+      signal?.addEventListener("abort", cancel, { once: true });
+      command.on("start", () => { if (signal?.aborted) cancel(); });
+      command.on("end", () => { signal?.removeEventListener("abort", cancel); resolve(); });
+      command.on("error", error => { signal?.removeEventListener("abort", cancel); reject(error); });
+      command.save(output);
+    });
+    signal?.throwIfAborted();
+    const current = await stat(path);
+    if (current.size !== original.size || current.mtimeMs !== original.mtimeMs) invalid("续接来源视频已变化，请重新提交");
+    return await action({ path: relative(directory, output), mimeType: "video/mp4", mediaType: "video" }, seconds);
+  } finally {
+    await rm(temporary, { recursive: true, force: true }).catch(error => console.warn("续接参考临时文件清理失败", error));
+  }
+}
+
 export async function uploadContinuationReviewReference(directory: string, reference: MediaReference, signal: AbortSignal, options: UploadOptions) {
+  return withVideoContinuationTail(directory, reference, signal, async (tail, sourceSeconds) => ({
+    ...await uploadContinuationReviewTail(directory, tail, signal, options), source_seconds: sourceSeconds,
+  }));
+}
+
+async function uploadContinuationReviewTail(directory: string, reference: MediaReference, signal: AbortSignal, options: UploadOptions) {
   const account = options.account ?? requireAccount();
   const request = options.request ?? platformFetch;
   const [prepared] = await preparePlatformReferences(directory, [{ ...reference, mediaType: "video" }], signal);
