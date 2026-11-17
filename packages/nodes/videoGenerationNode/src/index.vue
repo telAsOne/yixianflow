@@ -691,7 +691,9 @@ async function validateReferenceFiles(uploads: { type: string; size: number }[],
     if (!["image", "video", "audio"].includes(kind) || !limits[kind as keyof typeof limits] || replacement && kind !== (replacement.category === "picture" ? "image" : replacement.category)) throw new Error("当前模型或替换位置不支持此素材类型");
     if (++counts[kind as keyof typeof counts] > limits[kind as keyof typeof limits]) throw new Error("参考素材超过当前模型的数量上限");
   }
-  const references = refList.value.filter(item => typeof item.dataType === "string" && ["IMAGE", "VIDEO", "AUDIO"].includes(item.dataType) && (!replacement?.input || item.source !== replacement.input.source || item.sourceHandle !== replacement.input.sourceHandle)).map(item => ({ path: (item.value as { url: string }).url, mimeType: (item.value as { mimeType: string }).mimeType, mediaType: String(item.dataType).toLowerCase() }));
+  const references = refList.value.filter(item => typeof item.dataType === "string" && ["IMAGE", "VIDEO", "AUDIO"].includes(item.dataType)
+    && !(data.value.continuationBinding && referenceKey(item) === data.value.h3Prompt.continuation?.referenceId)
+    && (!replacement?.input || item.source !== replacement.input.source || item.sourceHandle !== replacement.input.sourceHandle)).map(item => ({ path: (item.value as { url: string }).url, mimeType: (item.value as { mimeType: string }).mimeType, mediaType: String(item.dataType).toLowerCase() }));
   await validateReferenceSelection(files.getWorkspaceDirectory(), references, uploads);
 }
 
@@ -1160,7 +1162,7 @@ registerGenerationTools({
     if (!isZealmanU06.value && (generating.value || pendingTask.value)) throw new Error("节点存在未完成任务，请先查询或恢复原视频任务；其他创作可使用 createNewGeneration");
     setReviewPrompt(value);
   },
-  updateDescription: "修改视频配置，不启动生成。H3 的 subjects 使用 getConfig 返回的 references.id 绑定主体；同一人物的多个形态放在同一主体，referenceNotes 按引用 id 写清每个形态适用的镜头和状态。续接须先调用来源节点的 continueVideo 创建固定来源的新节点，不能在配置中更换或取消来源。全部视频素材合计最多15秒、20MB。providerId 与 modelId 同时提供。seed 为非负安全整数，null 随机；U06 专属参数取自 videoOptions。mode 使用 matchingModes 原值，referenceImageUrls 须有实际能力支持",
+  updateDescription: "修改视频配置，不启动生成。H3 的 subjects 使用 getConfig 返回的 references.id 绑定主体；同一人物的多个形态放在同一主体，referenceNotes 按引用 id 写清每个形态适用的镜头和状态。续接须先调用完整来源节点的 continueVideo 创建固定来源的新节点，不能在配置中更换或取消来源。续接来源支持长视频，系统内部截取最后最多3秒；用户不必截片，不新增尾段节点。普通视频参考及送入接口的尾段合计最多15秒、20MB。providerId 与 modelId 同时提供。seed 为非负安全整数，null 随机；U06 专属参数取自 videoOptions。mode 使用 matchingModes 原值，referenceImageUrls 须有实际能力支持",
   configSchema: z.strictObject({
     expectedReferenceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     expectedPromptRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -1312,7 +1314,7 @@ if (duplicateCanvasNode) nodeTools.register({
 });
 if (createVideoContinuation) nodeTools.register({
   name: "continueVideo",
-  description: "从当前视频输出创建独立续接节点和固定来源连线，不提交生成。返回新节点编号；请在新节点填写后续提示词和生成设置，再调用生成。普通参考仍使用普通连接。",
+  description: "从当前完整视频输出创建独立续接节点和固定来源连线，不提交生成。支持一分钟等长视频，系统自动在内部截取末尾最多3秒用于审查和续接接口，不要求用户截片、不新增尾段节点。返回新节点编号；在新节点沿用用户后续原文和优化流程，时长仅指新增片段，不重写或重演前片开头。普通参考仍使用普通连接。",
   parameters: z.strictObject({}),
   execute(_args, { signal }) { signal?.throwIfAborted(); return createVideoContinuation(id); },
 });

@@ -3,7 +3,7 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { success, error } from "@/lib/responseFormat";
-import { preparePlatformReferences, uploadContinuationReviewReference, uploadPlatformReferences } from "@/utils/media/upload";
+import { uploadContinuationReviewReference, uploadPlatformReferences } from "@/utils/media/upload";
 
 const reviewMediaSchema = z.object({ id: z.string().min(1).max(128), type: z.enum(["image", "video", "audio"]), path: z.string().min(1).max(8192), mimeType: z.string().max(100), purpose: z.string().max(1000).optional() });
 const continuationSchema = z.strictObject({ mediaId: z.string().min(1).max(128), frameId: z.string().min(1).max(128) });
@@ -52,7 +52,6 @@ export default Router().post("/", validateFields({
     const local = media.filter(item => !/^https:\/\//i.test(item.path));
     if (local.length && !directory) throw new Error("请先选择素材所在的项目工作区");
     const cwd = local.length ? await u.workspace.resolveWorkspace(req, directory!) : "";
-    if (source) await preparePlatformReferences(cwd, local.map(item => ({ path: item.path, mimeType: item.mimeType, mediaType: item.type })), controller.signal);
     const preview = source ? await uploadContinuationReviewReference(cwd, source, controller.signal, { account, request: reviewFetch }) : undefined;
     const ordinary = local.filter(item => item !== source);
     const uploaded = ordinary.length ? await uploadPlatformReferences(cwd, ordinary.map(item => ({ path: item.path, mimeType: item.mimeType, mediaType: item.type })), controller.signal, { account, request: reviewFetch }) : [];

@@ -92,7 +92,7 @@ async function continueVideo() {
 }
 if (createVideoContinuation) nodeTools.register({
   name: "continueVideo",
-  description: "从视频输出创建独立续接节点与固定来源连接，不提交生成。返回新节点编号；填写其后续提示词和生成设置后再生成。",
+  description: "从当前完整视频输出创建独立续接节点与固定来源连接，不提交生成。支持一分钟等长视频；系统内部提取最后最多3秒用于审查与接口，不要求用户截片、不新增尾段节点。返回新节点编号；沿用用户后续原文和优化流程，设置新增片段时长后再生成，不重写前片开头。",
   parameters: z.strictObject({}),
   execute(_args, { signal }) { signal?.throwIfAborted(); return createVideoContinuation(id); },
 });
