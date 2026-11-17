@@ -40,7 +40,8 @@ function requestMedia(directory: string, path: string) {
       for (let offset = 0; offset < paths.length; offset += 50) {
         const page = paths.slice(offset, offset + 50);
         try {
-          const { data } = await client.post<{ data: (MediaAccess | { path: string; error: string })[] }>("/mediaAccess", { directory, paths: page }, { timeout: 15000 });
+          // ACT: 首次媒体加载可能占满连接；读取访问地址沿用节点已有的一次重试，给传输留出 60 秒。
+          const { data } = await client.post<{ data: (MediaAccess | { path: string; error: string })[] }>("/mediaAccess", { directory, paths: page }, { timeout: 60000 });
           const items = new Map(data.data.map(item => [item.path, item]));
           for (const path of page) {
             const item = items.get(path);
