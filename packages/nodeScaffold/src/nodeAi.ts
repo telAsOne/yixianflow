@@ -89,11 +89,23 @@ async function readTask(type: "image" | "video", input: { directory: string; out
       for (let offset = 0; offset < items.length; offset += 50) {
         const page = items.slice(offset, offset + 50);
         try {
-          const result = await readResult<{ type: string; outputDirectory: string; task?: TaskStatus; error?: string }[]>(await fetch("/api/ai/media/tasks", {
-            method: "POST", headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
-            signal: AbortSignal.timeout(15000),
-            body: JSON.stringify({ directory: input.directory, items: page.map(({ type, outputDirectory }) => ({ type, outputDirectory })) }),
-          }));
+          const body = JSON.stringify({ directory: input.directory, items: page.map(({ type, outputDirectory }) => ({ type, outputDirectory })) });
+          let response: Response | undefined;
+          // ACT: 首次媒体传输可能挤占连接；只读状态查询最多重试一次，不重试提交或恢复生成。
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              response = await fetch("/api/ai/media/tasks", {
+                method: "POST", headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
+                priority: "high", signal: AbortSignal.timeout(60000), body,
+              });
+              if (response.status < 500 || attempt) break;
+              await response.body?.cancel();
+            } catch (error) {
+              if (attempt || !(error instanceof TypeError || error instanceof Error && error.name === "TimeoutError")) throw error;
+            }
+            await new Promise(resolve => setTimeout(resolve, 800));
+          }
+          const result = await readResult<{ type: string; outputDirectory: string; task?: TaskStatus; error?: string }[]>(response!);
           const values = new Map(result.map(item => [JSON.stringify([item.type, item.outputDirectory]), item]));
           for (const item of page) {
             const value = values.get(JSON.stringify([item.type, item.outputDirectory]));
