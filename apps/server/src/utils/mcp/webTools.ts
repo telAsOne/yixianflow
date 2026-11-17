@@ -223,7 +223,11 @@ export async function getWebMcpTools(): Promise<McpTool[]> {
       const canvas = canvasContext(agentTarget, signal);
       const customTools = tools.filter(tool => tool.name !== "runAgent").map(tool => defineTool({
         name: tool.name, label: tool.name, description: tool.description, executionMode: "sequential",
-        parameters: tool.name === "getAppState" ? tool.inputSchema : JSON.parse(JSON.stringify((tool.inputSchema.properties as Record<string, unknown>).args)
+        // Extracting args must retain root definitions used by JSON-valued node fields.
+        parameters: tool.name === "getAppState" ? tool.inputSchema : JSON.parse(JSON.stringify({
+          ...(tool.inputSchema.properties as Record<string, object>).args,
+          ...(tool.inputSchema.$defs ? { $defs: tool.inputSchema.$defs } : {}),
+        })
           .replace(/"\$ref":"#\/properties\/args(?=\/|")/g, '"$ref":"#')),
         async execute(id, parameters, currentSignal) {
           const digest = createHash("sha256").update(`${access.id}:${id}`).digest("hex").slice(0, 32);

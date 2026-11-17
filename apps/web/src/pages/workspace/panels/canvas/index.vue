@@ -414,12 +414,13 @@ function getCanvasContext() {
   return canvasId.value && !readOnly.value ? createCanvasContext(canvasId.value, canvasController.signal, workspaceController.signal) : undefined;
 }
 const canvasReady = computed(() => !!canvasId.value && !nodeListLoading.value && nodeLoads.size === 0);
-const canCreate = computed(() => !readOnly.value && props.active && !props.settingsVisible && canvasReady.value && !!project.value?.directory && !workspaceRefreshing.value && !creatingNode.value);
+const canModifyCanvas = computed(() => !readOnly.value && props.active && canvasReady.value && !!project.value?.directory && !workspaceRefreshing.value && !creatingNode.value);
+const canCreate = computed(() => canModifyCanvas.value && !props.settingsVisible);
 const nodeCreation = useNodeCreation(flow, {
   availableNodes, ensureNodeType, batchHistory: canvasHistory.batch, focusNodes: navigation.focusNodes, signal: () => canvasController.signal,
 });
 provide("createVideoContinuation", (sourceId: string, sourceHandle?: string) => {
-  if (!canCreate.value) throw new Error("画布当前不能创建节点");
+  if (!canModifyCanvas.value) throw new Error("画布当前不能创建节点");
   return nodeCreation.createVideoContinuation(sourceId, sourceHandle);
 });
 const placingNode = computed(() => nodeCreation.nodeOptions.value.find(node => node.type === placingType.value));

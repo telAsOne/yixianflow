@@ -27,7 +27,7 @@ export function registerGenerationTools<Shape extends z.ZodRawShape>(options: {
       signal?.throwIfAborted();
       await options.loadModels();
       signal?.throwIfAborted();
-      const config = options.getConfig();
+      const config = await options.getConfig();
       if (includeModels === false && config && typeof config === "object") {
         const current = { ...config } as Record<string, unknown>;
         delete current.models;
