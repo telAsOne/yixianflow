@@ -111,6 +111,31 @@ function addDefinitions(prompt: string, definitions: string[]) {
   return `${prompt.slice(0, at)}${definitions.join("\n")}\n${prompt.slice(at)}`;
 }
 
+export function h3SpeakerFor(prompt: string, state: H3PromptState, subject: number, reserved: number[] = []) {
+  const previous = new RegExp(`<Subject\\s+${subject}>\\s*\\(S(\\d+)\\)`).exec(prompt);
+  const binding = Object.values(state.audioBindings).find(item => item.subject === subject);
+  const item = state.subjects.find(item => item.id === subject);
+  const existing = previous ? Number(previous[1]) : binding?.speaker ?? item?.speaker;
+  if (existing) return existing;
+  const used = new Set([...reserved, ...[...prompt.matchAll(/\bS(\d+)\b/g)].map(match => Number(match[1]))]);
+  for (const subject of state.subjects) if (subject.speaker) used.add(subject.speaker);
+  for (const binding of Object.values(state.audioBindings)) used.add(binding.speaker);
+  let next = 1;
+  while (used.has(next)) next++;
+  if (item) item.speaker = next;
+  return next;
+}
+
+export function h3BindAudio(prompt: string, state: H3PromptState, reference: H3Reference, subject?: number) {
+  if (subject !== undefined) {
+    state.audioBindings[reference.id] = { subject, speaker: h3SpeakerFor(prompt, state, subject), description: state.audioBindings[reference.id]?.description ?? "" };
+    return prompt;
+  }
+  delete state.audioBindings[reference.id];
+  const prefix = `${reference.value} is the voice-timbre reference for `.toLowerCase();
+  return prompt.split("\n").filter(line => !line.trimStart().toLowerCase().startsWith(prefix)).join("\n");
+}
+
 export function h3GenerationPrompt(prompt: string, references: H3Reference[], state: H3PromptState, updateBindings = false) {
   const inputs = references.filter(item => item.input);
   let text = prompt.replace(/\{\{ref\s+(\d+)\}\}/g, (tag, index: string) => inputs[Number(index) - 1]?.value ?? tag);

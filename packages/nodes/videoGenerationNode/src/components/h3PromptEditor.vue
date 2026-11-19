@@ -113,7 +113,7 @@ import h3ReferenceList from "./h3ReferenceList.vue";
 import h3CodeEditor from "./h3CodeEditor.vue";
 import cameraPresetPicker from "./cameraPresetPicker.vue";
 import cameraPresetGrid from "./cameraPresetGrid.vue";
-import { h3CameraInsertRange, h3DetailPattern, h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, type H3PromptState, type H3Reference } from "../h3Prompt";
+import { h3BindAudio, h3CameraInsertRange, h3DetailPattern, h3GenerationPrompt, h3Languages, h3PromptIssues, h3PromptSubjects, h3PromptTokens, h3Sections, h3Skeleton, h3SpeakerFor, type H3PromptState, type H3Reference } from "../h3Prompt";
 import { getCameraPresets, type CameraPreset } from "../cameraPresets";
 import type { ZealmanVoice } from "../zealmanOptions";
 
@@ -319,28 +319,11 @@ function assignSubject(reference: string, name: string) {
   syncDefinitions(text);
 }
 function speakerFor(subject: number, reserved: number[] = []) {
-  const previous = new RegExp(`<Subject\\s+${subject}>\\s*\\(S(\\d+)\\)`).exec(prompt.value);
-  const binding = Object.values(state.value.audioBindings).find(item => item.subject === subject);
-  const item = state.value.subjects.find(item => item.id === subject);
-  const existing = previous ? Number(previous[1]) : binding?.speaker ?? item?.speaker;
-  if (existing) return existing;
-  const used = new Set([...reserved, ...[...prompt.value.matchAll(/\bS(\d+)\b/g)].map(match => Number(match[1]))]);
-  for (const subject of state.value.subjects) if (subject.speaker) used.add(subject.speaker);
-  for (const binding of Object.values(state.value.audioBindings)) used.add(binding.speaker);
-  let next = 1;
-  while (used.has(next)) next++;
-  if (item) item.speaker = next;
-  return next;
+  return h3SpeakerFor(prompt.value, state.value, subject, reserved);
 }
 function bindAudio(id: string, subject?: number) {
-  const reference = props.references.find(item => item.id === id)!;
-  let text = prompt.value;
-  if (subject) state.value.audioBindings[id] = { subject, speaker: speakerFor(subject), description: state.value.audioBindings[id]?.description ?? "" };
-  else {
-    delete state.value.audioBindings[id];
-    text = text.split("\n").filter(line => !line.startsWith(`${reference.value} is the voice-timbre reference for `)).join("\n");
-  }
-  syncDefinitions(text);
+  const reference = props.references.find(item => item.id === id);
+  if (reference) syncDefinitions(h3BindAudio(prompt.value, state.value, reference, subject));
 }
 function changeSpeaker(id: string, value?: number) {
   if (!value || !Number.isInteger(value)) return;
