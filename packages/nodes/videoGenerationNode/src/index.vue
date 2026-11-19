@@ -221,7 +221,7 @@ import h3PromptEditor from "./components/h3PromptEditor.vue";
 import h3MediaLibrary from "./components/h3MediaLibrary.vue";
 import promptReviewPanel from "./components/promptReviewPanel.vue";
 import { usePromptReview, samePromptReviewInput, applyPromptReviewEdits, type PromptReviewInput, type PromptReviewRecord, type PromptReviewRun, type PromptReviewEdit, type PromptReviewSubmission } from "./promptReview";
-import { h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, h3Sections, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
+import { h3BindAudio, h3CameraTagLike, h3GenerationPrompt, h3References, h3ReferenceGroup, h3PromptIssues, h3Sections, reconcileH3References, type H3PromptState, type H3Reference } from "./h3Prompt";
 import { getCameraPresets } from "./cameraPresets";
 import { loadZealmanOptions, validateZealmanSettings, zealmanAssetUrl, type ZealmanOptions, type ZealmanAsset } from "./zealmanOptions";
 
@@ -1188,6 +1188,8 @@ registerGenerationTools({
       speaker: z.number().int().min(1).max(128).optional(),
       referenceNotes: z.record(z.string().min(1).max(2048), z.string().trim().min(1).max(1000)).optional(),
     })).max(32).optional(),
+    audioBindings: z.record(z.string().min(1).max(2048), z.strictObject({ subject: z.number().int().min(1).max(128) }).nullable()).optional()
+      .describe("仅 H3：以 getConfig 中 <Audio N> 对应的 references.id 为键，{subject: subjects.id} 绑定或换绑，null 解绑；未列出的绑定不变，自动同步音色参考句"),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async setConfig(args, signal) {
     signal?.throwIfAborted();
@@ -1257,6 +1259,28 @@ registerGenerationTools({
     signal?.throwIfAborted();
     if (args.expectedReferenceRevision && initialReferences !== referenceSnapshot()) throw new Error("配置核对期间引用已变化，本次未修改，请重新读取 getReferences");
     if (args.expectedPromptRevision && initialPrompt !== data.value.prompt) throw new Error("配置核对期间提示词已变化，本次未修改，请读取当前稿");
+    const audioBindings = Object.entries(args.audioBindings ?? {});
+    let nextH3Prompt: H3PromptState | undefined;
+    let nextPrompt = data.value.prompt;
+    if (audioBindings.length) {
+      if (choice.providerId !== "yixianVideo" || !choice.modelId.startsWith("yixian-h3-")) throw new Error("audioBindings 仅用于 H3 音色绑定");
+      const references = h3ReferenceList.value;
+      const referencesById = new Map(references.map(item => [item.id, item]));
+      nextH3Prompt = {
+        ...data.value.h3Prompt,
+        subjects: (args.subjects ?? data.value.h3Prompt.subjects).map(subject => ({ ...subject })),
+        audioBindings: { ...data.value.h3Prompt.audioBindings },
+      };
+      for (const [id, binding] of audioBindings) {
+        const reference = referencesById.get(id);
+        if (reference?.category !== "audio") throw new Error("audioBindings 的键必须是 getConfig 返回的音频 references.id");
+        const subject = nextH3Prompt.subjects.find(item => item.id === binding?.subject);
+        if (binding && !subject?.references.some(id => ["picture", "video"].includes(referencesById.get(id)?.category ?? "")))
+          throw new Error("audioBindings.subject 必须是已有有效素材的 subjects.id");
+        nextPrompt = h3BindAudio(nextPrompt, nextH3Prompt, reference, binding?.subject);
+      }
+      nextPrompt = h3GenerationPrompt(nextPrompt, references, nextH3Prompt, true);
+    }
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
     if (args.referencePurposes) purposeData.value.referencePurposes = { ...args.referencePurposes };
     if (options && other) {
@@ -1271,7 +1295,10 @@ registerGenerationTools({
     if (mode !== undefined) data.value.mode = JSON.stringify(mode);
     if (args.generateAudio !== undefined && audio.canToggle) data.value.generateAudio = args.generateAudio;
     if (args.seed !== undefined) data.value.seed = args.seed;
-    if (args.subjects) data.value.h3Prompt.subjects = args.subjects;
+    if (nextH3Prompt) {
+      data.value.h3Prompt = nextH3Prompt;
+      if (nextPrompt !== data.value.prompt) setReviewPrompt(nextPrompt);
+    } else if (args.subjects) data.value.h3Prompt.subjects = args.subjects;
     if (args.continuation !== undefined) setContinuation(args.continuation?.referenceId);
     return getConfig();
   },
