@@ -26,6 +26,8 @@ export function useNode<T extends NodeOutputs = NodeOutputs>(options: NodeOption
   const previewReady = useNodePreviewReady(retainPreview);
   const canvasOverview = inject<Readonly<Ref<boolean>>>("canvasOverview", ref(false));
   const previewDetailed = computed(() => !canvasOverview.value || node.selected || retainPreview.value || !!documentContext?.targets.has(id));
+  const canvasCompactOverview = inject<Readonly<Ref<boolean>> | undefined>("canvasCompactOverview", undefined);
+  const compactPreview = computed(() => !!canvasCompactOverview?.value && !previewDetailed.value);
   const { updateNodeInternals } = useVueFlow();
   const defaults = getCurrentInstance()?.type as Pick<NodeOptions, "handles" | "icon"> | undefined;
   const handles = ref<NodeHandle[]>(options.handles ?? structuredClone(defaults?.handles ?? []));
@@ -39,6 +41,7 @@ export function useNode<T extends NodeOutputs = NodeOutputs>(options: NodeOption
   const nodeProps = computed(() => ({
     previewReady: previewReady.value,
     previewDetailed: previewDetailed.value,
+    compactPreview: compactPreview.value,
     label: node.data.label ?? options.label,
     icon: options.icon ?? defaults?.icon,
     handles: handles.value,
@@ -53,6 +56,7 @@ export function useNode<T extends NodeOutputs = NodeOutputs>(options: NodeOption
     config,
     previewReady,
     retainPreview,
+    compactPreview,
     nodeProps,
     handles,
     outputs,

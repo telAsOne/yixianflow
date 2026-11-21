@@ -236,7 +236,7 @@ defineOptions({
 });
 const vLoading = ElLoading.directive;
 const { findNode, addEdges, removeEdges, getEdges } = useVueFlow();
-const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview, handles } = useNode({
+const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview, compactPreview, handles } = useNode({
   label: "视频生成",
 });
 const duplicateCanvasNode = inject<(nodeId: string, dataPatch?: Record<string, unknown>) => Promise<string>>("duplicateCanvasNode");
@@ -764,12 +764,13 @@ function uploadReferences(replacement?: H3Reference, options: { continuation?: b
   else input.click();
 }
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const mediaPreview = useMediaPreview(outputFile);
+const detailFile = () => compactPreview.value ? undefined : outputFile.value;
+const mediaPreview = useMediaPreview(detailFile);
 const previewUrl = mediaPreview.url;
-const posterUrl = files.useFileUrl(outputFile, error => showNodeError(error, "视频封面读取失败"), true);
-const mediaInfo = files.useMediaInfo(outputFile, error => showNodeError(error, "视频信息读取失败"));
+const posterUrl = files.useFileUrl(outputFile, error => { if (!compactPreview.value) showNodeError(error, "视频封面读取失败"); }, () => compactPreview.value ? "canvas" : true);
+const mediaInfo = files.useMediaInfo(detailFile, error => showNodeError(error, "视频信息读取失败"));
 watchEffect(() => { if (mediaInfo.value?.width && mediaInfo.value.height) videoWidth.value = Math.max(180, 240 * mediaInfo.value.width / mediaInfo.value.height); });
-watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || !!player.value?.playing || !!player.value?.fullscreen || !!actions.value?.visible || !!actions.value?.processing; });
+watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || !!player.value?.playing || !!player.value?.fullscreen || !!player.value?.capturing || !!actions.value?.visible || !!actions.value?.processing; });
 
 onMounted(async () => {
   try {

@@ -175,7 +175,7 @@ defineOptions({
   ] satisfies NodeHandle[],
 });
 const vLoading = ElLoading.directive;
-const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview } = useNode({
+const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, retainPreview, compactPreview } = useNode({
   label: "图片生成",
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
@@ -254,12 +254,14 @@ const generationPrompt = computed(() =>
     .join("\n\n")
 );
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
-const inpaintPreview = useMediaPreview(() => data.value.inpaint?.guide ? { url: data.value.inpaint.guide, mimeType: "image/png" } : undefined);
+const inpaintPreview = useMediaPreview(() => !compactPreview.value && data.value.inpaint?.guide ? { url: data.value.inpaint.guide, mimeType: "image/png" } : undefined);
 const inpaintGuideUrl = inpaintPreview.url;
-const mediaPreview = useMediaPreview(outputFile, () => !editor.value?.mode && !editor.value?.busy);
+const mediaPreview = useMediaPreview(() => compactPreview.value ? undefined : outputFile.value, () => !editor.value?.mode && !editor.value?.busy);
 const previewUrl = mediaPreview.url;
-const thumbnailUrl = files.useFileUrl(outputFile, () => {}, true);
-watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || previewVisible.value || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
+const thumbnailUrl = files.useFileUrl(outputFile, () => {}, () => compactPreview.value ? "canvas" : true);
+watchEffect(() => { retainPreview.value = taskRunning.value || uploading.value || previewVisible.value || inpaintPreviewVisible.value || lightingVisible.value || multiAngleVisible.value
+  || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating
+  || !!panorama.value?.visible || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
 
 onMounted(async () => {
   try {

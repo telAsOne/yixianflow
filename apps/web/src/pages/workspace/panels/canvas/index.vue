@@ -2,7 +2,7 @@
   <div
     ref="canvasElement"
     class="canvas"
-    :class="{ edgesHidden: !showEdges, handMode, compositingEnabled: generalSettings.canvasCompositingEnabled }"
+    :class="{ edgesHidden: !showEdges, edgesSimplified: overviewEdgePath, handMode, compositingEnabled: generalSettings.canvasCompositingEnabled }"
     :style="{ '--canvasEdgeColor': generalSettings.canvasEdgeColorMode === 'custom' ? generalSettings.canvasEdgeColor : 'var(--el-color-primary)', '--inspectorWidth': `${inspectorShown && !workspaceLayout.compact.value ? Math.min(workspaceLayout.inspectorWidth.value, workspaceLayout.inspectorMaxWidth.value) : 0}px` }"
     @dblclick="openNodeMenu"
     @wheel.capture="zoomCanvas"
@@ -63,6 +63,11 @@
           :component="nodeTypes[type]"
           :error="nodeErrors[type]"
           :loading="nodeLoads.has(type) || (nodeListLoading && !nodeTypes[type] && !nodeErrors[type])" />
+      </template>
+      <template #zoom-pane>
+        <svg v-if="overviewEdgePath" class="overviewEdges" aria-hidden="true">
+          <path :d="overviewEdgePath" />
+        </svg>
       </template>
       <background :gap="16" patternColor="var(--el-border-color)" />
       <teleport :to="workspaceLayout.menuTarget.value ?? 'body'" :disabled="!workspaceLayout.menuTarget.value">
@@ -325,11 +330,16 @@ const { nodeTypes, nodeLoads, nodeErrors, nodeListLoading, remoteNodeTypes, avai
   signal: () => canvasController.signal, revision: () => canvasSave.revision,
 });
 const canvasOverview = ref(false);
+const largeCanvas = computed(() => flow.nodes.value.length >= 100);
+const compactOverview = computed(() => largeCanvas.value && canvasOverview.value);
+const overviewEdgePaths = shallowReactive(new Map<string, string>());
 watch(() => flow.viewport.value.zoom, zoom => {
   if (zoom < 0.35) canvasOverview.value = true;
   else if (zoom > 0.45) canvasOverview.value = false;
 }, { immediate: true });
 provide("canvasOverview", canvasOverview);
+provide("canvasCompactOverview", compactOverview);
+provide("canvasOverviewEdgePaths", overviewEdgePaths);
 provide("canvasZoom", zoomCanvas);
 const navigation = useCanvasNavigation(flow, () =>
   project.value?.directory && canvasId.value ? JSON.stringify([project.value.directory, canvasId.value]) : "",
@@ -436,10 +446,12 @@ const searchHint = computed(() => {
 const canvasView = useCanvasView(flow, navigation, {
   directory: () => project.value?.directory, path: () => canvasId.value,
   active: () => props.active && !props.settingsVisible, loaded: () => canvasReady.value && !canvasReloading.value,
-  showMap, snapEnabled, showEdges,
+  largeCanvas, showMap, snapEnabled, showEdges,
 });
 provide("canvasAllowNewPreview", canvasView.allowNewPreview);
 provide("canvasEdgeBounds", canvasView.edgeBounds);
+const overviewEdgePath = computed(() => compactOverview.value && canvasView.viewportMoving.value && showEdges.value
+  && !flow.connectionStartHandle.value && !flow.userSelectionActive.value ? [...overviewEdgePaths.values()].join(" ") : "");
 watch([() => props.active, () => flow.getSelectedNodes.value.length, () => flow.userSelectionActive.value, canvasView.selectionReady], ([active, count, selecting, ready]) => {
   if (active && !selecting) workspaceLayout.inspectorAvailable.value = ready && count > 0;
 }, { immediate: true });
@@ -1075,6 +1087,25 @@ const defaultEdgeOptions = markRaw({
     stroke-width: 1.25;
     stroke-opacity: 0.65;
     vector-effect: non-scaling-stroke;
+  }
+
+  // ACT: 只替换普通连线的可见笔画。点击热区、选中连线和拖线预览仍由 Vue Flow 提供。
+  &.edgesSimplified :deep(.vue-flow__edge:not(:hover) .batchedEdge) { stroke: none; }
+
+  .overviewEdges {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: visible;
+    pointer-events: none;
+
+    path {
+      fill: none;
+      stroke: var(--el-text-color-secondary);
+      stroke-width: 1.25;
+      stroke-opacity: 0.65;
+      vector-effect: non-scaling-stroke;
+    }
   }
 
   :deep(.vue-flow__edge.edgeNodeActive .vue-flow__edge-path),

@@ -6,6 +6,7 @@ import { registerApiLanguage } from "@/lib/i18n";
 import { webMode } from "@/lib/webRuntime";
 import type { CanvasChange, CanvasSnapshot, CanvasElement } from "@toonflow/server/canvasMerge";
 import type { RecycleOverview } from "@toonflow/server/recycleTypes";
+import type { FilePreview } from "@toonflow/nodes-scaffold/workspaceFiles";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
 export type WorkspaceUsage = { totalBytes: number; fileCount: number; assetBytes: number; assetCount: number; recycleBytes?: number; reclaimableBytes?: number };
@@ -210,15 +211,16 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return data.data;
   }
 
-  function acquireUrl(path: string, mimeType?: string, preview = false, refresh = false) {
+  function acquireUrl(path: string, mimeType?: string, preview: FilePreview = false, refresh = false) {
     const directory = getDirectory();
     const signedMedia = /^(image|video|audio)\//.test(mimeType ?? "") && /\.(png|jpe?g|webp|avif|gif|bmp|svg|apng|mp4|m4v|mov|webm|mkv|avi|ogv|mp3|wav|ogg|opus|flac|m4a|aac)$/i.test(path) && !isMobile;
+    if (preview === "canvas" && (!signedMedia || /^(https?:|blob:|data:)/i.test(path))) return { url: Promise.resolve(""), release() {} };
     const key = JSON.stringify([directory, path, mimeType, signedMedia && preview]);
     if (refresh) fileUrls.delete(key);
     let entry = fileUrls.get(key);
     if (!entry) {
       const url = signedMedia
-        ? requestMedia(directory, path).then(media => new URL(`${media.url}${preview ? `&preview=${mimeType?.startsWith("video/") ? 512 : 1024}` : ""}`, location.origin).href)
+        ? requestMedia(directory, path).then(media => new URL(`${media.url}${preview ? `&preview=${preview === "canvas" ? preview : mimeType?.startsWith("video/") ? 512 : 1024}` : ""}`, location.origin).href)
         : client.get<Blob>("/read", { params: { directory, path }, responseType: "blob" })
           .then(({ data }) => URL.createObjectURL(mimeType ? new Blob([data], { type: mimeType }) : data));
       entry = { directory, path, url, users: 0 };

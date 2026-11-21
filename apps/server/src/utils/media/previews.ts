@@ -9,15 +9,16 @@ const pending = new Map<string, PreviewJob>();
 let queue = Promise.resolve();
 type MediaInfo = { width?: number; height?: number; duration?: number };
 
-export async function mediaPreview(source: string, revision: string, mimeType: string, size: 512 | 1024, signal: AbortSignal) {
-  if (!/^(image\/(png|jpeg|webp|avif|bmp)|video\/)/.test(mimeType)) return source;
+export async function mediaPreview(source: string, revision: string, mimeType: string, size: 512 | 1024, signal: AbortSignal, canvas = false) {
+  if (!/^(image\/(png|jpeg|webp|avif|bmp)|video\/)/.test(mimeType)) return canvas ? undefined : source;
   const video = mimeType.startsWith("video/");
-  const identity = JSON.stringify([source, revision, video ? 640 : size, 1]);
+  const limit = video && !canvas ? 640 : size;
+  const identity = JSON.stringify([source, revision, limit, 1]);
   const output = cacheFile("mediaPreviews", identity, video ? "jpg" : "png");
   if (await stat(output).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; })) { touchCache(output); return output; }
   try { await requireMediaDevice(); }
   catch (error) {
-    if ((error as { status?: number }).status === 424) return video ? undefined : source;
+    if ((error as { status?: number }).status === 424) return video || canvas ? undefined : source;
     throw error;
   }
   let job = pending.get(output);
@@ -31,7 +32,6 @@ export async function mediaPreview(source: string, revision: string, mimeType: s
       await mkdir(dirname(output), { recursive: true });
       const temporary = join(temporaryDirectory, `${crypto.randomUUID()}.${video ? "jpg" : "png"}`);
       try {
-        const limit = video ? 640 : size;
         await executeFileFfmpeg(source, temporary, [
           { method: "frames", args: [1] },
           { method: "videoFilters", args: [{ filter: "scale", options: { w: limit, h: limit, force_original_aspect_ratio: "decrease" } }] },
