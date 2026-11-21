@@ -14,6 +14,7 @@ export type UploadLimits = z.infer<typeof uploadLimitsSchema>;
 
 export const modelSchema = z.object({
   id: z.string().min(1).max(200), label: z.string().min(1).max(200),
+  protocol: z.enum(["openai-completions", "openai-responses", "anthropic-messages"]).optional(),
   contextWindow: z.number().int().positive().optional(), maxOutputTokens: z.number().int().positive().optional(), think: z.boolean().optional(),
   defaultThinkingLevel: z.enum(["off", "low", "medium", "high"]).optional(),
   defaultImageSize: z.string().min(1).max(64).optional(), defaultImageRatio: z.string().min(1).max(64).optional(),

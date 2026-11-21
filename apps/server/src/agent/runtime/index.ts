@@ -249,7 +249,7 @@ export async function run(
       if (!mediaMessages.size) return body;
       const field = provider.protocol === "openai-responses" ? "input" : "messages";
       const textType = provider.protocol === "openai-responses" ? "input_text" : "text";
-      const messages = body[field] as { role?: string; content?: string | { type: string; text?: string }[] }[];
+      const messages = body[field] as { role?: string; content?: string | { type: string; text?: string; cache_control?: unknown }[] }[];
       return { ...body, [field]: await Promise.all(messages.map(async message => {
         if (message.role !== "user") return message;
         const parts = typeof message.content === "string" ? [{ type: textType, text: message.content }] : message.content;
@@ -258,7 +258,11 @@ export async function run(
           const source = part.type === textType && part.text ? mediaMessages.get(part.text) : undefined;
           if (!source) return [part];
           if (!mediaContents.has(source.id)) mediaContents.set(source.id, readAiReferences(cwd, source.references, signal));
-          return referenceContent(provider.protocol, part.text!, await mediaContents.get(source.id)!);
+          const expanded = referenceContent(provider.protocol, part.text!, await mediaContents.get(source.id)!) as Record<string, unknown>[];
+          if (part.cache_control !== undefined && expanded.length > 0) {
+            expanded[expanded.length - 1] = { ...expanded[expanded.length - 1], cache_control: part.cache_control };
+          }
+          return expanded;
         }));
         return { ...message, content: content.flat() };
       })) };

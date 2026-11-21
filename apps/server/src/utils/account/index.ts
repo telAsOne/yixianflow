@@ -111,6 +111,8 @@ export async function platformFetch(input: Parameters<typeof fetch>[0], init?: R
   new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
   if (headers.has("Authorization") && headers.get("Authorization") !== `Bearer ${account.key}`)
     throw Object.assign(new Error("账户已切换，请重新发起操作"), { status: 401 });
+  if (headers.has("x-api-key") && headers.get("x-api-key") !== account.key)
+    throw Object.assign(new Error("账户已切换，请重新发起操作"), { status: 401 });
   headers.set("Authorization", `Bearer ${account.key}`);
   headers.set("X-Toonflow-Version", version);
   const response = await fetch(input, { ...init, headers, cache: "no-store", redirect: "error" });
