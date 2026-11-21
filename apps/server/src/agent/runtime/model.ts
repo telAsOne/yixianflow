@@ -1,6 +1,6 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { getConfiguredModel } from "@/utils/ai";
+import { getAnthropicModelOptions, getConfiguredModel } from "@/utils/ai";
 import { refreshConfig } from "@/utils/account";
 
 export async function createAgentModel(providerId: string, modelId: string, thinkingLevel?: string) {
@@ -8,12 +8,14 @@ export async function createAgentModel(providerId: string, modelId: string, thin
   const configured = getConfiguredModel(providerId, modelId);
   const { provider, model, baseUrl } = configured;
   const disableArgonThinking = model.id === "gemini-4-argon" && model.think === true && (thinkingLevel ?? model.defaultThinkingLevel) === "off";
+  const anthropicOptions = getAnthropicModelOptions(provider.protocol, model.id);
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
   runtime.registerProvider(providerId, {
     api: provider.protocol,
     baseUrl,
     models: [{
       id: model.id, name: model.label, reasoning: disableArgonThinking || model.think === true && (thinkingLevel ?? model.defaultThinkingLevel ?? "off") !== "off",
+      ...anthropicOptions,
       ...(disableArgonThinking ? { thinkingLevelMap: { off: "none" } } : {}),
       // ACT: 保留图片输入，由实际供应方判断该模型是否支持。
       input: ["text", "image"],

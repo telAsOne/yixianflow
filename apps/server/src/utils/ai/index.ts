@@ -18,12 +18,26 @@ export const providerSchema = z.object({
   requestBodyLimitMiB: z.number().int().positive().optional(),
   protocol: z.enum(["openai-completions", "openai-responses", "anthropic-messages"]),
   models: z.array(z.object({
-    id: z.string(), label: z.string(), think: z.boolean().optional(),
+    id: z.string(), label: z.string(),
+    protocol: z.enum(["openai-completions", "openai-responses", "anthropic-messages"]).optional(),
+    think: z.boolean().optional(),
     defaultThinkingLevel: z.enum(["off", "low", "medium", "high"]).optional(),
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
   })),
 });
+
+const adaptiveClaudePattern = /^claude-(?:fable-5|mythos-5|mythos-preview|opus-5|sonnet-5|haiku-5|opus-4-[678]|sonnet-4-6)(?:$|[-.])/i;
+const alwaysThinkingClaudePattern = /^claude-(?:fable-5|mythos-5|mythos-preview|opus-5-5)(?:$|[-.])/i;
+
+export function getAnthropicModelOptions(protocol: z.infer<typeof providerSchema>["protocol"], modelId: string) {
+  if (protocol !== "anthropic-messages") return {};
+  const normalized = modelId.replace(/^[^/]+\//, "");
+  return {
+    ...(adaptiveClaudePattern.test(normalized) ? { compat: { forceAdaptiveThinking: true } } : {}),
+    ...(alwaysThinkingClaudePattern.test(normalized) ? { thinkingLevelMap: { off: null as null } } : {}),
+  };
+}
 
 const builtinModels = getBuiltinProviders().flatMap(provider => getBuiltinModels(provider));
 
@@ -53,11 +67,14 @@ export function getConfiguredModel(providerId: string, modelId: string) {
   const providers = getSettings().customProviders;
   const parsed = providerSchema.safeParse(Array.isArray(providers) ? providers.find(item => item?.id === providerId) : undefined);
   if (!parsed.success) throw Object.assign(new Error("请先在设置中配置模型供应商"), { status: 400 });
-  const provider: z.infer<typeof providerSchema> = { ...parsed.data, apiKey: account.key, apiUrl: account.baseUrl + "/v1", protocol: "openai-completions" };
-  const model = provider.models.find(item => item.id === modelId);
+  const model = parsed.data.models.find(item => item.id === modelId);
   if (!model) throw Object.assign(new Error("所选模型不存在，请重新选择"), { status: 400, code: "toonflow.model_unavailable" });
+  const protocol = model.protocol ?? "openai-completions";
+  // ACT: Anthropic SDK 会自动拼接 /v1/messages，其余协议仍以 /v1 为根路径。
+  const apiUrl = protocol === "anthropic-messages" ? account.baseUrl : account.baseUrl + "/v1";
+  const provider: z.infer<typeof providerSchema> = { ...parsed.data, apiKey: account.key, apiUrl, protocol };
   const baseUrl = new URL(provider.apiUrl);
-  if (baseUrl.pathname === "/") baseUrl.pathname = "/v1";
+  if (protocol !== "anthropic-messages" && baseUrl.pathname === "/") baseUrl.pathname = "/v1";
   const limits = getModelLimits(providerId, model);
   return { provider, model: { ...model, contextWindow: limits.contextWindow, maxOutputTokens: limits.maxTokens }, baseUrl: baseUrl.href.replace(/\/+$/, "") };
 }
@@ -75,7 +92,7 @@ export function listAiModels() {
     return provider.models.filter(model => model.id.trim()).map(model => {
       const limits = getModelLimits(provider.id, model);
       return {
-        providerId: provider.id, providerLabel: provider.label, protocol: provider.protocol, modelId: model.id, label: model.label, isDefault: model.id === defaultModel,
+        providerId: provider.id, providerLabel: provider.label, protocol: model.protocol ?? provider.protocol, modelId: model.id, label: model.label, isDefault: model.id === defaultModel,
         contextWindow: limits.contextWindow, maxOutputTokens: limits.maxTokens,
       };
     });
@@ -142,14 +159,16 @@ export function streamAi(
 ) {
   const { provider, model: configuredModel, baseUrl } = configured;
   const disableArgonThinking = configuredModel.id === "gemini-4-argon" && configuredModel.think === true && configuredModel.defaultThinkingLevel === "off";
-  const model: Model<typeof provider.protocol> = {
+  const anthropicOptions = getAnthropicModelOptions(provider.protocol, configuredModel.id);
+  const model = {
     id: configuredModel.id, name: configuredModel.label, provider: "toonflow", api: provider.protocol, baseUrl,
     reasoning: disableArgonThinking || configuredModel.think === true && configuredModel.defaultThinkingLevel !== "off", input: ["text", "image"],
+    ...anthropicOptions,
     ...(disableArgonThinking ? { thinkingLevelMap: { off: "none" } } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: configuredModel.contextWindow,
     maxTokens: configuredModel.maxOutputTokens,
-  };
+  } as Model<typeof provider.protocol>;
   // ACT: 不按模型名预判附件能力；按供应商协议传递，是否支持由上游接口决定。
   const stream = withRequestBudget(aiApis[provider.protocol].streamSimple, provider, {
     directory,
@@ -166,12 +185,20 @@ export function streamAi(
       // ACT: 后续 Anthropic 工具结果也使用 user 角色，附件只补充到最初的输入。
       const firstUser = messages.findIndex(message => message.role === "user");
       const attachmentContent = referenceContent(provider.protocol, "", references).slice(1);
-      return { ...body, [field]: messages.map((message, index) => index === firstUser
-        ? { ...message, content: [
-          ...(Array.isArray(message.content) ? message.content : referenceContent(provider.protocol, String(message.content ?? ""), [])),
-          ...attachmentContent,
-        ] }
-        : message) };
+      return { ...body, [field]: messages.map((message, index) => {
+        if (index !== firstUser) return message;
+        const existing = (Array.isArray(message.content) ? message.content : referenceContent(provider.protocol, String(message.content ?? ""), [])) as Record<string, unknown>[];
+        const merged = [...existing, ...(attachmentContent as Record<string, unknown>[])];
+        if (provider.protocol === "anthropic-messages" && existing.length > 0 && attachmentContent.length > 0) {
+          const previousLast = existing[existing.length - 1];
+          if (previousLast && "cache_control" in previousLast && previousLast.cache_control !== undefined) {
+            const { cache_control: cacheControl, ...rest } = previousLast;
+            merged[existing.length - 1] = rest;
+            merged[merged.length - 1] = { ...merged[merged.length - 1], cache_control: cacheControl };
+          }
+        }
+        return { ...message, content: merged };
+      }) };
     } : undefined,
   });
 }
