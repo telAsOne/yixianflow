@@ -143,7 +143,7 @@
           <span v-if="overviewLabel" class="overviewLabel" role="status">{{ overviewLabel }}</span>
         </div>
       </el-card>
-      <div v-if="showSideActions" class="sideToolbar nodrag nopan nowheel" role="group" aria-label="节点快捷操作" @pointerdown.stop="activateSideActions" @focusin="activateSideActions" @mousedown.stop @click.stop @dblclick.stop @keydown.stop @contextmenu.stop>
+      <div v-if="showSideActions && (!compactPreview || editingLabel || loading)" class="sideToolbar nodrag nopan nowheel" role="group" aria-label="节点快捷操作" @pointerdown.stop="activateSideActions" @focusin="activateSideActions" @mousedown.stop @click.stop @dblclick.stop @keydown.stop @contextmenu.stop>
         <div v-if="$slots.sideActions || downloadUrl !== undefined" class="mediaActions">
           <slot name="sideActions" />
           <el-button
@@ -236,6 +236,7 @@ const props = withDefaults(
       loading?: boolean;
       previewReady?: boolean;
       previewDetailed?: boolean;
+      compactPreview?: boolean;
       overviewSrc?: string;
       overviewLabel?: string;
       topWidth?: string | number;

@@ -2,12 +2,14 @@ import { inject, nextTick, ref, shallowRef, toValue, watch, type MaybeRefOrGette
 import type { NodeMediaValue } from "./values";
 import { useNodePreviewReady } from "./useNodePreviewReady";
 
+export type FilePreview = boolean | "canvas";
+
 export interface WorkspaceFiles {
   importImage?(url: string): Promise<{ path: string; mimeType: string }>;
   getMediaInfo?(path: string): Promise<{ width?: number; height?: number; duration?: number }>;
   list(path?: string): Promise<{ directory: string; entries: { name: string; path: string; type: "file" | "directory" }[] }>;
   read(path: string): Promise<ArrayBuffer>;
-  acquireUrl?(path: string, mimeType: string, preview?: boolean, refresh?: boolean): { url: Promise<string>; release(): void };
+  acquireUrl?(path: string, mimeType: string, preview?: FilePreview, refresh?: boolean): { url: Promise<string>; release(): void };
   readText(path: string): Promise<string>;
   readTextSnapshot(path: string): Promise<{ text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }>;
   writeTextSnapshot(path: string, text: string, snapshot: { revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }): Promise<string>;
@@ -69,13 +71,13 @@ export function useNodeFiles() {
     });
   }
 
-  function useFileUrl(file: MaybeRefOrGetter<NodeMediaValue | undefined>, onError: (error: unknown) => void, preview = false) {
+  function useFileUrl(file: MaybeRefOrGetter<NodeMediaValue | undefined>, onError: (error: unknown) => void, preview: MaybeRefOrGetter<FilePreview> = false) {
     const fileUrl = ref("");
     const loading = ref(false);
     const error = shallowRef<unknown>();
     const reloadRequest = ref(0);
     const previewReady = useNodePreviewReady();
-    watch([() => toValue(file), previewReady, reloadRequest], async ([value, ready, reload], previous, onCleanup) => {
+    watch([() => toValue(file), previewReady, reloadRequest, () => toValue(preview)], async ([value, ready, reload, mode], previous, onCleanup) => {
       let cancelled = false;
       let url = "";
       let cancelRetry: (() => void) | undefined;
@@ -97,7 +99,8 @@ export function useNodeFiles() {
         await nextTick();
         for (let attempt = 0; attempt < 2 && !cancelled; attempt++) {
           try {
-            shared = files.acquireUrl?.(value.url, value.mimeType, preview, attempt > 0 || reload > 0 && reload !== previous[2]);
+            shared = files.acquireUrl?.(value.url, value.mimeType, mode, attempt > 0 || reload > 0 && reload !== previous[2]);
+            if (mode === "canvas" && !shared) return;
             const nextUrl = shared ? await shared.url : await files.read(value.url).then(content => {
               if (cancelled) return "";
               return url = URL.createObjectURL(new Blob([content], { type: value.mimeType }));

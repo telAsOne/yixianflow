@@ -100,7 +100,7 @@ defineOptions({
     { id: "image", type: "source", dataType: "IMAGE", label: "图片输出" },
   ] satisfies NodeHandle[],
 });
-const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, retainPreview } = useNode({
+const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, retainPreview, compactPreview } = useNode({
   label: "图片",
 });
 const fileInput = ref<HTMLInputElement>();
@@ -121,10 +121,12 @@ const previewVisible = ref(false);
 const imageWidth = ref(0);
 
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
-const mediaPreview = useMediaPreview(outputFile, () => !editor.value?.mode && !editor.value?.busy);
+const mediaPreview = useMediaPreview(() => compactPreview.value ? undefined : outputFile.value, () => !editor.value?.mode && !editor.value?.busy);
 const previewUrl = mediaPreview.url;
-const thumbnailUrl = files.useFileUrl(outputFile, () => {}, true);
-watchEffect(() => { retainPreview.value = uploading.value || previewVisible.value || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
+const thumbnailUrl = files.useFileUrl(outputFile, () => {}, () => compactPreview.value ? "canvas" : true);
+watchEffect(() => { retainPreview.value = uploading.value || previewVisible.value || lightingVisible.value || multiAngleVisible.value
+  || !!editor.value?.mode || !!editor.value?.busy || !!lighting.value?.generating || !!multiAngle.value?.generating
+  || !!panorama.value?.visible || !!panorama.value?.busy || !!gridSplit.value?.splitting; });
 
 nodeEvent.on("save", () => {
   if (uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) throw new Error("图片处理中，请完成后再切换或刷新节点");

@@ -1,10 +1,10 @@
 <template>
-  <simple-bezier-edge v-if="visible" v-bind="props" />
+  <simple-bezier-edge v-if="visible" v-bind="props" :class="{ batchedEdge: overviewPath }" />
 </template>
 
 <script setup lang="ts">
-import { computed, inject, type Ref } from "vue";
-import { SimpleBezierEdge, type EdgeProps } from "@vue-flow/core";
+import { computed, inject, onScopeDispose, watch, type Ref } from "vue";
+import { getSimpleBezierPath, SimpleBezierEdge, useVueFlow, type EdgeProps } from "@vue-flow/core";
 import type { CanvasEdgeBounds } from "../useCanvasView";
 
 defineOptions({ inheritAttrs: false });
@@ -12,6 +12,21 @@ const props = defineProps<EdgeProps>();
 const edgeBounds = inject<Readonly<Ref<CanvasEdgeBounds>>>("canvasEdgeBounds")!;
 const canvasActive = inject<Ref<boolean>>("canvasActive");
 const showEdges = inject<Ref<boolean>>("canvasShowEdges");
+const compactOverview = inject<Readonly<Ref<boolean>>>("canvasCompactOverview");
+const overviewPaths = inject<Map<string, string>>("canvasOverviewEdgePaths");
+const { findEdge } = useVueFlow();
+const overviewPath = computed(() => {
+  if (!compactOverview?.value || canvasActive?.value === false || showEdges?.value === false
+    || props.selected || props.animated || props.style || props.label || props.interactionWidth === 0 || props.data?.videoContinuation
+    || props.sourceNode.selected || props.sourceNode.dragging || props.targetNode.selected || props.targetNode.dragging) return "";
+  const edge = findEdge(props.id);
+  if (!edge || edge.markerStart || edge.markerEnd || ![props.sourceX, props.sourceY, props.targetX, props.targetY].every(Number.isFinite)) return "";
+  return getSimpleBezierPath(props)[0];
+});
+if (overviewPaths) {
+  watch(overviewPath, path => { if (path) overviewPaths.set(props.id, path); else overviewPaths.delete(props.id); }, { immediate: true });
+  onScopeDispose(() => { overviewPaths.delete(props.id); });
+}
 const visible = computed(() => {
   if (canvasActive?.value === false) return false;
   if (showEdges?.value === false

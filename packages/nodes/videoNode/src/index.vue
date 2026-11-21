@@ -82,7 +82,7 @@ defineOptions({
   icon: IconVideo,
   handles: [{ id: "video", type: "source", dataType: "VIDEO", label: "视频输出" }] satisfies NodeHandle[],
 });
-const { id, node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, retainPreview } = useNode({
+const { id, node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, retainPreview, compactPreview } = useNode({
   label: "视频",
 });
 const createVideoContinuation = inject<(sourceId: string) => Promise<{ nodeId: string; message: string }>>("createVideoContinuation");
@@ -105,12 +105,13 @@ const exporting = computed(() => typeof exportProgress.value === "number");
 const videoWidth = ref(0);
 
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const mediaPreview = useMediaPreview(outputFile);
+const detailFile = () => compactPreview.value ? undefined : outputFile.value;
+const mediaPreview = useMediaPreview(detailFile);
 const previewUrl = mediaPreview.url;
-const posterUrl = files.useFileUrl(outputFile, error => showError(error, "视频封面读取失败"), true);
-const mediaInfo = files.useMediaInfo(outputFile, error => showError(error, "视频信息读取失败"));
+const posterUrl = files.useFileUrl(outputFile, error => { if (!compactPreview.value) showError(error, "视频封面读取失败"); }, () => compactPreview.value ? "canvas" : true);
+const mediaInfo = files.useMediaInfo(detailFile, error => showError(error, "视频信息读取失败"));
 watchEffect(() => { if (mediaInfo.value?.width && mediaInfo.value.height) videoWidth.value = Math.max(180, 240 * mediaInfo.value.width / mediaInfo.value.height); });
-watchEffect(() => { retainPreview.value = uploading.value || !!player.value?.playing || !!player.value?.fullscreen || !!actions.value?.visible || !!actions.value?.processing; });
+watchEffect(() => { retainPreview.value = uploading.value || !!player.value?.playing || !!player.value?.fullscreen || !!player.value?.capturing || !!actions.value?.visible || !!actions.value?.processing; });
 
 nodeEvent.on("save", (reason) => {
   if (uploading.value) throw new Error("视频处理中，请完成后再切换或刷新节点");

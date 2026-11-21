@@ -44,7 +44,7 @@ defineOptions({
     { id: "video", type: "source", dataType: "VIDEO", label: "带字幕的视频" },
   ] satisfies NodeHandle[],
 });
-const { id, node, nodeProps, outputs, nodeEvent, files, ffmpeg, retainPreview, updateNodeInternals } = useNode({ label: "字幕烧录" });
+const { id, node, nodeProps, outputs, nodeEvent, files, ffmpeg, retainPreview, compactPreview, updateNodeInternals } = useNode({ label: "字幕烧录" });
 const videoInputs = ref<NodeInputValue[]>([]);
 const subtitleInputs = ref<NodeInputValue[]>([]);
 const error = ref("");
@@ -60,15 +60,16 @@ let cleanupFailed = false;
 const generation = useNodeGeneration(outputs, cancelJob, "字幕烧录已取消");
 const { generating } = generation;
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const mediaPreview = useMediaPreview(outputFile);
+const detailFile = () => compactPreview.value ? undefined : outputFile.value;
+const mediaPreview = useMediaPreview(detailFile);
 const previewUrl = mediaPreview.url;
-const posterUrl = files.useFileUrl(outputFile, failure => reportError(failure, "视频封面读取失败"), true);
-const mediaInfo = files.useMediaInfo(outputFile, failure => reportError(failure, "视频信息读取失败"));
+const posterUrl = files.useFileUrl(outputFile, failure => { if (!compactPreview.value) reportError(failure, "视频封面读取失败"); }, () => compactPreview.value ? "canvas" : true);
+const mediaInfo = files.useMediaInfo(detailFile, failure => reportError(failure, "视频信息读取失败"));
 watchEffect(() => {
   const info = mediaInfo.value;
   if (info?.width && info.height) videoWidth.value = Math.max(180, 240 * info.width / info.height);
 });
-watchEffect(() => { retainPreview.value = generating.value || !!player.value?.playing || !!player.value?.fullscreen; });
+watchEffect(() => { retainPreview.value = generating.value || !!player.value?.playing || !!player.value?.fullscreen || !!player.value?.capturing; });
 nodeEvent.on("input:videoInput", values => { videoInputs.value = values; });
 nodeEvent.on("input:subtitleInput", values => { subtitleInputs.value = values; });
 nodeEvent.on("canConnect", (connection, context) => {

@@ -17,7 +17,7 @@ export type CanvasEdgeBounds = { left: number; top: number; right: number; botto
 
 export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: CanvasNavigation, options: {
   directory(): string | undefined; path(): string; active(): boolean; loaded(): boolean;
-  showMap: Ref<boolean>; snapEnabled: Ref<boolean>; showEdges: Ref<boolean>;
+  largeCanvas: Readonly<Ref<boolean>>; showMap: Ref<boolean>; snapEnabled: Ref<boolean>; showEdges: Ref<boolean>;
 }) {
   const key = ref("");
   const ready = ref(false);
@@ -39,7 +39,7 @@ export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: C
   const resumePreview = debounce(() => { previewPaused.value = false; }, 140);
   watch(flow.viewport, () => {
     // ACT: 大画布只在视口停下后加载新进入的媒体，已显示和正在工作的预览由节点保留。
-    if (!ready.value || !options.active() || flow.nodes.value.length < 100) return;
+    if (!ready.value || !options.active() || !options.largeCanvas.value) return;
     previewPaused.value = true;
     resumePreview();
   }, { flush: "sync" });
@@ -129,5 +129,5 @@ export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: C
     resumePreview.cancel();
     document.removeEventListener("visibilitychange", flushWhenHidden, true);
   });
-  return { ready, selectionReady, allowNewPreview, edgeBounds, flush };
+  return { ready, selectionReady, allowNewPreview, viewportMoving: previewPaused, edgeBounds, flush };
 }
