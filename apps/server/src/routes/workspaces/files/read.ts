@@ -9,7 +9,11 @@ import { success } from "@/lib/responseFormat";
 
 const router = Router();
 
-export default router.get("/", validateFields({ directory: z.string().min(1).max(4096), path: z.string().max(4096), snapshot: z.enum(["true"]).optional(), maxBytes: z.coerce.number().int().positive().max(20 * 1024 * 1024).optional() }, "query"), async (req, res, next) => {
+export default router.get("/", validateFields({
+  directory: z.string().min(1).max(4096), path: z.string().max(4096), snapshot: z.enum(["true"]).optional(),
+  maxBytes: z.coerce.number().int().positive().max(20 * 1024 * 1024).optional(),
+  knownRevision: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+}, "query"), async (req, res, next) => {
   const { path } = await u.workspaceFile.resolveWorkspaceFile(req, req.query.directory as string, req.query.path as string);
   const file = await lstat(path);
   if (!file.isFile()) throw Object.assign(new Error("只能读取文件"), { status: 400 });
@@ -29,7 +33,9 @@ export default router.get("/", validateFields({ directory: z.string().min(1).max
     } catch {
       throw Object.assign(new Error("文件不是受支持的 UTF-8 或带 BOM 的 UTF-16 文本，请先用原编辑器转换编码后再打开，原文件未修改"), { status: 415 });
     }
-    res.json(success({ text, encoding, revision: createHash("sha256").update(bytes).digest("hex") }));
+    const revision = createHash("sha256").update(bytes).digest("hex");
+    if (revision === req.query.knownRevision) { res.status(204).end(); return; }
+    res.json(success({ text, encoding, revision }));
     return;
   }
   await sendFile(res, path, { dotfiles: "allow" }, err => { if (err) next(err); });

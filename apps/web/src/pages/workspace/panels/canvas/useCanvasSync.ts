@@ -20,7 +20,8 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
   let queue = Promise.resolve();
   let disposed = false;
   let pendingRemote = false;
-  const current = (): CanvasSnapshot => JSON.parse(JSON.stringify({ toonflowCanvas: true, ...flow.toObject() }));
+  // Vue Flow 的 toObject 已序列化并返回独立快照。
+  const current = (): CanvasSnapshot => ({ toonflowCanvas: true, ...flow.toObject() });
   const errorMessage = (error: unknown) => axios.isAxiosError(error) ? error.response?.data?.message || error.message : error instanceof Error ? error.message : "画布同步失败";
 
   function applyEdgeRemovals(edges: Edge[]) {
@@ -29,6 +30,7 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
 
   flow.onNodesChange(changes => {
     const removed = new Set(changes.filter(change => change.type === "remove").map(change => change.id));
+    if (!removed.size) return;
     // 固定连线不能单独删除，但目标节点删除后必须一并移除。
     const edges = flow.getEdges.value.filter(edge => edge.data?.videoContinuation && removed.has(edge.target) && !flow.findNode(edge.target));
     if (edges.length) applyEdgeRemovals(edges);
@@ -147,12 +149,16 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
     await archiveRecovery();
   }
 
+  function parseDisk(text: string, revision: string): Disk {
+    const canvas = JSON.parse(text) as CanvasSnapshot;
+    validateCanvas(canvas);
+    return { canvas, revision };
+  }
+
   async function readDisk(target: { directory: string; path: string }): Promise<Disk> {
     const snapshot = await useWorkspaceFiles(target.directory).readTextSnapshot(target.path);
     checkBinding(target);
-    const canvas = JSON.parse(snapshot.text) as CanvasSnapshot;
-    validateCanvas(canvas);
-    return { canvas, revision: snapshot.revision };
+    return parseDisk(snapshot.text, snapshot.revision);
   }
 
   function sync(event?: CanvasUpdate) {
@@ -193,9 +199,10 @@ export function useCanvasSync(flow: ReturnType<typeof useVueFlow>, binding: () =
         baseline = { canvas: recovery.base, revision: disk.revision };
         await block(await readDisk(target), restored.conflicts, message);
       } else {
-        // 补齐首次读盘到同步就绪之间的更新。
-        const latest = await readDisk(target);
-        if (latest.revision !== baseline?.revision) await receive(latest);
+        // 补齐首次读盘到同步就绪之间的更新。版本相同时不再传输画布正文。
+        const latest = await useWorkspaceFiles(target.directory).readTextSnapshot(target.path, { knownRevision: baseline?.revision ?? disk.revision });
+        checkBinding(target);
+        if (latest && latest.revision !== baseline?.revision) await receive(parseDisk(latest.text, latest.revision));
       }
     }).catch(error => { if (!disposed) recoveryError.value = errorMessage(error); });
   }
