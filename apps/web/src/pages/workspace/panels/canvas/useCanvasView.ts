@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, onScopeDispose, ref, watch, type Ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onScopeDispose, ref, shallowRef, watch, type Ref } from "vue";
 import { debounce } from "lodash-es";
 import { z } from "zod";
 import type { useVueFlow } from "@vue-flow/core";
@@ -13,6 +13,8 @@ const canvasViewSchema = z.object({
   showEdges: z.boolean().optional(),
 });
 
+export type CanvasEdgeBounds = { left: number; top: number; right: number; bottom: number };
+
 export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: CanvasNavigation, options: {
   directory(): string | undefined; path(): string; active(): boolean; loaded(): boolean;
   showMap: Ref<boolean>; snapEnabled: Ref<boolean>; showEdges: Ref<boolean>;
@@ -21,17 +23,44 @@ export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: C
   const ready = ref(false);
   const selectionReady = ref(false);
   let saved: z.infer<typeof canvasViewSchema> | undefined;
-  // 个人视图随账户设置上传，平移缩放停下后再写入；隐藏、切换和卸载时立即写入。
-  const save = debounce((key: string, value: string) => settingsStorage.setItem(key, value), 300);
+  // 个人视图随账户设置上传，平移缩放停下后再取快照；隐藏、切换和卸载时立即写入。
+  const save = debounce((key: string) => settingsStorage.setItem(key, JSON.stringify({
+    ...flow.viewport.value,
+    selectedNodeIds: flow.getSelectedNodes.value.map(node => node.id),
+    showMap: options.showMap.value, snapEnabled: options.snapEnabled.value, showEdges: options.showEdges.value,
+  })), 300);
 
   function remember() {
-    if (!key.value || !ready.value) return;
-    save(key.value, JSON.stringify({
-      ...flow.viewport.value,
-      selectedNodeIds: flow.getSelectedNodes.value.map(node => node.id),
-      showMap: options.showMap.value, snapEnabled: options.snapEnabled.value, showEdges: options.showEdges.value,
-    }));
+    if (key.value && ready.value) save(key.value);
   }
+
+  const previewPaused = ref(false);
+  const allowNewPreview = computed(() => ready.value && !previewPaused.value);
+  const resumePreview = debounce(() => { previewPaused.value = false; }, 140);
+  watch(flow.viewport, () => {
+    // ACT: 大画布只在视口停下后加载新进入的媒体，已显示和正在工作的预览由节点保留。
+    if (!ready.value || !options.active() || flow.nodes.value.length < 100) return;
+    previewPaused.value = true;
+    resumePreview();
+  }, { flush: "sync" });
+
+  const edgeBounds = shallowRef<CanvasEdgeBounds>({ left: 0, top: 0, right: 0, bottom: 0 });
+  watch([flow.viewport, flow.dimensions], ([{ x, y, zoom }, { width, height }]) => {
+    const previous = edgeBounds.value;
+    const left = -x / zoom;
+    const top = -y / zoom;
+    const right = (width - x) / zoom;
+    const bottom = (height - y) / zoom;
+    const margin = 80 / zoom;
+    const limit = 3 * margin;
+    // ACT: 平移尚未越过缓冲范围时复用窗口，避免数百条连线逐帧重判。放大时也限制缓冲的屏幕宽度。
+    if (previous.left >= left - limit && previous.left <= left - margin
+      && previous.top >= top - limit && previous.top <= top - margin
+      && previous.right <= right + limit && previous.right >= right + margin
+      && previous.bottom <= bottom + limit && previous.bottom >= bottom + margin) return;
+    const padding = 2 * margin;
+    edgeBounds.value = { left: left - padding, top: top - padding, right: right + padding, bottom: bottom + padding };
+  }, { immediate: true });
 
   function flush() {
     remember();
@@ -44,6 +73,8 @@ export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: C
     // 同一实例的非空路径变化来自改名，沿用当前视图，不重新定位。
     if (directory === previousDirectory && path && previousPath) { remember(); return; }
     ready.value = false;
+    resumePreview.cancel();
+    previewPaused.value = false;
     selectionReady.value = false;
     saved = undefined;
     if (!key.value) return;
@@ -89,14 +120,14 @@ export function useCanvasView(flow: ReturnType<typeof useVueFlow>, navigation: C
   }, { immediate: true, flush: "post" });
 
   // 个人视图只写设置，不标记共享画布内容发生修改。
-  watch(() => [flow.viewport.value.x, flow.viewport.value.y, flow.viewport.value.zoom,
-    flow.getSelectedNodes.value.map(node => node.id).join(","), options.showMap.value, options.snapEnabled.value, options.showEdges.value], remember, { flush: "post" });
+  watch([flow.viewport, flow.getSelectedNodes, options.showMap, options.snapEnabled, options.showEdges], remember, { flush: "post" });
   function flushWhenHidden() { if (document.visibilityState === "hidden") flush(); }
   document.addEventListener("visibilitychange", flushWhenHidden, true);
   onBeforeUnmount(() => { flush(); ready.value = false; });
   onScopeDispose(() => {
     save.flush();
+    resumePreview.cancel();
     document.removeEventListener("visibilitychange", flushWhenHidden, true);
   });
-  return { ready, selectionReady, flush };
+  return { ready, selectionReady, allowNewPreview, edgeBounds, flush };
 }

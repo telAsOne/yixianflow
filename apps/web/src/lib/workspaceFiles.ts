@@ -10,6 +10,7 @@ import type { RecycleOverview } from "@toonflow/server/recycleTypes";
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
 export type WorkspaceUsage = { totalBytes: number; fileCount: number; assetBytes: number; assetCount: number; recycleBytes?: number; reclaimableBytes?: number };
 export type TextSnapshot = { text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" };
+type TextSnapshotOptions = { maxBytes?: number; signal?: AbortSignal };
 export type CanvasUpdate = { path?: string; ready?: boolean; revision?: string };
 const client = axios.create({ baseURL: "/api/workspaces/files", headers: { "x-toonflow-workspace": "1" } });
 registerApiLanguage(client);
@@ -263,12 +264,14 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return JSON.parse(text);
   }
 
-  async function readTextSnapshot(path: string, options?: { maxBytes?: number; signal?: AbortSignal }): Promise<TextSnapshot> {
+  async function readTextSnapshot(path: string, options: TextSnapshotOptions & { knownRevision: string }): Promise<TextSnapshot | undefined>;
+  async function readTextSnapshot(path: string, options?: TextSnapshotOptions): Promise<TextSnapshot>;
+  async function readTextSnapshot(path: string, options?: TextSnapshotOptions & { knownRevision?: string }): Promise<TextSnapshot | undefined> {
     if (options?.maxBytes !== undefined && (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1)) throw new Error("读取字节数必须为正整数");
-    const { data } = await client.get<{ data: TextSnapshot }>("/read", {
-      params: { directory: getDirectory(), path, snapshot: true, maxBytes: options?.maxBytes }, signal: options?.signal,
+    const { status, data } = await client.get<{ data: TextSnapshot }>("/read", {
+      params: { directory: getDirectory(), path, snapshot: true, maxBytes: options?.maxBytes, knownRevision: options?.knownRevision }, signal: options?.signal,
     });
-    return data.data;
+    return status === 204 ? undefined : data.data;
   }
 
   async function writeTextSnapshot(path: string, text: string, snapshot: Pick<TextSnapshot, "revision" | "encoding">) {

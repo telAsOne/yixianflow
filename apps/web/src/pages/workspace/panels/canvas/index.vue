@@ -438,6 +438,8 @@ const canvasView = useCanvasView(flow, navigation, {
   active: () => props.active && !props.settingsVisible, loaded: () => canvasReady.value && !canvasReloading.value,
   showMap, snapEnabled, showEdges,
 });
+provide("canvasAllowNewPreview", canvasView.allowNewPreview);
+provide("canvasEdgeBounds", canvasView.edgeBounds);
 watch([() => props.active, () => flow.getSelectedNodes.value.length, () => flow.userSelectionActive.value, canvasView.selectionReady], ([active, count, selecting, ready]) => {
   if (active && !selecting) workspaceLayout.inspectorAvailable.value = ready && count > 0;
 }, { immediate: true });
