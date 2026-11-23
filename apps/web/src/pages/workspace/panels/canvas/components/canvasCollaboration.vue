@@ -60,7 +60,7 @@ onMounted(() => {
   canvas?.addEventListener("pointerleave", leave);
   canvas?.addEventListener("pointerdown", stopFollowing);
   canvas?.addEventListener("wheel", stopFollowing, { passive: true });
-  const timer = setInterval(() => void broadcast(), 250);
+  const timer = setInterval(() => void broadcast(), 500);
   onScopeDispose(() => { clearInterval(timer); canvas?.removeEventListener("pointermove", move); canvas?.removeEventListener("pointerleave", leave); canvas?.removeEventListener("pointerdown", stopFollowing); canvas?.removeEventListener("wheel", stopFollowing); });
 });
 watch(() => followingMember.value, member => {

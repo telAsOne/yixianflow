@@ -8,6 +8,7 @@ import { normalizeMediaModel } from "@toonflow/providers/media/yixianVideo";
 import { isWebMode } from "@/lib/webContext";
 import { hashWebToken, saveWebManagedSettings } from "@/utils/web/store";
 import type { Provider } from "@toonflow/providers";
+import { isDeepStrictEqual } from "node:util";
 
 let pending: Promise<void> | undefined;
 let pendingAccount: ReturnType<typeof getAccount>;
@@ -57,11 +58,10 @@ async function refreshWebConfig(force: boolean) {
     const defaultModels = Object.fromEntries(Object.entries(config.categories).map(([type, category]) => [type,
       category.enabled ? { providerId: type === "text" ? "yixian" : "yixianVideo", modelId: category.defaultModel } : null]));
     const settings = getSettings();
-    const saved = settings.yixianConfig as { config?: unknown } | undefined;
-    if (JSON.stringify(saved?.config) !== JSON.stringify(config) || JSON.stringify(settings.customProviders) !== JSON.stringify(customProviders)
-      || JSON.stringify(settings.defaultModels) !== JSON.stringify(defaultModels)) {
-      await saveWebManagedSettings({ customProviders, defaultModels, mediaProviderConfigs: {}, yixianConfig: { baseUrl: account.baseUrl, userId: account.user.id, config } });
-    }
+    // JSONB 不保留对象字段顺序，先统一 JSON 值再按内容比较，避免每个请求重复写入。
+    const managedSettings: Record<string, unknown> = JSON.parse(JSON.stringify({ customProviders, defaultModels, mediaProviderConfigs: {},
+      yixianConfig: { baseUrl: account.baseUrl, userId: account.user.id, config } }));
+    if (Object.entries(managedSettings).some(([key, value]) => !isDeepStrictEqual(settings[key], value))) await saveWebManagedSettings(managedSettings);
     state.error = "";
   } catch (error) {
     state.error = error instanceof Error ? error.message : "刷新模型失败";

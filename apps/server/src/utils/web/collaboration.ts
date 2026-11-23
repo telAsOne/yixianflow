@@ -7,8 +7,12 @@ import { getWebProject, resolveWebProject } from "./projects";
 import { publishProjectEvent } from "./projectEvents";
 import type { ProjectPresence } from "@/types/collaboration";
 import { resolveWorkspacePath } from "@/utils/workspace/files";
+import { isDeepStrictEqual } from "node:util";
 
 const sessions = new Map<string, Map<string, ProjectPresence & { seenAt: number }>>();
+const publishedPresence = new Map<string, Map<string, ProjectPresence>>();
+const pendingPresence = new Map<string, ReturnType<typeof setTimeout>>();
+const removedPresence = new Map<string, Set<string>>();
 const colors = ["#2563eb", "#a855f7", "#059669", "#ea580c", "#db2777", "#0891b2"];
 export const presenceSchema = z.object({
   sessionId: z.uuid(), path: z.string().max(4096), panel: z.enum(["canvas", "document"]), visible: z.boolean(),
@@ -17,12 +21,51 @@ export const presenceSchema = z.object({
   viewport: z.object({ x: z.number().finite(), y: z.number().finite(), zoom: z.number().positive().max(100) }).optional(),
 });
 
-export function getProjectPresence(id: string, includePlatform = (requireWebAccount().user.role ?? 0) >= 10) {
+function expireProjectPresence(id: string) {
   const room = sessions.get(id);
-  if (!room) return [];
-  for (const [key, member] of room) if (Date.now() - member.seenAt > 45000) room.delete(key);
+  if (!room) return false;
+  let changed = false;
+  for (const [key, member] of room) if (Date.now() - member.seenAt > 45000) {
+    room.delete(key);
+    scheduleProjectPresence(id, key);
+    changed = true;
+  }
   if (!room.size) sessions.delete(id);
-  return [...room.values()].filter(member => includePlatform || !member.platformOnly).map(({ seenAt, ...member }) => member);
+  return changed;
+}
+
+function scheduleProjectPresence(id: string, removedSession?: string) {
+  if (removedSession) {
+    const removed = removedPresence.get(id) ?? new Set<string>();
+    removed.add(removedSession);
+    removedPresence.set(id, removed);
+  }
+  if (pendingPresence.has(id)) return;
+  // ACT: 单进程按项目合并 250ms 内的最新状态；旧页面仍接收合并后的完整快照。
+  const timer = setTimeout(() => {
+    expireProjectPresence(id);
+    pendingPresence.delete(id);
+    const members = getProjectPresence(id, true);
+    const previous = publishedPresence.get(id) ?? new Map<string, ProjectPresence>();
+    const current = new Map(members.map(member => [member.sessionId, member]));
+    const changes = members.filter(member => !isDeepStrictEqual(previous.get(member.sessionId), member));
+    const removed = [...new Set([...previous.keys(), ...(removedPresence.get(id) ?? [])])].filter(key => !current.has(key));
+    removedPresence.delete(id);
+    if (members.length) publishedPresence.set(id, current);
+    else publishedPresence.delete(id);
+    if (changes.length || removed.length) publishProjectEvent(id, { type: "presence", members, changes, removed });
+  }, 250);
+  timer.unref();
+  pendingPresence.set(id, timer);
+}
+
+setInterval(() => {
+  for (const id of sessions.keys()) if (expireProjectPresence(id)) scheduleProjectPresence(id);
+}, 15000).unref();
+
+export function getProjectPresence(id: string, includePlatform = (requireWebAccount().user.role ?? 0) >= 10) {
+  if (expireProjectPresence(id)) scheduleProjectPresence(id);
+  return [...(sessions.get(id)?.values() ?? [])].filter(member => includePlatform || !member.platformOnly).map(({ seenAt, ...member }) => member);
 }
 
 export function updateProjectPresence(project: { id: string; ownerId: number }, state: z.infer<typeof presenceSchema>, agent = false) {
@@ -30,11 +73,11 @@ export function updateProjectPresence(project: { id: string; ownerId: number }, 
   const { user } = requireWebAccount();
   const platformAdmin = (user.role ?? 0) >= 10;
   const platformOnly = platformAdmin && ownerId !== user.id;
-  getProjectPresence(id);
+  expireProjectPresence(id);
   const room = sessions.get(id) ?? new Map();
   const key = `${user.id}:${state.sessionId}`;
-  const joined = !agent && !state.leave && ![...room.values()].some(member => member.userId === user.id);
-  if (state.leave) room.delete(key);
+  const joined = !agent && !state.leave && !room.has(key) && ![...room.values()].some(member => member.userId === user.id);
+  if (state.leave) { if (room.delete(key)) scheduleProjectPresence(id, key); }
   else {
     if (!room.has(key) && room.size >= 256) throw Object.assign(new Error("项目在线会话过多，请关闭闲置页面"), { status: 429 });
     const { leave, ...presence } = state;
@@ -42,15 +85,17 @@ export function updateProjectPresence(project: { id: string; ownerId: number }, 
       name: `${user.display_name || user.username}${agent ? "的 AI" : ""}`, color: colors[user.id % colors.length]!, admin: platformAdmin, agent, platformOnly, seenAt: Date.now() });
   }
   sessions.set(id, room);
-  publishProjectEvent(id, { type: "presence", members: getProjectPresence(id, true), platformOnly });
+  scheduleProjectPresence(id);
   if (joined && !platformAdmin) void recordProjectActivity(id, "进入项目", state.path).catch(() => { console.warn("[collaboration] presence activity could not be saved"); });
-  return getProjectPresence(id);
 }
 
 export function removeProjectPresence(id: string, userId: number) {
   const room = sessions.get(id);
-  if (room) for (const [key, member] of room) if (member.userId === userId) room.delete(key);
-  publishProjectEvent(id, { type: "presence", members: getProjectPresence(id, true) });
+  if (room) for (const [key, member] of room) if (member.userId === userId) {
+    room.delete(key);
+    scheduleProjectPresence(id, key);
+  }
+  scheduleProjectPresence(id);
 }
 
 export async function getProjectMembers(id: string) {

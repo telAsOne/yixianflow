@@ -153,7 +153,7 @@ export async function saveWebManagedSettings(settings: Record<string, unknown>) 
   const sql = getWebDatabase();
   // ACT: 模型目录同步只更新托管字段，保留其他请求刚保存的个人设置。
   const [user] = await sql`UPDATE yixianflow.users SET settings = settings || ${settings}::jsonb
-    WHERE id = ${requireWebAccount().user.id} RETURNING settings`;
+    WHERE id = ${requireWebAccount().user.id} AND settings IS DISTINCT FROM settings || ${settings}::jsonb RETURNING settings`;
   const context = webContext.getStore();
-  if (context) context.settings = user.settings;
+  if (context) context.settings = user?.settings ?? await getWebSettings();
 }
