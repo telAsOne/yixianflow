@@ -67,9 +67,15 @@ export async function readWebSession(req: Request) {
   if (!token) return;
   const sql = getWebDatabase();
   const sessionHash = hashWebToken(token);
-  const [session] = await sql`UPDATE yixianflow.sessions SET "seenAt" = CURRENT_TIMESTAMP
-    WHERE hash = ${sessionHash} AND "expiresAt" > CURRENT_TIMESTAMP
-      AND "seenAt" > CURRENT_TIMESTAMP - INTERVAL '30 minutes' RETURNING "userId"`;
+  // 每次仍读数据库确认撤销与过期，活跃时间最多每分钟写一次。
+  const [session] = await sql`WITH currentSession AS MATERIALIZED (
+      SELECT hash, "userId" FROM yixianflow.sessions WHERE hash = ${sessionHash} AND "expiresAt" > CURRENT_TIMESTAMP
+        AND "seenAt" > CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+    ), touched AS (
+      UPDATE yixianflow.sessions SET "seenAt" = CURRENT_TIMESTAMP FROM currentSession
+      WHERE sessions.hash = currentSession.hash AND sessions."seenAt" <= CURRENT_TIMESTAMP - INTERVAL '1 minute'
+      RETURNING sessions."userId"
+    ) SELECT "userId" FROM currentSession`;
   if (!session) return;
   try {
     const account = await readWebAccount(session.userId, req.app.locals.appVersion || process.env.appVersion || "2.0.0");

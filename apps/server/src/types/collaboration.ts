@@ -7,5 +7,6 @@ export type ProjectPresence = {
   cursor?: { x: number; y: number }; selected: string[]; viewport?: { x: number; y: number; zoom: number };
 };
 export type ProjectEvent = { type: "ready" | "permissions" } | { type: "canvas"; path: string; revision?: string } | { type: "file"; path: string }
-  | { type: "presence"; members: ProjectPresence[]; platformOnly?: boolean }
+  | { type: "presence"; members: ProjectPresence[]; platformOnly?: boolean; changes?: ProjectPresence[]; removed?: string[] }
+  | { type: "presenceDelta"; members: ProjectPresence[]; removed: string[] }
   | { type: "activity"; activity: ProjectActivity };

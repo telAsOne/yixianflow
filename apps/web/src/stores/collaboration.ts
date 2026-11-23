@@ -52,6 +52,12 @@ export const useCollaborationStore = defineStore("collaboration", () => {
 
   function receive(event: ProjectEvent) {
     if (event.type === "presence") presence.value = event.members;
+    if (event.type === "presenceDelta") {
+      const members = new Map(presence.value.map(member => [member.sessionId, member]));
+      for (const id of event.removed) members.delete(id);
+      for (const member of event.members) members.set(member.sessionId, member);
+      presence.value = [...members.values()];
+    }
     if (event.type === "activity") activities.value = [event.activity, ...activities.value.filter(item => item.id !== event.activity.id)].slice(0, 50);
     if (event.type === "permissions") void refresh().catch(() => {});
     if (event.type === "ready") {
@@ -67,7 +73,7 @@ export const useCollaborationStore = defineStore("collaboration", () => {
       const attempt = new AbortController();
       let watchdog = setTimeout(() => attempt.abort(new Error("协作连接超时")), 35000);
       try {
-        const response = await fetch(`/api/projects/events?id=${encodeURIComponent(id)}`, { signal: AbortSignal.any([signal, attempt.signal]), cache: "no-store",
+        const response = await fetch(`/api/projects/events?id=${encodeURIComponent(id)}&presenceMode=delta`, { signal: AbortSignal.any([signal, attempt.signal]), cache: "no-store",
           headers: { "x-toonflow-workspace": "1", "x-yixianflow-user": String(webUserId.value) } });
         if (response.status === 401) window.dispatchEvent(new Event("toonflow:sign-in"));
         if (!response.ok || !response.body) throw new Error("协作连接中断，请检查登录和项目权限");
@@ -133,7 +139,7 @@ export const useCollaborationStore = defineStore("collaboration", () => {
   async function updatePresence(state: { path: string; panel: "canvas" | "document"; visible: boolean; activity: string; selected: string[];
     cursor?: { x: number; y: number }; viewport?: { x: number; y: number; zoom: number }; leave?: boolean }) {
     if (!projectId.value) return;
-    await api.post("/api/projects/presence", { id: projectId.value, sessionId, ...state });
+    await api.post("/api/projects/presence", { id: projectId.value, sessionId, compact: true, ...state });
   }
 
   return { projectId, role, members, presence, activities, invites, connected, error, accessLost, panel, following,
