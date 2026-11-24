@@ -1,6 +1,6 @@
 <template>
   <div class="imageEditor" :class="{ editing: mode }">
-    <img ref="sourceImage" :src="mode || previewFailed ? src : previewSrc || src" :alt="alt" decoding="async" draggable="false" @load="emit('load', $event)" @error="previewSrc && !mode && !previewFailed ? previewFailed = true : emit('error', $event)" />
+    <img ref="sourceImage" crossorigin="anonymous" :src="mode || previewFailed ? src : previewSrc || src" :alt="alt" decoding="async" draggable="false" @load="emit('load', $event)" @error="previewSrc && !mode && !previewFailed ? previewFailed = true : emit('error', $event)" />
     <canvas
       v-if="mode"
       ref="paintCanvas"
