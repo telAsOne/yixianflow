@@ -117,6 +117,7 @@ async function splitImage() {
   const rowCount = rows.value;
   const columnCount = columns.value;
   const source = new Image();
+  source.crossOrigin = "anonymous";
   const canvas = document.createElement("canvas");
   const pendingIds: string[] = [];
   const nodes: Node[] = [];
