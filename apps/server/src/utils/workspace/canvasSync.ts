@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, relative } from "node:path";
-import { mkdir, readFile, rm, writeAtomic } from "@toonflow/file";
+import { mkdir, readFile, rm, writeAtomic } from "@/utils/media/objectFiles";
 import { z } from "zod";
 import { lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/files";
 import { getVideoTask } from "@/utils/media/videoTasks";

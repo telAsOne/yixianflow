@@ -1,5 +1,5 @@
 import { join, relative, sep } from "node:path";
-import { open, readFile, readdir, stat } from "@toonflow/file";
+import { open, readFile, readdir, stat } from "@/utils/media/objectFiles";
 import { cacheFile, readCache, writeCache } from "@/utils/cache";
 import { resolveWorkspacePath } from "@/utils/workspace/files";
 

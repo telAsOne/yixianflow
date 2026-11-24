@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
-import { createReadStream, readFile, stat } from "@toonflow/file";
+import { createReadStream, readFile, stat } from "@/utils/media/objectFiles";
 import { helperUpdateInfo } from "@toonflow/local-helper/protocol";
 import { authenticateDevice, getDownloadPath } from "./index";
 import type { Request, Response } from "express";

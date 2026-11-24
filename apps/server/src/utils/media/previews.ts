@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import { mkdir, stat, unlink, rename } from "@toonflow/file";
+import { mkdir, stat, unlink, rename } from "@/utils/media/objectFiles";
 import { cacheDirectory, cacheFile, readCache, scheduleCachePrune, touchCache, writeCache } from "@/utils/cache";
 import { executeFileFfmpeg } from "@/utils/ffmpeg";
 import { requireMediaDevice } from "@/utils/localHelper/media";

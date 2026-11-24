@@ -1,11 +1,11 @@
-import { lstat, rm, rmdir } from "@toonflow/file";
+import { lstat, rm, rmdir } from "@/utils/media/objectFiles";
 import { Router } from "express";
 import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 import { relative } from "node:path";
-import { readdir } from "@toonflow/file";
+import { readdir } from "@/utils/media/objectFiles";
 
 const router = Router();
 

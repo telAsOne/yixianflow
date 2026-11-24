@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { basename, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "@toonflow/file";
+import { readFile, stat } from "@/utils/media/objectFiles";
 import { listSessionSummaries } from "./sessionIndex";
 export { listSessionPage } from "./sessionIndex";
 import { cacheFile, readCache, writeCache } from "@/utils/cache";

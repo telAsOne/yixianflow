@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, extname, isAbsolute, join, relative } from "node:path";
-import { lstat, mkdir, readFile, unlink, writeAtomic } from "@toonflow/file";
+import { lstat, mkdir, readFile, unlink, writeAtomic } from "@/utils/media/objectFiles";
 import { z } from "zod";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createFfmpeg, type BrowserFfmpegRequest } from "@toonflow/ffmpeg";

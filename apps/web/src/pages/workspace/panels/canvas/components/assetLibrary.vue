@@ -91,6 +91,8 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import axios from "axios";
 import { assetFileUrl } from "@/lib/appPath";
+import { transferObject } from "@/lib/objectTransfer";
+import { webUserId } from "@/lib/webRuntime";
 import { ElMessage, type InputInstance, type LoadFunction, type TreeNodeData } from "element-plus";
 import { IconDots, IconEye, IconFile, IconFolderFilled, IconFolderPlus, IconMusic, IconPhoto, IconSearch, IconVideo, IconX } from "@tabler/icons-vue";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
@@ -374,11 +376,13 @@ async function saveAsset() {
   if (!output || !name || /[\\/]/.test(name) || saving.value || saveFolderName.value !== undefined) return;
   const path = saveDirectory.value === "." ? name : `${saveDirectory.value}/${name}`;
   saving.value = true;
+  const actor=webUserId.value;
   try {
     const content = typeof output.value === "object"
       ? await useWorkspaceFiles(() => sourceDirectory).read(output.value.url)
       : new Blob([String(output.value)]);
-    await axios.put("/api/assets/save", content, { params: { path }, headers: { "Content-Type": "application/octet-stream" } });
+    if(webUserId.value!==actor)throw new Error("账户已切换，未保存素材");
+    if(!await transferObject(axios,"/api/assets/transfer",{scope:"assets",path,content,exclusive:true}))await axios.put("/api/assets/save", content, { params: { path }, headers: { "Content-Type": "application/octet-stream" } });
     saveVisible.value = false;
     ElMessage.success("已保存到素材库");
     await loadEntries();

@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { existsSync, mkdir, readFile, realpath, stat } from "@toonflow/file";
+import { existsSync, mkdir, readFile, realpath, stat } from "@/utils/media/objectFiles";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { loadSkills, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { SkillContext, SkillLocation, SkillScope } from "@toonflow/tools-scaffold/runtime";

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, opendir, readFile, realpath, rmdir, unlink } from "@toonflow/file";
+import { lstat, mkdir, opendir, readFile, realpath, rmdir, unlink } from "@/utils/media/objectFiles";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { getUserDataDirectory } from "@/utils/conf";
 import { isWithin, lockWorkspaceFiles, protectWorkspaceRoot, renameWorkspaceFile, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";

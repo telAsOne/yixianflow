@@ -4,7 +4,7 @@ import { lookup } from "node:dns/promises";
 import { request, type ClientRequest, type IncomingMessage } from "node:http";
 import { request as requestSecure } from "node:https";
 import { BlockList, isIP } from "node:net";
-import { mkdir, realpath, stat } from "@toonflow/file";
+import { mkdir, realpath, stat } from "@/utils/media/objectFiles";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 
 const maxImageSize = 20 * 1024 * 1024;

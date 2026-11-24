@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { realpath, stat } from "@toonflow/file";
+import { realpath, stat } from "@/utils/media/objectFiles";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { Request } from "express";
 import conf from "@/utils/conf";

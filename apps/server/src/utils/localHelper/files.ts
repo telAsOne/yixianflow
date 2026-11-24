@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Request, Response } from "express";
-import { createReadStream, createWriteStream, link, lstat, unlink } from "@toonflow/file";
+import { createReadStream, createWriteStream, link, lstat, unlink } from "@/utils/media/objectFiles";
 import { fileTransferRequest, transferBatchMaxBytes, transferFileMaxBytes } from "@toonflow/local-helper/protocol";
 import { requireReadyDevice } from "./index";
 import { readWebAccount } from "@/utils/web/auth";

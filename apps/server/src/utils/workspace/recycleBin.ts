@@ -1,7 +1,7 @@
 import { basename, dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import type { Request } from "express";
-import { lstat, mkdir, readFile, readdir, realpath, rm, writeAtomic } from "@toonflow/file";
+import { lstat, mkdir, readFile, readdir, realpath, rm, writeAtomic } from "@/utils/media/objectFiles";
 import { z } from "zod";
 import conf from "@/utils/conf";
 import { getProjectAgentDirectory, lockWorkspaceFiles, resolveWorkspacePath } from "./files";

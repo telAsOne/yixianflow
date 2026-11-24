@@ -4,7 +4,7 @@ import { createWorkspaceFfmpeg } from "@/utils/ffmpeg";
 import { createBrowserContext } from "@/utils/browser";
 import { importImage } from "@/utils/workspace/chatImages";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { access, constants, copyFile, lstat, mkdir, readFile, readdir, rm, rmdir, stat, withFileAccess } from "@toonflow/file";
+import { access, constants, copyFile, lstat, mkdir, readFile, readdir, rm, rmdir, stat, withFileAccess } from "@/utils/media/objectFiles";
 import {
   defineTool, createReadToolDefinition, createWriteToolDefinition, createEditToolDefinition, createLsToolDefinition,
   detectSupportedImageMimeTypeFromFile, type ToolDefinition,

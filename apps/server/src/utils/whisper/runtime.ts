@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Request, Response } from "express";
-import { createReadStream, lstat, mkdir, readFile, stat, withFileAccess, writeAtomic } from "@toonflow/file";
+import { createReadStream, lstat, mkdir, readFile, stat, withFileAccess, writeAtomic } from "@/utils/media/objectFiles";
 import { parseSrt, serializeSrt } from "@toonflow/node-shared/subtitleSrt";
 import { subtitleReportSchema, whisperSelections } from "@toonflow/local-helper/subtitleProtocol";
 import type { SubtitleEnvironment } from "@toonflow/local-helper/subtitleProtocol";
