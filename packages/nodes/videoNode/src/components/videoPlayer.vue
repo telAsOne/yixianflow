@@ -12,6 +12,7 @@
       ref="video"
       class="videoPreview"
       :class="{ nodrag: previewing }"
+      crossorigin="anonymous"
       :src="playbackSrc"
       :poster="cachedPoster || poster"
       :controls="previewing"
@@ -409,6 +410,7 @@ async function captureFrame(command: "current" | "first" | "last") {
     let source = video.value;
     if (command !== "current" || source.seeking || source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       frameVideo = document.createElement("video");
+      frameVideo.crossOrigin = "anonymous";
       frameVideo.muted = true;
       frameVideo.preload = "auto";
       // 用独立视频按需解码，不改变播放器当前进度；尾帧定位到结束前。

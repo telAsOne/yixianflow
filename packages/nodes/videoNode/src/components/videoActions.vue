@@ -179,6 +179,7 @@ function loadThumbnails() {
   stopThumbnails();
   frames.value = [];
   const source = thumbnailVideo = document.createElement("video");
+  source.crossOrigin = "anonymous";
   const canvas = document.createElement("canvas");
   canvas.width = 160;
   canvas.height = 96;
