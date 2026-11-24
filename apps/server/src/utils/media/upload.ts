@@ -133,7 +133,8 @@ export async function withVideoContinuationTail<T>(directory: string, source: Me
   if (!detectMimeType(header, "") || !detectMimeType(header, source.mimeType).startsWith("video/")) invalid("续接来源内容不是可识别的视频", 415);
   const processing=await materializeObject(path,signal);
   try {
-  const ffmpeg = createFfmpeg(directory);
+  // 来源已通过工作区校验；R2 临时副本由服务端创建，允许本次内部命令读取它。
+  const ffmpeg = createFfmpeg(directory, { localFiles: processing.path !== path });
   let videoIndex = 0;
   const seconds = await new Promise<number>((resolve, reject) => {
     ffmpeg(processing.path).ffprobe((error, metadata) => {
