@@ -1,7 +1,7 @@
 import { t, translateMessage, validationOptions } from "@/lib/i18n";
 
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, unlink, writeAtomic } from "@toonflow/file";
+import { lstat, mkdir, readFile, readdir, unlink, writeAtomic } from "@/utils/media/objectFiles";
 import { dirname, join } from "node:path";
 import { createContext, SourceTextModule } from "node:vm";
 import type { AudioConvertOptions, Provider, ProviderTools, VideoTaskContext, ImageTaskContext } from "@toonflow/providers";

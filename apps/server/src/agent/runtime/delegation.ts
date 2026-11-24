@@ -1,4 +1,4 @@
-import { readFile } from "@toonflow/file";
+import { readFile } from "@/utils/media/objectFiles";
 import { parseSessionEntries } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext, ClientFileContext } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent } from "@/agent/runtime/types";

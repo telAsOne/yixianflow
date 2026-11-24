@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { mkdir, readFile, readdir, stat, unlink, writeAtomic } from "@toonflow/file";
+import { mkdir, readFile, readdir, stat, unlink, writeAtomic } from "@/utils/media/objectFiles";
 import conf from "@/utils/conf";
 
 type CacheKind = "mediaPreviews" | "projectIndex" | "sessionIndex" | "aiImages";

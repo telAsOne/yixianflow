@@ -1,5 +1,5 @@
 import { t, translateMessage } from "@/lib/i18n";
-import { mkdir, readFile, realpath, stat, unlink } from "@toonflow/file";
+import { mkdir, readFile, realpath, stat, unlink } from "@/utils/media/objectFiles";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { mediaProviders, type Provider, type VideoTaskContext, type ImageTaskContext } from "@toonflow/providers";
@@ -12,7 +12,7 @@ import { runVideoTask } from "@/utils/media/videoTasks";
 export { getVideoTask, getVideoTaskRequest } from "@/utils/media/videoTasks";
 import { runImageTask } from "@/utils/media/imageTasks";
 import { preparePlatformReferences, uploadPlatformReferences } from "@/utils/media/upload";
-import { file } from "@toonflow/file/bun";
+import { objectBlob } from "./objectStorage";
 import { requireAccount, getAccount, getApiKey, getBaseUrl, getConfigState, refreshConfig } from "@/utils/account";
 import { getManagedConfig } from "@/utils/account/config";
 import { detectMimeType } from "@/utils/media/mimeType";
@@ -266,7 +266,7 @@ async function generateMediaResult(
       if (request.lastFrame) lastFrame = uploaded[index];
     } else if (mediaType === "image") {
       const prepared = await preparePlatformReferences(directory, references, signal, getConfigState().imageTotalMaxBytes);
-      images = prepared.map(item => ({ type: "file", file: file(item.path, { type: item.mimeType }), mimeType: item.mimeType, name: item.name }));
+      images = await Promise.all(prepared.map(async item => ({ type: "file" as const, file: await objectBlob(item.path, { type: item.mimeType }), mimeType: item.mimeType, name: item.name })));
     }
   }
   signal?.throwIfAborted();

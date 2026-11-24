@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { realpath, stat } from "@toonflow/file";
+import { realpath, stat } from "@/utils/media/objectFiles";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import conf from "@/utils/conf";
 import { getMobileLinkConfig, isMobileLinkRequest } from "@/utils/mobileLink";

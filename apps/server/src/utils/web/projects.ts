@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dirname, relative, resolve } from "node:path";
-import { mkdir, realpath, writeAtomic } from "@toonflow/file";
+import { mkdir, realpath, writeAtomic } from "@/utils/media/objectFiles";
 import { z } from "zod";
 import conf from "@/utils/conf";
 import { canViewAllWebProjects, requireWebAccount } from "@/lib/webContext";

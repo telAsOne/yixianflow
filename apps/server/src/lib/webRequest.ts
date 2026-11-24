@@ -4,6 +4,8 @@ import { readWebSession } from "@/utils/web/auth";
 import { getWebOrigin } from "@/utils/web/store";
 import { refreshConfig } from "@/utils/account";
 import { runWebMcpRequest } from "@/utils/mcp/webAccess";
+import { preserveObjectRequest } from "@/utils/media/objectStorage";
+import { publicMediaAccess } from "@/utils/workspace/mediaAccess";
 
 const publicRoutes = new Set(["GET /api/runtime", "GET /api/account/get", "GET /api/account/callback", "POST /api/account/start", "POST /api/account/logout", "GET /api/settings/get"]);
 const helperDeviceRoutes = new Set([
@@ -25,6 +27,8 @@ const privateRoutes = new Set([
   "GET /api/nodes/get", "GET /api/nodes/files", "GET /api/ext/list", "GET /api/ext/read",
   "GET /api/tools/get", "GET /api/tools/client", "GET /api/tools/renderers",
   "GET /api/workspaces/files/list", "GET /api/workspaces/files/canvases", "GET /api/workspaces/files/read", "PUT /api/workspaces/files/write",
+  "GET /api/workspaces/files/transfer", "POST /api/workspaces/files/transfer/init",
+  "POST /api/workspaces/files/transfer/complete", "DELETE /api/workspaces/files/transfer/cancel",
   "POST /api/workspaces/files/mkdir", "POST /api/workspaces/files/rename", "POST /api/workspaces/files/copy", "DELETE /api/workspaces/files/remove",
   "GET /api/workspaces/files/media", "POST /api/workspaces/files/mediaAccess", "GET /api/workspaces/files/export", "GET /api/workspaces/files/usage",
   "GET /api/workspaces/canvas/events", "POST /api/workspaces/canvas/save", "GET /api/workspaces/canvas/recovery/get",
@@ -40,11 +44,12 @@ const creativeRoutes = /^\/api\/(ai|agent|assets|singleAgent|whisper)(\/|$)/;
 const pluginRoutes = /^\/api\/(nodes|tools|ext|skills|agents)(\/|$)/;
 
 export default async function webRequest(req: Request, res: Response, next: NextFunction) {
+  preserveObjectRequest(req,res);
   if (!isWebMode()) return next();
   if (!/^\/(api|mcp|a2a)(\/|$)/i.test(req.path)) return next();
   res.set("Cache-Control", "no-store");
   const origin = getWebOrigin();
-  if (req.get("host")?.toLowerCase() !== new URL(origin).host.toLowerCase())
+  if (req.get("host")?.toLowerCase() !== new URL(origin).host.toLowerCase() && res.locals.mediaObjectEdge!==true)
     throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
   if (/^\/mcp\/?$/.test(req.path)) {
     try { return await runWebMcpRequest(req, next); }
@@ -59,16 +64,18 @@ export default async function webRequest(req: Request, res: Response, next: Next
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)
     && (req.get("origin") !== origin || req.get("x-toonflow-workspace") !== "1"))
     throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
-  const route = `${req.method} ${req.path}`;
+  const route = `${req.method==="HEAD"?"GET":req.method} ${req.path}`;
+  const mediaCapability=route==="GET /api/workspaces/files/media" && publicMediaAccess(req.query.token);
   // 平台暂时不可用时公开接口按未登录处理，页面仍可启动和退出；其他接口照常拒绝。
-  const session = await readWebSession(req).catch((error: { status?: number }) => {
-    if (error.status === 503 && publicRoutes.has(route)) return undefined;
+  const session = await (mediaCapability && !req.get("cookie")?Promise.resolve(undefined):readWebSession(req)).catch((error: { status?: number }) => {
+    if (mediaCapability && [401,503].includes(error.status??0) || error.status === 503 && publicRoutes.has(route)) return undefined;
     throw error;
   });
   const expectedUser = req.get("x-yixianflow-user") ?? (req.path === "/api/assets/read" && typeof req.query.userId === "string" ? req.query.userId : undefined);
   if (expectedUser && session && expectedUser !== String(session.account.user.id))
     throw Object.assign(new Error("账户已切换或登录已过期，请刷新页面后继续"), { status: 409 });
-  if (!publicRoutes.has(route) && !session) throw Object.assign(new Error("请先登录 UnionAIGC 账户"), { status: 401 });
+  if (!publicRoutes.has(route) && !session && !mediaCapability) throw Object.assign(new Error("请先登录 UnionAIGC 账户"), { status: 401 });
+  if(mediaCapability && !session)res.locals.mediaPublicCapability=true;
   const personalData = /^\/api\/(projects|settings|workspaces|ai|agent|assets|singleAgent|whisper|localHelper|mcp)(\/|$)/.test(req.path)
     && !["/api/workspaces/files/media", "/api/localHelper/download"].includes(req.path);
   if (session && personalData && !expectedUser) throw Object.assign(new Error("请刷新页面后继续访问个人项目"), { status: 409 });

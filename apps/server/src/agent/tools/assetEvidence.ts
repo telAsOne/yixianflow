@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { mkdir, readFile, stat, writeAtomic } from "@toonflow/file";
+import { mkdir, readFile, stat, writeAtomic } from "@/utils/media/objectFiles";
 import { z } from "zod";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { getAgentDirectory, lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/files";

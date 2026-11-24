@@ -1,5 +1,5 @@
 import { createReadToolDefinition } from "@earendil-works/pi-coding-agent";
-import { lstat, readFile, realpath } from "@toonflow/file";
+import { lstat, readFile, realpath } from "@/utils/media/objectFiles";
 import { assetRequestSchema } from "@toonflow/tool-asset-operator/runtime";
 import type { ToolContext } from "@toonflow/tools-scaffold/runtime";
 import { resolve } from "node:path";

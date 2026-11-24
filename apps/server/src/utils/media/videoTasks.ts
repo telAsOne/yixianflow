@@ -1,7 +1,7 @@
 import { platformFetch } from "@/utils/account";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
-import { constants, copyFile, createReadStream, link, mkdir, open, readFile, stat, unlink, writeAtomic } from "@toonflow/file";
+import { constants, copyFile, createReadStream, link, mkdir, open, readFile, stat, unlink, writeAtomic } from "@/utils/media/objectFiles";
 import { setTimeout as wait } from "node:timers/promises";
 import { z } from "zod";
 import type { VideoTaskContext } from "@toonflow/providers";

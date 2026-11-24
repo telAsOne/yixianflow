@@ -1,4 +1,4 @@
-import { lstat } from "@toonflow/file";
+import { lstat } from "@/utils/media/objectFiles";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { getNodeConfig, nodesDirectory, readNode } from "@/utils/plugins/nodes";

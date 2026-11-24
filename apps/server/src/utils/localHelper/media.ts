@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createReadStream, createWriteStream, link, lstat, mkdir, unlink, withFileAccess } from "@toonflow/file";
+import { createReadStream, createWriteStream, link, lstat, mkdir, unlink, withFileAccess } from "@/utils/media/objectFiles";
 import type { Request, Response } from "express";
 import type { BrowserFfmpegRequest } from "@toonflow/ffmpeg";
 import type { FfmpegRemoteEvent } from "@toonflow/ffmpeg/remote";

@@ -29,20 +29,22 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@toonflow/local-helper": "workspace:*",
+    "@aws-sdk/client-s3": "3.1175.0",
     "@babel/parser": "^7.29.8",
     "@breezystack/lamejs": "^1.2.7",
     "@earendil-works/pi-ai": "0.85.1",
     "@earendil-works/pi-coding-agent": "^0.85.1",
     "@toonflow/ffmpeg": "workspace:*",
     "@toonflow/file": "workspace:*",
+    "@toonflow/i18n": "workspace:*",
+    "@toonflow/local-helper": "workspace:*",
     "@toonflow/mcp": "workspace:*",
     "@toonflow/node-shared": "workspace:*",
     "@toonflow/providers": "workspace:*",
     "@toonflow/teams-scaffold": "workspace:*",
     "@toonflow/tool-asset-operator": "workspace:*",
-    "@toonflow/tool-canvas": "workspace:*",
     "@toonflow/tool-browser": "workspace:*",
+    "@toonflow/tool-canvas": "workspace:*",
     "@toonflow/tool-media-generation": "workspace:*",
     "@toonflow/tools-scaffold": "workspace:*",
     "conf": "^15.1.0",
@@ -51,8 +53,7 @@
     "fflate": "^0.8.3",
     "morgan": "^1.12.1",
     "wavefile": "^11.0.0",
-    "zod": "^4.6.2",
-    "@toonflow/i18n": "workspace:*"
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

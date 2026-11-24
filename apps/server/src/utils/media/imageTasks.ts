@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
-import { mkdir, readFile, stat, writeAtomic } from "@toonflow/file";
+import { mkdir, readFile, stat, writeAtomic } from "@/utils/media/objectFiles";
 import { z } from "zod";
 import type { ImageTaskContext } from "@toonflow/providers";
 import type { GeneratedMedia, MediaGenerationRequest, ImageTaskStatus } from "@toonflow/tools-scaffold/runtime";
@@ -143,7 +143,7 @@ export async function runImageTask(
       },
       async saveResult(assets) {
         const value = JSON.stringify(assetsSchema.parse(assets));
-        if (Buffer.byteLength(value) > 140 * 1024 * 1024) invalid("原图回执超过本地 140 MiB 缓存预算");
+        if (Buffer.byteLength(value) > 140 * 1024 * 1024) invalid("原图回执超过 140 MiB 保存预算");
         // URL 下载完成后用原始字节替换回执快照，后续落盘恢复不再依赖临时 URL。
         await writeAtomic(resultPath, value);
         task.state = { ...task.state, phase: "downloading", error: undefined, retryAt: undefined };

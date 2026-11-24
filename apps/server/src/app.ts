@@ -94,6 +94,12 @@ export async function createApp({
   }
   const { sameOriginOnly, allowedHosts } = await import("@/lib/middleware");
   app.use(languageRequest);
+  const {preserveObjectRequest,authorizedObjectEdge}=await import("@/utils/media/objectStorage");
+  app.use(async(req,res,next)=>{
+    preserveObjectRequest(req,res);
+    if(["/api/workspaces/files/media","/api/workspaces/files/read","/api/assets/read","/api/localHelper/download"].includes(req.path))res.locals.mediaObjectEdge=await authorizedObjectEdge(req,res);
+    next();
+  });
   if (hostnames) app.use(allowedHosts(hostnames));
   app.use(sameOriginOnly);
   const { default: webRequest } = await import("@/lib/webRequest");

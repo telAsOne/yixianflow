@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, join, relative } from "node:path";
-import { mkdir, mkdtemp, rm, stat } from "@toonflow/file";
-import { file } from "@toonflow/file/bun";
+import { mkdir, mkdtemp, rm, stat } from "@/utils/media/objectFiles";
+import { objectBlob,materializeObject } from "./objectStorage";
 import { createFfmpeg } from "@toonflow/ffmpeg/runtime";
 import { z } from "zod";
 import { t } from "@/lib/i18n";
@@ -58,7 +58,7 @@ export async function preparePlatformReferences(directory: string, references: R
     prepared.push({ path, size: info.size, modified: info.mtimeMs, mediaType: reference.mediaType, mimeType: reference.mimeType, name: basename(path) });
   }
   for (const reference of prepared) {
-    const header = new Uint8Array(await file(reference.path).slice(0, 512).arrayBuffer());
+    const header = new Uint8Array(await (await objectBlob(reference.path)).slice(0, 512).arrayBuffer());
     if (!detectMimeType(header, "")) invalid("无法识别参考素材的文件格式", 415);
     reference.mimeType = detectMimeType(header, reference.mimeType);
     if (!reference.mimeType.startsWith(`${reference.mediaType}/`)) invalid("参考素材内容与媒体类型不匹配", 415);
@@ -77,7 +77,7 @@ export async function uploadPlatformReferences(directory: string, references: Re
     const resolved = new Map<string, Extract<MediaInput, { type: "url" }>>();
     for (const reference of prepared) {
       signal?.throwIfAborted();
-      const blob = file(reference.path, { type: reference.mimeType });
+      const blob = await objectBlob(reference.path, { type: reference.mimeType });
       let digest = hashes.get(reference.path);
       if (!digest) {
         const hash = createHash("sha256");
@@ -129,12 +129,14 @@ export async function withVideoContinuationTail<T>(directory: string, source: Me
   const { path } = await resolveWorkspacePath(directory, source.path);
   const original = await stat(path);
   if (!original.isFile() || !original.size || original.size > 512 * 1024 * 1024) invalid("续接来源须为不超过 512 MiB 的视频文件", 413);
-  const header = new Uint8Array(await file(path).slice(0, 512).arrayBuffer());
+  const header = new Uint8Array(await (await objectBlob(path)).slice(0, 512).arrayBuffer());
   if (!detectMimeType(header, "") || !detectMimeType(header, source.mimeType).startsWith("video/")) invalid("续接来源内容不是可识别的视频", 415);
+  const processing=await materializeObject(path,signal);
+  try {
   const ffmpeg = createFfmpeg(directory);
   let videoIndex = 0;
   const seconds = await new Promise<number>((resolve, reject) => {
-    ffmpeg(path).ffprobe((error, metadata) => {
+    ffmpeg(processing.path).ffprobe((error, metadata) => {
       if (error) { reject(error); return; }
       const video = metadata.streams.find(stream => stream.codec_type === "video" && !stream.disposition?.attached_pic);
       if (!video) { reject(new Error("续接来源没有可读取的视频流")); return; }
@@ -152,7 +154,7 @@ export async function withVideoContinuationTail<T>(directory: string, source: Me
     const output = join(temporary, "tail.mp4");
     await new Promise<void>((resolve, reject) => {
       // Decode to EOF: a container's nominal duration can precede its last packet.
-      const command = ffmpeg({ source: path, timeout: 180 }).seekInput(Math.max(0, seconds - 3))
+      const command = ffmpeg({ source: processing.path, timeout: 180 }).seekInput(Math.max(0, seconds - 3))
         .inputOptions("-nostdin", "-protocol_whitelist", "file,pipe", "-threads", "1")
         .videoFilters("pad=ceil(iw/2)*2:ceil(ih/2)*2").audioFilters("atrim=duration=3").videoCodec("libx264").audioCodec("aac").format("mp4")
         .outputOptions("-n", "-map", `0:${videoIndex}`, "-map", "0:a:0?", "-threads", "1", "-preset", "fast", "-crf", "18", "-fps_mode", "passthrough", "-movflags", "+faststart");
@@ -170,6 +172,7 @@ export async function withVideoContinuationTail<T>(directory: string, source: Me
   } finally {
     await rm(temporary, { recursive: true, force: true }).catch(error => console.warn("续接参考临时文件清理失败", error));
   }
+  } finally {await processing.dispose();}
 }
 
 export async function uploadContinuationReviewReference(directory: string, reference: MediaReference, signal: AbortSignal, options: UploadOptions) {
@@ -183,7 +186,7 @@ async function uploadContinuationReviewTail(directory: string, reference: MediaR
   const request = options.request ?? platformFetch;
   const [prepared] = await preparePlatformReferences(directory, [{ ...reference, mediaType: "video" }], signal);
   if (!prepared) throw new Error("续接审查来源不可用");
-  const blob = file(prepared.path, { type: prepared.mimeType });
+  const blob = await objectBlob(prepared.path, { type: prepared.mimeType });
   const hash = createHash("sha256");
   for await (const chunk of blob.stream()) { signal.throwIfAborted(); hash.update(chunk); }
   const digest = hash.digest("hex");

@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { resolve } from "node:path";
-import { withFileAccess } from "@toonflow/file";
+import { withFileAccess } from "@/utils/media/objectFiles";
+import { sendObjectFile } from "@/utils/media/objectHttp";
 
 export async function sendFile(res: Response, path: string, options: Parameters<Response["sendFile"]>[1] = {}, callback?: (error?: Error) => void) {
   const controller = new AbortController();
@@ -11,6 +12,9 @@ export async function sendFile(res: Response, path: string, options: Parameters<
   if (req.aborted || res.destroyed) cancel();
   let failure: Error | undefined;
   try {
+    let remote=false;
+    await withFileAccess([resolve(options.root??"",path)],"read",async()=>{remote=await sendObjectFile(req,res,resolve(options.root??"",path),controller.signal);},controller.signal);
+    if(remote){callback?.();return;}
     await withFileAccess([resolve(options.root ?? "", path)], "read", () => new Promise<void>((done, reject) => {
       if (req.aborted || res.destroyed) return done();
       const finish = () => complete();

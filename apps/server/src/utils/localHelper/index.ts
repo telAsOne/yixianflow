@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { resolve, dirname } from "node:path";
-import { stat } from "@toonflow/file";
+import { stat } from "@/utils/media/objectFiles";
 import type { Request } from "express";
 import { helperVersion, localHelperRequest, type LocalHelperRequest, type LocalMediaStatus, type LocalHelperDevice, type LocalHelperJob, type LocalHelperResult, type LocalHelperStatus } from "@toonflow/local-helper/protocol";
 import { isWebMode, requireWebAccount, webContext } from "@/lib/webContext";

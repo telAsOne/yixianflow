@@ -4,6 +4,7 @@ import { toValue, type MaybeRefOrGetter } from "vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { registerApiLanguage } from "@/lib/i18n";
 import { webMode } from "@/lib/webRuntime";
+import { transferObject } from "@/lib/objectTransfer";
 import type { CanvasChange, CanvasSnapshot, CanvasElement } from "@toonflow/server/canvasMerge";
 import type { RecycleOverview } from "@toonflow/server/recycleTypes";
 import type { FilePreview } from "@toonflow/nodes-scaffold/workspaceFiles";
@@ -288,6 +289,7 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
 
   async function write(path: string, content: string | Blob | ArrayBuffer, exclusive = false, signal?: AbortSignal, onUploadProgress?: (loaded: number, total?: number) => void) {
     const directory = getDirectory();
+    if(await transferObject(client,"/transfer",{directory,path,content,exclusive,signal,onProgress:onUploadProgress})){invalidateUrls(directory,path);return;}
     await client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" },
       onUploadProgress: onUploadProgress && (event => onUploadProgress(event.loaded, event.total)),
     });

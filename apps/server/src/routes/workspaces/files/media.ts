@@ -12,7 +12,7 @@ export default Router().get("/", validateFields({ token: z.string().min(1).max(1
   try {
     const preview = req.query.preview;
     const canvas = preview === "canvas";
-    const path = preview ? await u.mediaPreviews.mediaPreview(media.path, media.revision, media.mimeType, preview === "1024" ? 1024 : 512, controller.signal, canvas) : media.path;
+    const path = preview && !res.locals.mediaPublicCapability ? await u.mediaPreviews.mediaPreview(media.path, media.revision, media.mimeType, preview === "1024" ? 1024 : 512, controller.signal, canvas) : media.path;
     if (canvas) res.set("Cache-Control", "private, no-cache");
     if (!path) { res.status(204).end(); return; }
     res.set({ "Cache-Control": "private, no-cache", "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff" });
