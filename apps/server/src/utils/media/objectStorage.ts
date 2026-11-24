@@ -269,7 +269,13 @@ export async function objectRequest(
     createHash("sha256")
       .update(body instanceof Uint8Array ? body : new Uint8Array())
       .digest("hex");
-  const headers = new Headers({ ...extra, "x-amz-date": date, "x-amz-content-sha256": digest });
+  // 对象长度、哈希与 Range 均按原始字节校验，避免传输压缩移除或改变 Content-Length。
+  const headers = new Headers({
+    ...extra,
+    "Accept-Encoding": "identity",
+    "x-amz-date": date,
+    "x-amz-content-sha256": digest,
+  });
   if (config.credentials.sessionToken)
     headers.set("x-amz-security-token", config.credentials.sessionToken);
   const signedHeaders = ["host", ...Array.from(headers.keys())].sort();

@@ -28,6 +28,7 @@
     <video
       v-else-if="item.dataType === 'VIDEO' && originalUrl && !previewError"
       class="preview"
+      crossorigin="anonymous"
       :src="originalUrl"
       preload="auto"
       muted
@@ -108,11 +109,16 @@ function readVideoPreview(event: Event) {
   canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
   const context = canvas.getContext("2d");
   if (!context) return;
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  videoThumbnail.value = canvas.toDataURL("image/webp");
-  video.pause();
-  video.removeAttribute("src");
-  video.load();
+  try {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    videoThumbnail.value = canvas.toDataURL("image/webp");
+    video.removeAttribute("src");
+    video.load();
+  } catch (error) {
+    console.warn("视频引用缩略图生成失败", error);
+  } finally {
+    video.pause();
+  }
 }
 
 function readDuration(event: Event) {
