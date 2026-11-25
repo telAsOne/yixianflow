@@ -176,6 +176,7 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
   if (ratio !== undefined && !model.imageRatios?.includes(ratio)) throw new Error(`当前模型不支持画面比例 ${ratio}，ratio 可选：${model.imageRatios?.join("、") || "未声明，请省略 ratio"}；本次未提交生成`);
   const n = request.n ?? 1;
   if (!Number.isSafeInteger(n) || n < 1) throw new Error("图片数量无效");
+  // ACT: 图片优化与生成沿用宿主的十分钟上限；关闭 Bun 独立 socket 超时，由 signal 统一约束等待。
   if (/^(gemini-|nano-banana)/i.test(request.model)) {
     if (n !== 1) throw new Error("Gemini 每次生成一张图片，请分别确认后生成");
     const content: ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] = [{ type: "text", text: request.prompt }];
@@ -189,7 +190,7 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
       method: "POST", headers: { Authorization: `Bearer ${this.config.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: request.model, messages: [{ role: "user", content }],
         extra_body: { google: { image_config: { image_size: size ?? model.imageSizes?.[0], aspect_ratio: ratio ?? model.imageRatios?.[0] } } } }),
-      signal: AbortSignal.timeout(300000), redirect: "error",
+      signal: AbortSignal.timeout(10 * 60_000), timeout: false, redirect: "error",
     });
     const result = JSON.parse((await readBytes(response, 150 * 1024 * 1024)).toString("utf8")) as { choices?: { message?: { content?: string } }[]; error?: unknown };
     if (!response.ok) throw new Error(this.tool.errorMessage(result) || `Gemini 图像生成失败（HTTP ${response.status}）`);
@@ -212,7 +213,7 @@ async function generateImage(this: ProviderContext, request: ImageRequest): Prom
     body = form;
   } else { headers["Content-Type"] = "application/json"; body = JSON.stringify(fields); }
   const response = await this.tool.fetch(`${this.config.apiUrl}/v1/images/${images.length ? "edits" : "generations"}`, {
-    method: "POST", headers, body, signal: AbortSignal.timeout(300000), redirect: "error",
+    method: "POST", headers, body, signal: AbortSignal.timeout(10 * 60_000), timeout: false, redirect: "error",
   });
   const bytes = await readBytes(response, 150 * 1024 * 1024);
   const result = JSON.parse(bytes.toString("utf8")) as { data?: { url?: string; b64_json?: string }[]; error?: unknown };
