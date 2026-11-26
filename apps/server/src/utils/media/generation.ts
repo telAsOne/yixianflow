@@ -266,7 +266,7 @@ async function generateMediaResult(
       if (request.lastFrame) lastFrame = uploaded[index];
     } else if (mediaType === "image") {
       const prepared = await preparePlatformReferences(directory, references, signal, getConfigState().imageTotalMaxBytes);
-      images = await Promise.all(prepared.map(async item => ({ type: "file" as const, file: await objectBlob(item.path, { type: item.mimeType }), mimeType: item.mimeType, name: item.name })));
+      images = await Promise.all(prepared.map(async item => ({ type: "file" as const, file: await objectBlob(item.path, { type: item.mimeType, multipart: true }), mimeType: item.mimeType, name: item.name })));
     }
   }
   signal?.throwIfAborted();
