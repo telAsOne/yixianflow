@@ -77,7 +77,7 @@ export async function uploadPlatformReferences(directory: string, references: Re
     const resolved = new Map<string, Extract<MediaInput, { type: "url" }>>();
     for (const reference of prepared) {
       signal?.throwIfAborted();
-      const blob = await objectBlob(reference.path, { type: reference.mimeType });
+      const blob = await objectBlob(reference.path, { type: reference.mimeType, multipart: true });
       let digest = hashes.get(reference.path);
       if (!digest) {
         const hash = createHash("sha256");
@@ -187,7 +187,7 @@ async function uploadContinuationReviewTail(directory: string, reference: MediaR
   const request = options.request ?? platformFetch;
   const [prepared] = await preparePlatformReferences(directory, [{ ...reference, mediaType: "video" }], signal);
   if (!prepared) throw new Error("续接审查来源不可用");
-  const blob = await objectBlob(prepared.path, { type: prepared.mimeType });
+  const blob = await objectBlob(prepared.path, { type: prepared.mimeType, multipart: true });
   const hash = createHash("sha256");
   for await (const chunk of blob.stream()) { signal.throwIfAborted(); hash.update(chunk); }
   const digest = hash.digest("hex");

@@ -445,6 +445,12 @@ export async function loadMediaProviderSource(source: string, config: Record<str
         if (!overlappingRequests && failure?.message && matchesFailure) {
           message = [...new Set([...message.split("\n"), ...failure.message.split("\n")])].join("\n").slice(0, 4000);
         }
+        // 明确拒绝的同步图片请求可以结束；超时、冲突、限流仍保留原任务，避免重复计费。
+        if (name === "generateImage" && imageTask && !imageTask.requestSaved && imageTask.state.phase === "submitting"
+          && !overlappingRequests && requestCount === 1 && failure?.status !== undefined
+          && failure.status >= 400 && failure.status < 500 && ![408, 409, 429].includes(failure.status)) {
+          await imageTask.update({ phase: "failed", error: message, retryAt: undefined });
+        }
         if (message === (typeof error === "string" ? error : info?.message)) throw error;
         throw Object.assign(new Error(message), typeof error === "object" ? error : undefined, { message, cause: error });
       }

@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { Blob } from "node:buffer";
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { Readable, Transform } from "node:stream";
@@ -460,9 +461,11 @@ export async function registerObjectFile(
   });
 }
 
-export async function objectBlob(path: string, options?: { type?: string }) {
+export async function objectBlob(path: string, options?: { type?: string; multipart?: boolean }) {
   const record = await objectFile(resolve(path));
   if (!record) return (await import("@toonflow/file/bun")).file(path, options);
+  // S3File 直接进入 FormData 会发送空附件；仅上传时读取并校验完整字节，头部探测仍按范围读取。
+  if (options?.multipart) return new Blob([new Uint8Array(await readObjectFile(record))], { type: options.type ?? record.mimeType });
   const config = await objectConfig();
   if (!config || config.bucket !== record.bucket || !allowedKey(config, record.key))
     throw storageError();
