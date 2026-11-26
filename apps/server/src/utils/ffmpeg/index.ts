@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { lstat, opendir } from "@toonflow/file";
+import { lstat, opendir } from "@/utils/media/objectFiles";
 import { downloadSources, type BrowserFfmpegRequest, type DownloadState, type FfmpegFactory } from "@toonflow/ffmpeg";
 import { createBrowserFfmpeg } from "@toonflow/ffmpeg/browser";
 import { validateFfmpegRequest } from "@toonflow/ffmpeg/validateRequest";
